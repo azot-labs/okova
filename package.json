@@ -1,12 +1,14 @@
 {
   "name": "azot",
-  "version": "0.6.1",
+  "version": "0.6.2",
   "description": "Research & pentesting toolkit for Google's Widevine DRM",
   "type": "module",
   "files": [
     "dist",
     "scripts"
   ],
+  "main": "dist/lib.cjs",
+  "module": "dist/lib.js",
   "bin": {
     "azot": "dist/cli.js"
   },
