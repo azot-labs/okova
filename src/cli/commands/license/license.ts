@@ -15,7 +15,6 @@ export const license = async (params: LicenseCommandParams) => {
     params.headers?.map((header) => header.split(':').map((s) => s.trim())) ||
       [],
   );
-  console.log({ headers });
   const keys = await fetchDecryptionKeys({
     server: params.url,
     pssh: params.pssh,

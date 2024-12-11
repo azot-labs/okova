@@ -31,3 +31,4 @@ examples/**/package-lock.json
 device_client_id_blob
 device_private_key
 *.wvd
+azot.config.json

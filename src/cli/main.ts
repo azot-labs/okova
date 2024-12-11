@@ -5,6 +5,7 @@ import { client } from './commands/client';
 import { license } from './commands/license';
 import pkg from '../../package.json' with { type: 'json' };
 import { col } from './utils';
+import { serve } from './commands/serve/serve';
 
 const args = parseArgs({
   args: process.argv.slice(2),
@@ -16,6 +17,11 @@ const args = parseArgs({
     help: { type: 'boolean', short: 'h' },
     version: { type: 'boolean', short: 'v' },
     debug: { type: 'boolean', short: 'd' },
+
+    host: { type: 'string' },
+    port: { type: 'string' },
+    secret: { type: 'string', short: 's' },
+    config: { type: 'string' },
   },
   strict: false,
   allowPositionals: true,
@@ -27,6 +33,7 @@ const help = () => {
   );
   console.log(`Usage: azot <command> [...flags]\n`);
   console.log(`Commands:`);
+  console.log(col(`serve`) + 'Run your API instance');
   console.log(col(`license <url>`) + 'Make a license request');
   console.log(
     col(`client <subcommand>`) + 'Additional Widevine client utilities',
@@ -49,6 +56,22 @@ const help = () => {
   const [command, ...positionals] = args.positionals;
 
   switch (command) {
+    case 'serve': {
+      if (args.values.help) {
+        serve.help();
+        process.exit(0);
+      }
+      serve({
+        host: args.values.host as string | undefined,
+        port: args.values.port
+          ? parseInt(args.values.port as string)
+          : undefined,
+        config: args.values.config as string | undefined,
+        client: args.values.client as string | undefined,
+        secret: args.values.secret as string | undefined,
+      });
+      break;
+    }
     case 'client': {
       const subcommand = positionals.shift();
       const [input, output] = positionals;
@@ -90,8 +113,6 @@ const help = () => {
       break;
     }
     case 'pssh':
-      break;
-    case 'serve':
       break;
     case 'test':
       break;
