@@ -1,4 +1,5 @@
 import { readFile } from 'node:fs/promises';
+import { basename } from 'node:path';
 import { FastifyPluginAsyncTypebox } from '@fastify/type-provider-typebox';
 import { Type } from '@sinclair/typebox';
 import { Session } from '../../../../lib/session';
@@ -27,19 +28,21 @@ const plugin: FastifyPluginAsyncTypebox = async (server) => {
       const secretKey = request.headers['x-secret-key'] as string;
       const clientName = request.body.client;
       const user = config.users[secretKey];
-      const hasClient = config.clients.some((client: string) =>
-        client.includes(clientName),
+      const clientPath = config.clients.find((client: string) =>
+        basename(client).includes(clientName),
       );
-      const hasUserClient = user?.clients.includes(clientName);
-      if (!hasClient || !hasUserClient) {
+      const clientAllowed = user?.clients.includes(clientName);
+      if (!clientPath || !clientAllowed) {
         return reply.forbidden(
           'Client is not found or you are not authorized to use it.',
         );
       }
-      const wvd = await readFile('client.wvd');
-      const client = clients.get(clientName) || (await Client.fromPacked(wvd));
-      if (!clients.has(clientName!)) clients.set(clientName!, client);
-      const session = new Session('temporary', client);
+      if (!clients.has(clientName)) {
+        const wvd = await readFile(clientPath);
+        const client = await Client.fromPacked(wvd);
+        clients.set(clientName, client);
+      }
+      const session = new Session('temporary', clients.get(clientName)!);
       const sessionKey = `${secretKey}:${session.sessionId}`;
       sessions.set(sessionKey, session);
       return { id: session.sessionId };

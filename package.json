@@ -17,7 +17,7 @@
     "dev": "wxt",
     "dev:firefox": "wxt -b firefox",
     "build": "npm run build:lib && npm run build:chrome",
-    "build:lib": "tsup --entry.lib src/lib/main.ts --entry.cli src/cli/main.ts --format cjs,esm --dts --clean --minify --minify-identifiers",
+    "build:lib": "tsup --entry.lib src/lib/main.ts --entry.cli src/cli/main.ts --format cjs,esm --shims --dts --clean",
     "build:chrome": "wxt build",
     "build:firefox": "wxt build -b firefox",
     "zip": "wxt zip",
