@@ -1,12 +1,12 @@
 import { readdir } from 'node:fs/promises';
 import { basename, extname } from 'node:path';
 import fastify from 'fastify';
-import AutoLoad from '@fastify/autoload';
 import RateLimit from '@fastify/rate-limit';
 import Helmet from '@fastify/helmet';
 import Sensible from '@fastify/sensible';
 import { help } from './help';
 import { config, loadConfig } from './state';
+import session from './api/session';
 
 type ServeOptions = {
   host?: string;
@@ -36,10 +36,11 @@ export const serve = async (options: ServeOptions = {}) => {
     config.users[options.secret] = user;
   }
 
-  server.register(AutoLoad, { dir: `${import.meta.dirname || __dirname}/api` });
   server.register(RateLimit, { max: 100, timeWindow: '1 minute' });
   server.register(Helmet, { global: true });
   server.register(Sensible);
+
+  session(server, {});
 
   server
     .listen({ port: options.port || 4000, host: options.host || '0.0.0.0' })

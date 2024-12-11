@@ -1,23 +1,24 @@
 {
   "name": "azot",
-  "version": "0.7.0",
+  "version": "0.7.1",
   "description": "Swiss Army knife for pentesting DRMs",
   "type": "module",
   "files": [
     "dist",
     "scripts"
   ],
-  "main": "dist/lib.cjs",
-  "module": "dist/lib.js",
+  "main": "dist/lib/main.cjs",
+  "module": "dist/lib/main.js",
   "bin": {
-    "azot": "dist/cli.js"
+    "azot": "dist/cli/main.js"
   },
   "scripts": {
-    "prepublishOnly": "npm run build:lib",
+    "prepublishOnly": "npm run build:lib && npm run build:cli",
     "dev": "wxt",
     "dev:firefox": "wxt -b firefox",
-    "build": "npm run build:lib && npm run build:chrome",
-    "build:lib": "tsup --entry.lib src/lib/main.ts --entry.cli src/cli/main.ts --format cjs,esm --shims --dts --clean",
+    "build": "npm run build:lib && npm run build:cli && npm run build:chrome",
+    "build:lib": "tsup --config tsup.lib.config.ts",
+    "build:cli": "tsup --config tsup.cli.config.ts",
     "build:chrome": "wxt build",
     "build:firefox": "wxt build -b firefox",
     "zip": "wxt zip",
@@ -59,12 +60,12 @@
   "exports": {
     ".": {
       "require": {
-        "types": "./dist/lib.d.cts",
-        "default": "./dist/lib.cjs"
+        "types": "./dist/lib/main.d.cts",
+        "default": "./dist/lib/main.cjs"
       },
       "import": {
-        "types": "./dist/lib.d.ts",
-        "default": "./dist/lib.js"
+        "types": "./dist/lib/main.d.ts",
+        "default": "./dist/lib/main.js"
       }
     }
   },
@@ -72,7 +73,6 @@
     "node": "20 || 21 || 22 || 23"
   },
   "dependencies": {
-    "@fastify/autoload": "^6.0.2",
     "@fastify/helmet": "^13.0.0",
     "@fastify/rate-limit": "^10.2.1",
     "@fastify/sensible": "^6.0.1",

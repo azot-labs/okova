@@ -78,7 +78,7 @@ export default defineUnlistedScript(() => {
       };
       Object.assign(cachedFetch, originalFetch);
       try {
-        // eslint-disable-next-line no-global-assign
+        // @ts-ignore
         fetch = cachedFetch;
       } catch (error1) {
         try {
