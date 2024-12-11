@@ -1,6 +1,6 @@
 {
   "name": "azot",
-  "version": "0.7.1",
+  "version": "0.7.2",
   "description": "Swiss Army knife for pentesting DRMs",
   "type": "module",
   "files": [
@@ -10,7 +10,7 @@
   "main": "dist/lib/main.cjs",
   "module": "dist/lib/main.js",
   "bin": {
-    "azot": "dist/cli/main.js"
+    "azot": "dist/cli/main.cjs"
   },
   "scripts": {
     "prepublishOnly": "npm run build:lib && npm run build:cli",
