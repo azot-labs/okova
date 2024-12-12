@@ -1,7 +1,7 @@
 {
   "name": "azot",
   "version": "0.8.0",
-  "description": "Swiss Army knife for pentesting DRMs",
+  "description": "Swiss Army knife for pentesting DRM systems",
   "type": "module",
   "files": [
     "dist",
