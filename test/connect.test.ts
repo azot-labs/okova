@@ -3,7 +3,7 @@ import { connect } from '../src/lib';
 
 test('connection to Azot API instance and generating license request', async () => {
   const baseUrl = 'https://azot.pw'; // Set your API base URL here
-  const secret = 'db44ec40-3e02-47bd-8fc6-373935e30eae'; // Set your API secret here
+  const secret: string = 'db44ec40-3e02-47bd-8fc6-373935e30eae'; // Set your API secret here
   const client = 'pixel6'; // Set client name related with your API key
   if (secret === 'db44ec40-3e02-47bd-8fc6-373935e30eae')
     return console.warn('Add your API endpoint & secret to test connection');
