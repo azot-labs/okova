@@ -1,0 +1,17 @@
+{
+  "name": "azot-instance",
+  "version": "1.0.0",
+  "main": "index.js",
+  "private": true,
+  "scripts": {
+    "start": "azot serve"
+  },
+  "keywords": [],
+  "license": "ISC",
+  "engines": {
+    "node": "20 || 21 || 22 || 23"
+  },
+  "dependencies": {
+    "azot": "^0.8.0"
+  }
+}
