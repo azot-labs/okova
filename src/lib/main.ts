@@ -32,7 +32,8 @@ const fetchDecryptionKeys = async (params: FetchDecryptionKeysParams) => {
     'message',
     async (event: Event) => {
       const type = (event as MediaKeyMessageEvent).messageType;
-      const message = (event as MediaKeyMessageEvent).message as Uint8Array;
+      const message = (event as MediaKeyMessageEvent)
+        .message as unknown as Uint8Array;
       const isIndividualization = type === 'individualization-request';
       const url = isIndividualization
         ? params.individualizationServer || params.server
@@ -67,6 +68,7 @@ const fetchDecryptionKeys = async (params: FetchDecryptionKeysParams) => {
 
 export { fetchDecryptionKeys };
 export { Session };
+export * from './connect';
 export * from './utils';
 export * from './client';
 export * from './key';
