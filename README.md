@@ -18,7 +18,7 @@ Azot (Russian word for "nitrogen", pronounced `/azо́t/`) is a set of tools (Ja
 - **Manifest V3** compliant browser extension
 - **Custom client support**: WVD v2, device_client_id_blob + device_private_key, client_id.bin + private_key.pem
 - **Network-independent interception**, so it doesn't matter if the request has one-time tokens or a custom request/response body format.
-- **Run Azot instance** to control sessions remotely via API
+- **Remote instance** to control sessions via REST API
 
 ## Installation
 
