@@ -30,7 +30,7 @@ test('encrypted media extensions', async () => {
   const handleMessage = async (event: MediaKeyMessageEvent) => {
     sendMessage(
       event.messageType,
-      event.message as Uint8Array,
+      event.message as unknown as Uint8Array,
       event.target as MediaKeySession,
     );
   };

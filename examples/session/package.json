@@ -1,9 +1,9 @@
 {
-  "name": "azot-demo",
+  "name": "azot-session",
   "version": "1.0.0",
   "private": true,
   "type": "module",
-  "main": "azot-api.js",
+  "main": "index.js",
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1"
   },

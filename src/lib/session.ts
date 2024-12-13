@@ -47,7 +47,7 @@ export const INDIVIDUALIZATION_MESSAGE = new Uint8Array([0x08, 0x04]);
  * https://www.w3.org/TR/encrypted-media-2/#mediakeysession-interface
  */
 
-export class Session extends EventTarget implements MediaKeySession {
+export class Session extends EventTarget {
   readonly sessionId: string;
   readonly keyStatuses: MediaKeyStatusMap;
   readonly keys: Map<string, Key>;
@@ -94,10 +94,7 @@ export class Session extends EventTarget implements MediaKeySession {
     this.#log = logger;
   }
 
-  async generateRequest(
-    initDataType: string,
-    initData: BufferSource,
-  ): Promise<void> {
+  async generateRequest(initDataType: string, initData: BufferSource) {
     if (this.privacyMode && !this.#individualizationSent) {
       this.dispatchEvent(
         new MessageEvent(
@@ -121,6 +118,7 @@ export class Session extends EventTarget implements MediaKeySession {
       deriveContext(licenseRequest.bytes),
     );
     this.dispatchEvent(new MessageEvent('license-request', message.bytes));
+    return message.bytes;
   }
 
   async waitForLicenseRequest() {
@@ -270,6 +268,10 @@ export class Session extends EventTarget implements MediaKeySession {
       fromText(`${key.id}:${key.value}`).toBuffer(),
       'usable',
     );
+  }
+
+  async getKeys() {
+    return Array.from(this.keys.values());
   }
 
   close(): Promise<void> {

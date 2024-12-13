@@ -216,8 +216,8 @@ export class Client {
       createMediaKeys: async () => {
         const state = { serverCertificate: null as BufferSource | null };
         return {
-          createSession: (sessionType?: SessionType): MediaKeySession => {
-            return new Session(sessionType, this);
+          createSession: (sessionType?: SessionType) => {
+            return new Session(sessionType, this) as MediaKeySession;
           },
           setServerCertificate: async (
             serverCertificate: BufferSource,

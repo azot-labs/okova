@@ -1,3 +1,6 @@
+import { SessionType } from './session';
+import { fromBase64, fromBuffer } from './utils';
+
 type ConnectParams = {
   baseUrl: string;
   secret: string;
@@ -11,43 +14,57 @@ export const connect = ({ baseUrl, secret }: ConnectParams) => {
 
   const json = (data: any) => JSON.stringify(data);
 
-  const post = async (route: string, body: object) => {
-    const response = await fetch(`${baseUrl}${route}`, {
-      method: 'POST',
-      headers,
-      body: json(body),
-    });
-    const contentLength = response.headers.get('content-length');
-    if (contentLength === '0') return;
-    return response.json();
+  const http = {
+    post: async (route: string, body: object) => {
+      const response = await fetch(`${baseUrl}${route}`, {
+        method: 'POST',
+        headers,
+        body: json(body),
+      });
+      const contentLength = response.headers.get('content-length');
+      if (contentLength === '0') return;
+      return response.json();
+    },
+    get: async (route: string) => {
+      const response = await fetch(`${baseUrl}${route}`, {
+        method: 'GET',
+        headers,
+      });
+      return response.json();
+    },
+    delete: async (route: string) => {
+      await fetch(`${baseUrl}${route}`, { method: 'DELETE', headers });
+    },
   };
 
-  const get = async (route: string) => {
-    const response = await fetch(`${baseUrl}${route}`, {
-      method: 'GET',
-      headers,
-    });
-    return response.json();
-  };
-
-  const createSession = async (client: string) => {
-    const data = await post(`/session`, { client });
+  const createSession = async (sessionType: SessionType, client: string) => {
+    const data = await http.post(`/session`, { client });
     const sessionId = data.id;
 
-    const generateRequest = async (initData: string, initDataType: string) => {
-      const data = await post(`/session/${sessionId}/generate-request`, {
+    const generateRequest = async (
+      initDataType: string,
+      initData: Uint8Array,
+    ) => {
+      const data = await http.post(`/session/${sessionId}/generate-request`, {
         initDataType,
-        initData,
+        initData: fromBuffer(initData).toBase64(),
       });
-      return data.licenseRequest;
+      return fromBase64(data.licenseRequest).toBuffer();
     };
 
-    const update = async (response: string) =>
-      post(`/session/${sessionId}/update`, { response });
+    const update = async (response: Uint8Array) => {
+      await http.post(`/session/${sessionId}/update`, {
+        response: fromBuffer(response).toBase64(),
+      });
+    };
 
-    const keys = async () => get(`/session/${sessionId}/keys`);
+    const getKeys = async () => http.get(`/session/${sessionId}/keys`);
 
-    return { sessionId, generateRequest, update, keys };
+    const close = async () => http.delete(`/session/${sessionId}/close`);
+
+    const remove = async () => http.delete(`/session/${sessionId}/remove`);
+
+    return { sessionId, generateRequest, update, getKeys, close, remove };
   };
 
   return { createSession };
