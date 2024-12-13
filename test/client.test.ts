@@ -25,7 +25,7 @@ test('export client', async () => {
 
 test('import wvd', async () => {
   const wvd = await read('client.wvd');
-  const client = await Client.fromPacked(wvd);
+  const client = await Client.fromPacked(wvd, 'wvd');
   expect(client.id).toBeDefined();
   expect(client.key).toBeDefined();
   const keys = await fetchDecryptionKeysWithDefaults();
@@ -36,8 +36,8 @@ test('export wvd', async () => {
   const id = await read('device_client_id_blob');
   const key = await read('device_private_key');
   const client = await Client.fromUnpacked(id, key);
-  const wvd = await client.pack();
-  const wvdClient = await Client.fromPacked(wvd);
+  const wvd = await client.pack('wvd');
+  const wvdClient = await Client.fromPacked(wvd, 'wvd');
   const keys = await fetchDecryptionKeysWithDefaults(wvdClient);
   expect(keys.length).toBe(5);
 });

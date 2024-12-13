@@ -10,7 +10,7 @@ async function main() {
 
   // Load device/client
   const wvd = await readFile('client.wvd');
-  const client = await Client.fromPacked(wvd);
+  const client = await Client.fromPacked(wvd, 'wvd');
 
   // Create session
   const session = new Session('temporary', client);

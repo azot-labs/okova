@@ -13,7 +13,7 @@ import { Client, fromBase64, fromBuffer } from 'azot';
 
   // If you have *.wvd file
   const wvd = await readFile('client.wvd');
-  const client = await Client.fromPacked(wvd);
+  const client = await Client.fromPacked(wvd, 'wvd');
 
   const initDataType = 'cenc';
   const initData = fromBase64(pssh).toBuffer();
