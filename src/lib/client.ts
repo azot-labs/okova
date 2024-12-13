@@ -41,16 +41,31 @@ export class Client {
 
   #key?: { forDecrypt: CryptoKey; forSign: CryptoKey };
 
-  static async fromPacked(data: Uint8Array, format: 'WVDv2' = 'WVDv2') {
-    if (format !== 'WVDv2') throw new Error('Only WVDv2 is supported');
-    const parsed = parseWvd(data);
-    const pcks1 = `-----BEGIN RSA PRIVATE KEY-----\n${fromBuffer(parsed.privateKey).toBase64()}\n-----END RSA PRIVATE KEY-----`;
-    const key = fromText(pcks1).toBuffer();
-    const type = types.get(parsed.deviceType);
-    const securityLevel = parsed.securityLevel as SecurityLevel;
-    const client = new Client(parsed.clientId, type, securityLevel);
-    await client.importKey(key);
-    return client;
+  static async fromPacked(data: Uint8Array, format: 'wvd' | 'azot' = 'azot') {
+    if (format === 'wvd') {
+      const parsed = parseWvd(data);
+      const pcks1 = `-----BEGIN RSA PRIVATE KEY-----\n${fromBuffer(parsed.privateKey).toBase64()}\n-----END RSA PRIVATE KEY-----`;
+      const key = fromText(pcks1).toBuffer();
+      const type = types.get(parsed.deviceType);
+      const securityLevel = parsed.securityLevel as SecurityLevel;
+      const client = new Client(parsed.clientId, type, securityLevel);
+      await client.importKey(key);
+      return client;
+    } else if (format === 'azot') {
+      const parsed = JSON.parse(fromBuffer(data).toText());
+      const clientId = ClientIdentification.fromObject(
+        parsed.data.clientIdentification,
+      );
+      const client = new Client(
+        clientId,
+        parsed.data.type,
+        parsed.data.securityLevel,
+      );
+      await client.importKey(parsed.data.privateKey);
+      return client;
+    } else {
+      throw new Error('Unsupported format');
+    }
   }
 
   static async fromUnpacked(id: Uint8Array, key: Uint8Array, vmp?: Uint8Array) {
@@ -69,11 +84,11 @@ export class Client {
   }
 
   constructor(
-    id: Uint8Array,
+    id: Uint8Array | ClientIdentification,
     type: ClientType = CLIENT_TYPE.android,
     securityLevel: SecurityLevel = 3,
   ) {
-    this.id = ClientIdentification.decode(id);
+    this.id = ArrayBuffer.isView(id) ? ClientIdentification.decode(id) : id;
     this.signedDrmCertificate = SignedDrmCertificate.decode(this.id.token);
     this.drmCertificate = DrmCertificate.decode(
       this.signedDrmCertificate.drmCertificate,
@@ -92,29 +107,46 @@ export class Client {
     return [id, key];
   }
 
-  async pack(format: 'WVDv2' = 'WVDv2') {
-    if (format !== 'WVDv2') throw new Error('Only WVDv2 is supported');
-    const id = ClientIdentification.encode(this.id).finish();
-    const key = await this.exportKey();
-    const keyDer = fromBuffer(key)
-      .toText()
-      .split('\n')
-      .map((s) => s.trim())
-      .slice(1, -1)
-      .join('\n');
-    const keyDerBinary = fromBase64(keyDer).toBuffer();
-    const [type] = types.entries().find(([, type]) => type === this.type)!;
-    const wvd = buildWvd({
-      clientId: id,
-      deviceType: type,
-      securityLevel: this.securityLevel,
-      privateKey: keyDerBinary,
-    });
-    return wvd;
+  async pack(format: 'wvd' | 'azot' = 'azot') {
+    if (format === 'wvd') {
+      const id = ClientIdentification.encode(this.id).finish();
+      const key = await this.exportKey();
+      const keyDer = fromBuffer(key)
+        .toText()
+        .split('\n')
+        .map((s) => s.trim())
+        .slice(1, -1)
+        .join('\n');
+      const keyDerBinary = fromBase64(keyDer).toBuffer();
+      const [type] = types.entries().find(([, type]) => type === this.type)!;
+      const wvd = buildWvd({
+        clientId: id,
+        deviceType: type,
+        securityLevel: this.securityLevel,
+        privateKey: keyDerBinary,
+      });
+      return wvd;
+    } else if (format === 'azot') {
+      const clientIdentification = this.id.toJSON();
+      const privateKey = await this.exportKey();
+      const payload = {
+        version: 1,
+        type: 'widevine-client',
+        data: {
+          clientIdentification,
+          privateKey: fromBuffer(privateKey).toText(),
+        },
+      };
+      const data = JSON.stringify(payload, null, 2);
+      return fromText(data).toBuffer();
+    } else {
+      throw new Error('Unsupported format');
+    }
   }
 
-  async importKey(pkcs1: Uint8Array) {
-    const pkcs1pem = fromBuffer(pkcs1).toText();
+  async importKey(pkcs1: Uint8Array | string) {
+    const pkcs1pem =
+      typeof pkcs1 === 'string' ? pkcs1 : fromBuffer(pkcs1).toText();
     const pkcs8pem = toPKCS8(pkcs1pem);
     const pemContents = pkcs8pem.split('\n').slice(1, -2).join('\n');
     const data = fromBase64(pemContents).toBuffer();

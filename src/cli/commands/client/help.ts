@@ -10,13 +10,16 @@ export const help = () => {
   );
   console.log(
     col(`pack <input> <output>`) +
-      'pack client id and private key from <input> directory into single *.wvd file with <output> path',
+      'pack client id and private key from <input> directory into single file with <output> path',
   );
   console.log(
     col(`unpack <input> <output>`) +
-      'unpack *.wvd from <input> path to separate client id and private key placed in <output> directory',
+      'unpack from <input> path to separate client id and private key placed in <output> directory',
   );
   console.log('');
   console.log(`Flags:`);
+  console.log(
+    col(`-f, --format`) + 'Specify format for pack command (wvd/azot)',
+  );
   console.log(col(`-h, --help`) + 'Display this menu and exit');
 };

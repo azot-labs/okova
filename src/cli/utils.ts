@@ -1,5 +1,5 @@
 import { readdir, readFile, stat } from 'node:fs/promises';
-import { join } from 'node:path';
+import { extname, join } from 'node:path';
 import { Client } from '../lib';
 
 export const importClient = async (input: string) => {
@@ -9,9 +9,11 @@ export const importClient = async (input: string) => {
     const entries = isDir ? await readdir(input) : [];
     const idFilename = entries.find((entry) => entry.includes('client_id'));
     const keyFilename = entries.find((entry) => entry.includes('private_key'));
-    const wvdFilename = entries.find((entry) => entry.endsWith('wvd'));
+    const packedFilename = entries.find(
+      (entry) => entry.endsWith('wvd') || entry.endsWith('azot'),
+    );
     const isUnpacked = !!(idFilename && keyFilename);
-    const isPacked = !!wvdFilename;
+    const isPacked = !!packedFilename;
     if (isUnpacked) {
       const idPath = join(input, idFilename);
       const keyPath = join(input, keyFilename);
@@ -19,9 +21,10 @@ export const importClient = async (input: string) => {
       const key = await readFile(keyPath);
       return Client.fromUnpacked(id, key);
     } else if (isPacked) {
-      const wvdPath = join(input, wvdFilename);
-      const wvd = await readFile(wvdPath);
-      return await Client.fromPacked(wvd);
+      const packedPath = join(input, packedFilename);
+      const packed = await readFile(packedPath);
+      const ext = extname(packedPath) as 'wvd' | 'azot';
+      return await Client.fromPacked(packed, ext);
     } else {
       console.log(`Unable to find client files in ${input}`);
       process.exit(1);

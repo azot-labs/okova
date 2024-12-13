@@ -17,6 +17,7 @@ const args = parseArgs({
     help: { type: 'boolean', short: 'h' },
     version: { type: 'boolean', short: 'v' },
     debug: { type: 'boolean', short: 'd' },
+    format: { type: 'boolean', short: 'f' },
 
     host: { type: 'string' },
     port: { type: 'string' },
@@ -77,7 +78,7 @@ const help = () => {
       const [input, output] = positionals;
       switch (subcommand) {
         case 'pack':
-          client.pack(input, output);
+          client.pack(input, args.values.format as string | undefined, output);
           break;
         case 'unpack':
           client.unpack(input, output);
