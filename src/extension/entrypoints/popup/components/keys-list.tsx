@@ -30,7 +30,7 @@ export const KeysList: Component<KeysListProps> = (props) => {
                 <a
                   title={mpd || url}
                   target="_blank"
-                  href={url}
+                  href={mpd || url}
                   class="w-fit truncate hover:underline hover:text-blue-500"
                 >
                   {shorten(mpd || url)}
