@@ -42,7 +42,8 @@ export class Client {
   #key?: { forDecrypt: CryptoKey; forSign: CryptoKey };
 
   static async fromPacked(data: Uint8Array, format: 'wvd' | 'azot' = 'azot') {
-    if (format === 'wvd') {
+    const isWvd = fromBuffer(data.slice(0, 3)).toText() == 'WVD';
+    if (format === 'wvd' || isWvd) {
       const parsed = parseWvd(data);
       const pcks1 = `-----BEGIN RSA PRIVATE KEY-----\n${fromBuffer(parsed.privateKey).toBase64()}\n-----END RSA PRIVATE KEY-----`;
       const key = fromText(pcks1).toBuffer();
