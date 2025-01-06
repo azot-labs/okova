@@ -5,6 +5,10 @@ import { getMessageType } from '@azot/lib/message';
 export default defineBackground({
   type: 'module',
   main: () => {
+    console.log('[azot] Background service worker started', {
+      id: browser.runtime.id,
+    });
+
     const state: {
       client: Client | null;
       sessions: Map<string, MediaKeySession>;
@@ -26,10 +30,6 @@ export default defineBackground({
       }
     };
 
-    console.log('[azot] Background service worker started', {
-      id: browser.runtime.id,
-    });
-
     const parseBinary = (data: Record<string, number>) =>
       new Uint8Array(Object.values(data));
 
@@ -38,6 +38,16 @@ export default defineBackground({
         console.log('[azot] Received message', message);
 
         const settings = await appStorage.settings.getValue();
+
+        const { initData } = message;
+        const allKeys = await appStorage.allKeys.raw.getValue();
+        const keys = allKeys?.filter((keyInfo) => keyInfo.pssh === initData);
+        const hasKey = !!keys?.length;
+        if (hasKey) {
+          appStorage.recentKeys.setValue(keys);
+          sendResponse();
+          return;
+        }
 
         if (
           settings?.emeInterception &&
