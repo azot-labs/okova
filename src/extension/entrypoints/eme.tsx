@@ -85,14 +85,19 @@ export default defineUnlistedScript(() => {
       console.log(`Message: ${session.messages?.get(messageType)}`);
       console.groupEnd();
 
-      if (['license-release', 'license-renewal'].includes(messageType)) return;
+      if (['license-release', 'license-renewal'].includes(messageType)) {
+        return;
+      }
+
       const response = await send({
         action: messageType,
         initData: session.initData,
         initDataType: session.initDataType,
         message: session.messages?.get(messageType),
       });
-      if (!response) return null;
+      if (!response) {
+        return;
+      }
 
       const challenge = base64.parse(response);
 
@@ -262,7 +267,9 @@ export default defineUnlistedScript(() => {
         ) => {
           const modifiedEvent = await onMessage(event);
           const isFn = (fn: unknown) => typeof fn === 'function';
-          const handler = isFn(listener) ? listener : listener.handleEvent;
+          const handler = isFn(listener)
+            ? listener
+            : listener.handleEvent.bind(listener);
           return handler(modifiedEvent || event);
         };
         return _target.apply(_this, [type, listenerWrapper, useCapture]);
