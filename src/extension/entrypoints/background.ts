@@ -44,7 +44,7 @@ export default defineBackground({
         const keys = allKeys?.filter((keyInfo) => keyInfo.pssh === initData);
         const hasKey = !!keys?.length;
         if (hasKey) {
-          appStorage.recentKeys.setValue(keys);
+          await appStorage.recentKeys.setValue(keys);
           sendResponse();
           return;
         }
