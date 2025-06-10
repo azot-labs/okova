@@ -30,7 +30,7 @@ jobs:
           npm run zip:firefox
 
       - name: Publish
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@v2.2.2
         with:
           draft: true
           token: ${{ secrets.GITHUB_TOKEN }}
