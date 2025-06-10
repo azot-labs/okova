@@ -6,7 +6,7 @@
 
 Inspectine is a set of tools (JavaScript library, command-line utility and browser extension) for diagnosing, researching, and pentesting [DRM](https://www.urbandictionary.com/define.php?term=DRM) systems like [Widevine](https://www.widevine.com/about).
 
-> Inspectine is still in the early stages of development, so until version 1.0 is released, performance may be unstable and major changes may be made
+> Inspectine (formerly known as Azot) is still in the early stages of development, so until version 1.0 is released, performance may be unstable and major changes may be made
 
 ## Features
 
