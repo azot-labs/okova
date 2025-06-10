@@ -33,7 +33,7 @@ export default defineBackground({
     const parseBinary = (data: Record<string, number>) =>
       new Uint8Array(Object.values(data));
 
-    chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
+    browser.runtime.onMessage.addListener((message, sender, sendResponse) => {
       (async () => {
         console.log('[inspectine] Received message', message);
 
@@ -41,7 +41,9 @@ export default defineBackground({
 
         const { initData } = message;
         const allKeys = await appStorage.allKeys.raw.getValue();
-        const keys = allKeys?.filter((keyInfo) => keyInfo.pssh === initData);
+        const keys = allKeys?.filter(
+          (keyInfo: any) => keyInfo.pssh === initData,
+        );
         const hasKey = !!keys?.length;
         if (hasKey) {
           await appStorage.recentKeys.setValue(keys);

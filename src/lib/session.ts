@@ -99,7 +99,7 @@ export class Session extends EventTarget {
       this.dispatchEvent(
         new MessageEvent(
           'individualization-request',
-          INDIVIDUALIZATION_MESSAGE,
+          INDIVIDUALIZATION_MESSAGE as unknown as ArrayBuffer,
         ),
       );
       this.#individualizationSent = true;
@@ -117,7 +117,12 @@ export class Session extends EventTarget {
       fromBuffer(licenseRequest.requestId).toText(),
       deriveContext(licenseRequest.bytes),
     );
-    this.dispatchEvent(new MessageEvent('license-request', message.bytes));
+    this.dispatchEvent(
+      new MessageEvent(
+        'license-request',
+        message.bytes as unknown as ArrayBuffer,
+      ),
+    );
     return message.bytes;
   }
 

@@ -4,7 +4,7 @@ const inject = async (script: string) => {
   return new Promise((resolve) => {
     const element = document.createElement('script');
     element.type = 'text/javascript';
-    element.src = chrome.runtime.getURL(script);
+    element.src = browser.runtime.getURL(script);
     element.onload = function () {
       element.remove();
       resolve(true);
@@ -41,7 +41,7 @@ export default defineContentScript({
         if (!event.data.log) return;
         const message = event.data.log;
         message.url = window.location.href;
-        chrome.runtime.sendMessage(message).then((response) => {
+        browser.runtime.sendMessage(message).then((response) => {
           window.dispatchEvent(
             new CustomEvent('drm-message-response', { detail: response }),
           );
