@@ -12,8 +12,8 @@
       "@@/*": ["./*"],
       "~~": ["."],
       "~~/*": ["./*"],
-      "@azot/lib": ["./src/lib"],
-      "@azot/lib/*": ["./src/lib/*"]
+      "@inspectine/lib": ["./src/lib"],
+      "@inspectine/lib/*": ["./src/lib/*"]
     }
   }
 }

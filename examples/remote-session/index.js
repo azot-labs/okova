@@ -1,4 +1,4 @@
-import { connect, fromBase64 } from 'azot';
+import { connect, fromBase64 } from 'inspectine';
 
 const BASE_URL = 'http://127.0.0.1:4000'; // Set your API base URL here
 const SECRET_KEY = 'db44ec40-3e02-47bd-8fc6-373935e30eae'; // Set your API secret here

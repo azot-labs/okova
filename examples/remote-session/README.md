@@ -1,6 +1,6 @@
 # Remote Session
 
-It's a minimal example of using `azot` to connect to remote Azot API instance in your JavaSript code. See [examples/instance](https://github.com/vitalygashkov/azot/tree/main/examples/instance) to learn how to run your own instance.
+It's a minimal example of using `inspectine` to connect to remote Inspectine API instance in your JavaSript code. See [examples/instance](https://github.com/azot-labs/inspectine/tree/main/examples/instance) to learn how to run your own instance.
 
 ## Quick start
 

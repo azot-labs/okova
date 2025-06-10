@@ -1,5 +1,7 @@
-import { WatchCallback, WxtStorageItem } from 'wxt/storage';
+import { WxtStorageItem } from '#imports';
 import { fromBase64, fromBuffer } from '../../../lib';
+
+type WatchCallback<T> = (newValue: T, oldValue: T) => void;
 
 export const asBytes = <T extends WxtStorageItem<Uint8Array | null, {}>>(
   item: T,

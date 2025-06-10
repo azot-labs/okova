@@ -1,7 +1,7 @@
 {
-  "name": "azot",
-  "version": "0.8.3",
-  "description": "The ultimate toolkit for pentesting DRM systems",
+  "name": "inspectine",
+  "version": "0.8.4",
+  "description": "Advanced DRM inspection toolkit",
   "type": "module",
   "files": [
     "dist",
@@ -10,7 +10,7 @@
   "main": "dist/lib/main.cjs",
   "module": "dist/lib/main.js",
   "bin": {
-    "azot": "dist/cli/main.cjs"
+    "inspectine": "dist/cli/main.cjs"
   },
   "scripts": {
     "prepublishOnly": "npm run build:lib && npm run build:cli",
@@ -29,7 +29,7 @@
   },
   "repository": {
     "type": "git",
-    "url": "https://github.com/vitalygashkov/azot"
+    "url": "https://github.com/azot-labs/inspectine"
   },
   "keywords": [
     "widevine",
@@ -44,7 +44,7 @@
   "license": "AGPL-3.0",
   "readmeFilename": "README.md",
   "bugs": {
-    "url": "https://github.com/vitalygashkov/azot/issues",
+    "url": "https://github.com/azot-labs/inspectine/issues",
     "email": "vitalygashkov@vk.com"
   },
   "funding": [
@@ -80,30 +80,31 @@
     "@sinclair/typebox": "^0.34.11",
     "fastify": "^5.1.0",
     "jsrsasign": "^11.1.0",
-    "protobufjs": "^7.4.0"
+    "protobufjs": "^7.5.3"
   },
   "devDependencies": {
-    "@eslint/js": "^9.12.0",
-    "@solidjs/router": "^0.14.10",
-    "@types/jsrsasign": "^10.5.14",
-    "@types/node": "^22.7.5",
-    "@wxt-dev/module-solid": "^1.1.2",
-    "autoprefixer": "^10.4.17",
+    "@eslint/js": "^9.28.0",
+    "@solidjs/router": "^0.15.3",
+    "@tailwindcss/postcss": "^4.1.8",
+    "@types/jsrsasign": "^10.5.15",
+    "@types/node": "^24.0.0",
+    "@wxt-dev/module-solid": "^1.1.3",
     "clsx": "^2.1.1",
-    "eslint": "^9.12.0",
-    "eslint-config-prettier": "^9.1.0",
-    "eslint-plugin-prettier": "^5.2.1",
-    "globals": "^15.11.0",
-    "postcss": "^8.4.33",
+    "eslint": "^9.28.0",
+    "eslint-config-prettier": "^10.1.5",
+    "eslint-plugin-prettier": "^5.4.1",
+    "globals": "^16.2.0",
+    "postcss": "^8.5.4",
     "solid-icons": "^1.1.0",
-    "solid-js": "^1.9.1",
-    "tailwind-merge": "^2.5.4",
-    "tailwindcss": "^3.4.1",
-    "tsup": "^8.3.0",
-    "typescript": "^5.6.2",
-    "typescript-eslint": "^8.9.0",
-    "vite-plugin-arraybuffer": "^0.0.8",
-    "vitest": "^2.1.3",
-    "wxt": "^0.19.11"
+    "solid-js": "^1.9.7",
+    "tailwind-merge": "^3.3.0",
+    "tailwindcss": "^4.1.8",
+    "tsdown": "^0.12.7",
+    "tsup": "^8.5.0",
+    "typescript": "^5.8.3",
+    "typescript-eslint": "^8.34.0",
+    "vite-plugin-arraybuffer": "^0.1.0",
+    "vitest": "^3.2.3",
+    "wxt": "^0.20.7"
   }
 }

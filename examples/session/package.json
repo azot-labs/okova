@@ -1,5 +1,5 @@
 {
-  "name": "azot-session",
+  "name": "inspectine-session",
   "version": "1.0.0",
   "private": true,
   "type": "module",
@@ -12,6 +12,6 @@
   "license": "ISC",
   "description": "",
   "dependencies": {
-    "azot": "^0.8.0"
+    "inspectine": "^0.8.4"
   }
 }

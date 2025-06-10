@@ -1,4 +1,4 @@
-import { storage } from 'wxt/storage';
+import { storage } from '#imports';
 import { Client, fromBase64, fromBuffer } from '../../../lib';
 import { asJson } from './utils';
 

@@ -1,11 +1,11 @@
 import { appStorage } from '@/utils/storage';
-import { Client, fromBase64, fromBuffer } from '@azot/lib';
-import { getMessageType } from '@azot/lib/message';
+import { Client, fromBase64, fromBuffer } from '@inspectine/lib';
+import { getMessageType } from '@inspectine/lib/message';
 
 export default defineBackground({
   type: 'module',
   main: () => {
-    console.log('[azot] Background service worker started', {
+    console.log('[inspectine] Background service worker started', {
       id: browser.runtime.id,
     });
 
@@ -20,28 +20,30 @@ export default defineBackground({
 
     const loadClient = async () => {
       if (state.client) return state.client;
-      console.log('[azot] Loading Widevine client...');
+      console.log('[inspectine] Loading Widevine client...');
       state.client = await appStorage.clients.active.getValue();
       if (state.client) {
-        console.log('[azot] Widevine client loaded');
+        console.log('[inspectine] Widevine client loaded');
         return state.client;
       } else {
-        return console.log('[azot] Unable to load client');
+        return console.log('[inspectine] Unable to load client');
       }
     };
 
     const parseBinary = (data: Record<string, number>) =>
       new Uint8Array(Object.values(data));
 
-    chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
+    browser.runtime.onMessage.addListener((message, sender, sendResponse) => {
       (async () => {
-        console.log('[azot] Received message', message);
+        console.log('[inspectine] Received message', message);
 
         const settings = await appStorage.settings.getValue();
 
         const { initData } = message;
         const allKeys = await appStorage.allKeys.raw.getValue();
-        const keys = allKeys?.filter((keyInfo) => keyInfo.pssh === initData);
+        const keys = allKeys?.filter(
+          (keyInfo: any) => keyInfo.pssh === initData,
+        );
         const hasKey = !!keys?.length;
         if (hasKey) {
           await appStorage.recentKeys.setValue(keys);
@@ -70,7 +72,7 @@ export default defineBackground({
         }
 
         if (!settings?.spoofing) {
-          console.log('[azot] Spoofing disabled, skipping message...');
+          console.log('[inspectine] Spoofing disabled, skipping message...');
           sendResponse();
           return;
         }
@@ -109,17 +111,17 @@ export default defineBackground({
         } else if (message.action === 'license-request') {
           const { initData } = message;
           const session = state.sessions.get(initData);
-          console.log('[azot] Received message license-request', session);
+          console.log('[inspectine] Received message license-request', session);
           if (!session) return;
           const event = events
             .get(session.sessionId)
             ?.find((e) => e.messageType === 'license-request');
-          if (!event?.message) return console.log(`[azot] No message`);
+          if (!event?.message) return console.log(`[inspectine] No message`);
           const messageBase64 = fromBuffer(
             new Uint8Array(event.message),
           ).toBase64();
           console.log(events.get(session.sessionId));
-          console.log(`[azot] Sending challenge`, messageBase64, event);
+          console.log(`[inspectine] Sending challenge`, messageBase64, event);
           sendResponse(messageBase64);
         } else if (message.action === 'update') {
           const { initData } = message;
@@ -127,12 +129,12 @@ export default defineBackground({
           const serviceCertificateMessageType = 5;
           const isServiceCertificate = type === serviceCertificateMessageType;
           // if (type === serviceCertificateMessageType) {
-          //   console.log('[azot] Service certificate. Skipping');
+          //   console.log('[inspectine] Service certificate. Skipping');
           //   sendResponse();
           // }
           const session = state.sessions.get(initData);
           if (!session) {
-            console.log('[azot] Unable to find session');
+            console.log('[inspectine] Unable to find session');
             sendResponse();
           }
           if (isServiceCertificate) {
@@ -159,7 +161,7 @@ export default defineBackground({
                   };
                 };
                 const results = keys.map((key) => toKey(key));
-                console.log('[azot] Received keys', results);
+                console.log('[inspectine] Received keys', results);
                 appStorage.recentKeys.setValue(results);
                 appStorage.allKeys.add(...results);
                 sendResponse({ keys: results });
