@@ -17,7 +17,7 @@ type SectionProps = {
 export const Section: Component<SectionProps> = (props) => {
   return (
     <section>
-      <div class="shadow-sm">
+      <div class="shadow-xs">
         <header class="px-2 pt-2 pb-1 text-[10px] uppercase text-neutral-500">
           {props.header}
         </header>
@@ -29,7 +29,7 @@ export const Section: Component<SectionProps> = (props) => {
                 <Show
                   when={props.children && index() < props.children.length - 1}
                 >
-                  <div class="h-[1px] bg-gray-100"></div>
+                  <div class="h-px bg-gray-100"></div>
                 </Show>
               </>
             )}
