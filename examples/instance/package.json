@@ -1,10 +1,10 @@
 {
-  "name": "azot-instance",
+  "name": "inspectine-instance",
   "version": "1.0.0",
   "main": "index.js",
   "private": true,
   "scripts": {
-    "start": "azot serve"
+    "start": "inspectine serve"
   },
   "keywords": [],
   "license": "ISC",
@@ -12,6 +12,6 @@
     "node": "20 || 21 || 22 || 23"
   },
   "dependencies": {
-    "azot": "^0.8.0"
+    "inspectine": "^0.8.4"
   }
 }

@@ -1,5 +1,5 @@
 import { readFile } from 'node:fs/promises';
-import { Client, Session, fromBase64 } from 'azot';
+import { Client, Session, fromBase64 } from 'inspectine';
 
 async function main() {
   // Prepare pssh

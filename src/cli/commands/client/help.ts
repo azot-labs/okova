@@ -1,8 +1,8 @@
 import { col } from '../../utils';
 
 export const help = () => {
-  console.log(`azot client: Widevine client utilities\n`);
-  console.log(`Usage: azot client <subcommand> [...flags]\n`);
+  console.log(`inspectine client: Widevine client utilities\n`);
+  console.log(`Usage: inspectine client <subcommand> [...flags]\n`);
   console.log(`Commands:`);
   console.log(
     col(`info <input>`) +
@@ -19,7 +19,7 @@ export const help = () => {
   console.log('');
   console.log(`Flags:`);
   console.log(
-    col(`-f, --format`) + 'Specify format for pack command (wvd/azot)',
+    col(`-f, --format`) + 'Specify format for pack command (wvd/inspectine)',
   );
   console.log(col(`-h, --help`) + 'Display this menu and exit');
 };

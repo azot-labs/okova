@@ -1,8 +1,8 @@
 import { col } from '../../utils';
 
 export const help = () => {
-  console.log(`azot license: Make license request\n`);
-  console.log(`Usage: azot license <url> [...flags]\n`);
+  console.log(`inspectine license: Make license request\n`);
+  console.log(`Usage: inspectine license <url> [...flags]\n`);
   console.log(`Commands:`);
   console.log(
     col(`<url>`) +

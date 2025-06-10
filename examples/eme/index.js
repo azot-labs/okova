@@ -1,5 +1,5 @@
 import { readFile } from 'node:fs/promises';
-import { Client, fromBase64, fromBuffer } from 'azot';
+import { Client, fromBase64, fromBuffer } from 'inspectine';
 
 (async () => {
   const licenseUrl = 'https://cwip-shaka-proxy.appspot.com/no_auth';

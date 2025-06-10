@@ -10,7 +10,7 @@ export const importClient = async (input: string) => {
     const idFilename = entries.find((entry) => entry.includes('client_id'));
     const keyFilename = entries.find((entry) => entry.includes('private_key'));
     const packedFilename = entries.find(
-      (entry) => entry.endsWith('wvd') || entry.endsWith('azot'),
+      (entry) => entry.endsWith('wvd') || entry.endsWith('inspectine'),
     );
     const isUnpacked = !!(idFilename && keyFilename);
     const isPacked = !!packedFilename;
@@ -23,7 +23,7 @@ export const importClient = async (input: string) => {
     } else if (isPacked) {
       const packedPath = join(input, packedFilename);
       const packed = await readFile(packedPath);
-      const ext = extname(packedPath) as 'wvd' | 'azot';
+      const ext = extname(packedPath) as 'wvd' | 'inspectine';
       return await Client.fromPacked(packed, ext);
     } else {
       console.log(`Unable to find client files in ${input}`);
