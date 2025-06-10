@@ -16,7 +16,7 @@ export default defineConfig({
       },
     ],
   },
-  runner: {
+  webExt: {
     chromiumArgs: ['--user-data-dir=./.wxt/chrome-data'],
     disabled: true,
   },
