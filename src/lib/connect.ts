@@ -15,11 +15,11 @@ export const connect = ({ baseUrl, secret }: ConnectParams) => {
   const json = (data: any) => JSON.stringify(data);
 
   const http = {
-    post: async (route: string, body: object) => {
+    post: async (route: string, body?: object) => {
       const response = await fetch(`${baseUrl}${route}`, {
         method: 'POST',
         headers,
-        body: json(body),
+        ...(body ? { body: json(body) } : {}),
       });
       const contentLength = response.headers.get('content-length');
       if (contentLength === '0') return;
@@ -60,9 +60,9 @@ export const connect = ({ baseUrl, secret }: ConnectParams) => {
 
     const getKeys = async () => http.get(`/session/${sessionId}/keys`);
 
-    const close = async () => http.delete(`/session/${sessionId}/close`);
+    const close = async () => http.post(`/session/${sessionId}/close`);
 
-    const remove = async () => http.delete(`/session/${sessionId}/remove`);
+    const remove = async () => http.delete(`/session/${sessionId}`);
 
     return { sessionId, generateRequest, update, getKeys, close, remove };
   };

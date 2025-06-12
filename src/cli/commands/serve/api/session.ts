@@ -84,6 +84,7 @@ app.post(
     }
     const response = Buffer.from(c.req.valid('json').response, 'base64');
     await session.update(response);
+    return c.json({ success: true });
   },
 );
 
@@ -110,8 +111,8 @@ app.get(
   },
 );
 
-app.delete(
-  '/:id',
+app.post(
+  '/:id/close',
   zValidator('param', z.object({ id: z.string() })),
   async (c) => {
     const secretKey = c.req.header('x-secret-key') as string;
@@ -125,7 +126,27 @@ app.delete(
       );
     }
     await session.close();
+    return c.json({ success: true });
+  },
+);
+
+app.delete(
+  '/:id',
+  zValidator('param', z.object({ id: z.string() })),
+  async (c) => {
+    const secretKey = c.req.header('x-secret-key') as string;
+    const sessionId = c.req.valid('param').id;
+    const sessionKey = `${secretKey}:${sessionId}`;
+    const session = sessions.get(sessionKey);
+    if (!session) {
+      return c.json(
+        { error: 'No session has been opened yet. No session to remove.' },
+        400,
+      );
+    }
+    await session.close();
     sessions.delete(sessionKey);
+    return c.json({ success: true });
   },
 );
 

@@ -3,6 +3,7 @@ import { basename, extname } from 'node:path';
 import { Hono } from 'hono';
 import { logger } from 'hono/logger';
 import { secureHeaders } from 'hono/secure-headers';
+import { showRoutes } from 'hono/dev';
 import { serve as nodeServe } from '@hono/node-server';
 import { help } from './help';
 import { config, loadConfig } from './state';
@@ -40,6 +41,8 @@ export const serve = async (options: ServeOptions = {}) => {
   app.use(secureHeaders());
 
   app.route('/session', session);
+
+  showRoutes(app);
 
   const server = nodeServe({
     fetch: app.fetch,
