@@ -1,5 +1,4 @@
-import { fromBase64, fromBuffer } from './utils';
-import { Logger } from './widevine/session';
+import { fromBase64, fromBuffer, Logger } from './utils';
 
 const defaultRequestFilter = (
   request: Uint8Array | string,

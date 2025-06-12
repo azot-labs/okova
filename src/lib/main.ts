@@ -1,7 +1,7 @@
 import { Client } from './widevine/client';
-import { Session, Logger } from './widevine/session';
+import { Session } from './widevine/session';
 import { defaultRequestFilter, defaultResponseFilter } from './http';
-import { fromBase64 } from './utils';
+import { fromBase64, Logger } from './utils';
 
 interface FetchDecryptionKeysParams {
   client: Client;

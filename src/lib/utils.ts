@@ -77,3 +77,5 @@ export const parseBufferSource = (data: BufferSource) => {
     ? new Uint8Array(data)
     : new Uint8Array(data.buffer);
 };
+
+export type Logger = Pick<typeof console, 'debug' | 'error' | 'info' | 'warn'>;

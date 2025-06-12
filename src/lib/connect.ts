@@ -1,4 +1,3 @@
-import { SessionType } from './widevine/session';
 import { fromBase64, fromBuffer } from './utils';
 
 type ConnectParams = {
@@ -37,7 +36,10 @@ export const connect = ({ baseUrl, secret }: ConnectParams) => {
     },
   };
 
-  const createSession = async (sessionType: SessionType, client: string) => {
+  const createSession = async (
+    sessionType: MediaKeySessionType,
+    client: string,
+  ) => {
     const data = await http.post(`/session`, { client });
     const sessionId = data.id;
 

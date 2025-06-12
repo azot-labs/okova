@@ -14,10 +14,8 @@ import { deriveContext, deriveKeys } from './context';
 import { getMessageType } from './message';
 import { parseCertificate, verifyCertificate } from './certificate';
 import { concatUint8Arrays } from '../buffer';
-import { fromBuffer, fromText } from '../utils';
+import { fromBuffer, fromText, Logger } from '../utils';
 import { MessageEvent } from '../api';
-
-export type Logger = Pick<typeof console, 'debug' | 'error' | 'info' | 'warn'>;
 
 export const SESSION_TYPES = {
   temporary: 0,
