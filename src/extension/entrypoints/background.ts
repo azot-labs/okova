@@ -1,6 +1,6 @@
 import { appStorage } from '@/utils/storage';
 import { Client, fromBase64, fromBuffer } from '@inspectine/lib';
-import { getMessageType } from '@inspectine/lib/message';
+import { getMessageType } from '@inspectine/lib/widevine/message';
 
 export default defineBackground({
   type: 'module',

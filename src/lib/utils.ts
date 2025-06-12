@@ -70,3 +70,10 @@ export const fromHex = (data: string) => ({
     return decode(new Uint8Array(parseHex(data)));
   },
 });
+
+export const parseBufferSource = (data: BufferSource) => {
+  if (data instanceof Uint8Array) return data;
+  return data instanceof ArrayBuffer
+    ? new Uint8Array(data)
+    : new Uint8Array(data.buffer);
+};

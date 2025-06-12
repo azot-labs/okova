@@ -1,9 +1,9 @@
-import { fromBase64 } from './utils';
+import { fromBase64 } from '../utils';
 import {
   importSpkiKeyForEncrypt,
   importSpkiKeyForVerify,
   parseSpkiFromCertificateKey,
-} from './crypto';
+} from '../crypto';
 import { DrmCertificate, SignedDrmCertificate, SignedMessage } from './proto';
 
 export const getRootCertificate = () => {

@@ -1,4 +1,4 @@
-import { SessionType } from './session';
+import { SessionType } from './widevine/session';
 import { fromBase64, fromBuffer } from './utils';
 
 type ConnectParams = {

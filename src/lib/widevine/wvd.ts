@@ -1,4 +1,4 @@
-import { fromText } from './utils';
+import { fromText } from '../utils';
 
 const VERSION = 2;
 const MAGIC = fromText('WVD').toBuffer();

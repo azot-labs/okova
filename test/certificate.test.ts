@@ -1,5 +1,8 @@
 import { expect, test } from 'vitest';
-import { parseCertificate, verifyCertificate } from '../src/lib/certificate';
+import {
+  parseCertificate,
+  verifyCertificate,
+} from '../src/lib/widevine/certificate';
 import { parseSpkiFromCertificateKey } from '../src/lib/crypto';
 import { fromBuffer } from '../src/lib/utils';
 

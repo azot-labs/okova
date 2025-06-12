@@ -1,7 +1,7 @@
 import { readFile } from 'node:fs/promises';
 import { basename } from 'node:path';
-import { Session } from '../../../../lib/session';
-import { Client } from '../../../../lib/client';
+import { Session } from '../../../../lib/widevine/session';
+import { Client } from '../../../../lib/widevine/client';
 import { clients, config, sessions } from '../state';
 
 import { Hono } from 'hono';

@@ -1,5 +1,5 @@
-import { Client } from './client';
-import { Session, Logger } from './session';
+import { Client } from './widevine/client';
+import { Session, Logger } from './widevine/session';
 import { defaultRequestFilter, defaultResponseFilter } from './http';
 import { fromBase64 } from './utils';
 
@@ -70,5 +70,5 @@ export { fetchDecryptionKeys };
 export { Session };
 export * from './connect';
 export * from './utils';
-export * from './client';
-export * from './key';
+export * from './widevine/client';
+export * from './widevine/key';

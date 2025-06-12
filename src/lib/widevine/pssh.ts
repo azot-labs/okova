@@ -1,4 +1,4 @@
-import { fromBase64, fromBuffer } from './utils';
+import { fromBase64, fromBuffer } from '../utils';
 import { WidevinePsshData } from './proto';
 
 const WV_SYSTEM_ID = new Uint8Array([

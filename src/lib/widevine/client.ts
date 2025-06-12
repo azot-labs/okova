@@ -6,7 +6,7 @@ import {
   getRandomBytes,
   toPKCS1,
   toPKCS8,
-} from './crypto';
+} from '../crypto';
 import {
   ClientIdentification,
   DrmCertificate,
@@ -17,7 +17,7 @@ import {
 import { buildWvd, parseWvd, WVD_DEVICE_TYPES } from './wvd';
 import { importCertificateKey } from './certificate';
 import { Session, SessionType } from './session';
-import { fromBase64, fromBuffer, fromText } from './utils';
+import { fromBase64, fromBuffer, fromText } from '../utils';
 
 export const CLIENT_TYPE = { android: 'android', chrome: 'chrome' } as const;
 
