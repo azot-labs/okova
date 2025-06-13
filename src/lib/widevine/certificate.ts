@@ -3,7 +3,7 @@ import {
   importSpkiKeyForEncrypt,
   importSpkiKeyForVerify,
   parseSpkiFromCertificateKey,
-} from '../crypto';
+} from '../crypto/common';
 import { DrmCertificate, SignedDrmCertificate, SignedMessage } from './proto';
 
 export const getRootCertificate = () => {

@@ -2,7 +2,7 @@ import { p256 } from '@noble/curves/nist';
 import { AffinePoint } from '@noble/curves/abstract/curve';
 import * as utils from '@noble/curves/utils';
 import { getRandomBytes } from '../utils';
-import { createSha256 } from '../crypto';
+import { createSha256 } from './common';
 
 export class EccKey {
   privateKey: bigint;
@@ -29,8 +29,8 @@ export class EccKey {
     return new EccKey(privateKey, publicKey);
   }
 
-  static loads(bytes: Uint8Array) {
-    const privateBytes = bytes.subarray(0, 32);
+  static from(data: Uint8Array) {
+    const privateBytes = data.subarray(0, 32);
     return EccKey.construct(utils.bytesToNumberBE(privateBytes));
   }
 

@@ -1,8 +1,8 @@
 import { KEYUTIL } from 'jsrsasign';
 import { p256 } from '@noble/curves/nist';
 import * as utils from '@noble/curves/utils';
-import { fromBase64, fromBuffer } from './utils';
-import { ElGamal } from './playready/elgamal';
+import { fromBase64, fromBuffer } from '../utils';
+import { ElGamal } from './elgamal';
 
 export const toPKCS8 = (pkcs1pem: string) => {
   const keyobj = KEYUTIL.getKey(pkcs1pem);

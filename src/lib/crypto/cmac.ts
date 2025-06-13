@@ -1,5 +1,5 @@
-import { bitShiftLeftBuffer } from './buffer';
-import { encryptWithAesCbc, importAesCbcKeyForEncrypt } from './crypto';
+import { bitShiftLeftBuffer } from '../buffer';
+import { encryptWithAesCbc, importAesCbcKeyForEncrypt } from './common';
 
 const xorBuffer = (a: Uint8Array, b: Uint8Array): Uint8Array => {
   const result = new Uint8Array(a.length);

@@ -17,14 +17,14 @@ import {
   ecc256Sign,
   encryptWithAesCbc,
   importAesCbcKeyForEncrypt,
-} from '../crypto';
+} from '../crypto/common';
 import {
   _AuxiliaryKeysObject,
   _ContentKeyObject,
   XmrLicense,
 } from './xmr-license';
-import { EccKey } from './ecc-key';
-import { ElGamal } from './elgamal';
+import { EccKey } from '../crypto/ecc-key';
+import { ElGamal } from '../crypto/elgamal';
 import { XmlKey } from './xml-key';
 import { Key } from './key';
 import { Device } from './device';
@@ -52,8 +52,8 @@ export class PlayReady implements Cdm {
     clientVersion = DEFAULT_CLIENT_VERSION,
   ) {
     this.certificateChain = certificateChain;
-    this.encryptionKey = EccKey.loads(encryptionKey);
-    this.signingKey = EccKey.loads(signingKey);
+    this.encryptionKey = EccKey.from(encryptionKey);
+    this.signingKey = EccKey.from(signingKey);
     this.clientVersion = clientVersion;
 
     this.rgbMagicConstantZero = new Uint8Array([

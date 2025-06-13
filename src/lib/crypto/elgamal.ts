@@ -1,6 +1,6 @@
 import { p256 } from '@noble/curves/nist';
-import { AffinePoint } from '@noble/curves/abstract/curve';
-import { EccKey } from './ecc-key.js';
+import type { AffinePoint } from '@noble/curves/abstract/curve';
+import { EccKey } from './ecc-key';
 
 export class ElGamal {
   static encrypt(

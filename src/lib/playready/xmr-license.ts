@@ -1,5 +1,5 @@
 import { BinaryReader, compareArrays } from '../utils';
-import { aesCmac } from '../cmac';
+import { aesCmac } from '../crypto/cmac';
 
 export class _SignatureObject {
   signature_type: number;

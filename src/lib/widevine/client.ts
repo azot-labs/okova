@@ -6,7 +6,7 @@ import {
   getRandomBytes,
   toPKCS1,
   toPKCS8,
-} from '../crypto';
+} from '../crypto/common';
 import {
   ClientIdentification,
   DrmCertificate,
@@ -41,7 +41,7 @@ export class Client {
 
   #key?: { forDecrypt: CryptoKey; forSign: CryptoKey };
 
-  static async fromPacked(data: Uint8Array, format: 'wvd' | 'orlan' = 'orlan') {
+  static async fromPacked(data: Uint8Array, format: 'wvd' = 'wvd') {
     const isWvd = fromBuffer(data.slice(0, 3)).toText() == 'WVD';
     if (format === 'wvd' || isWvd) {
       const parsed = parseWvd(data);
@@ -51,18 +51,6 @@ export class Client {
       const securityLevel = parsed.securityLevel as SecurityLevel;
       const client = new Client(parsed.clientId, type, securityLevel);
       await client.importKey(key);
-      return client;
-    } else if (format === 'orlan') {
-      const parsed = JSON.parse(fromBuffer(data).toText());
-      const clientId = ClientIdentification.fromObject(
-        parsed.data.clientIdentification,
-      );
-      const client = new Client(
-        clientId,
-        parsed.data.type,
-        parsed.data.securityLevel,
-      );
-      await client.importKey(parsed.data.privateKey);
       return client;
     } else {
       throw new Error('Unsupported format');
@@ -108,7 +96,7 @@ export class Client {
     return [id, key];
   }
 
-  async pack(format: 'wvd' | 'orlan' = 'orlan') {
+  async pack(format: 'wvd' = 'wvd') {
     if (format === 'wvd') {
       const id = ClientIdentification.encode(this.id).finish();
       const key = await this.exportKey();
@@ -127,19 +115,6 @@ export class Client {
         privateKey: keyDerBinary,
       });
       return wvd;
-    } else if (format === 'orlan') {
-      const clientIdentification = this.id.toJSON();
-      const privateKey = await this.exportKey();
-      const payload = {
-        version: 1,
-        type: 'widevine-client',
-        data: {
-          clientIdentification,
-          privateKey: fromBuffer(privateKey).toText(),
-        },
-      };
-      const data = JSON.stringify(payload, null, 2);
-      return fromText(data).toBuffer();
     } else {
       throw new Error('Unsupported format');
     }

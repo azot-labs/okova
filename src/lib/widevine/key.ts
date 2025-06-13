@@ -1,5 +1,5 @@
 import { fromBuffer } from '../utils';
-import { decryptWithAesCbc, importAesCbcKeyForDecrypt } from '../crypto';
+import { decryptWithAesCbc, importAesCbcKeyForDecrypt } from '../crypto/common';
 import { License } from './proto';
 
 export class Key {

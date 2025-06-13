@@ -6,7 +6,11 @@ import {
   SignedDrmCertificate,
   SignedMessage,
 } from './proto';
-import { createHmacSha256, getRandomBytes, getRandomHex } from '../crypto';
+import {
+  createHmacSha256,
+  getRandomBytes,
+  getRandomHex,
+} from '../crypto/common';
 import { Key } from './key';
 import { Client } from './client';
 import { PSSH, createPssh } from './pssh';

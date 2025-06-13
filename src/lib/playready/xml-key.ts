@@ -1,5 +1,5 @@
-import { EccKey } from './ecc-key.js';
 import * as utils from '@noble/curves/utils';
+import { EccKey } from '../crypto/ecc-key.js';
 
 export class XmlKey {
   _shared_point: EccKey;
