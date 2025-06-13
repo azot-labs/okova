@@ -30,9 +30,10 @@ export const loadWidevineClient = async () => {
 export const fetchDecryptionKeysWithDefaults = async (
   client?: WidevineClient,
 ) => {
+  const cdm = new Widevine({ client: client || (await createClient()) });
   return fetchDecryptionKeys({
+    cdm,
     server: LICENSE_URL,
     pssh: PSSH,
-    client: client || (await createClient()),
   });
 };

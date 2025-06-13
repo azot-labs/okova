@@ -8,15 +8,6 @@ test('fetch decryption keys', async () => {
     cdm,
     server: LICENSE_URL,
     pssh: PSSH,
-    transformRequest: async (request) => {
-      return new Request(request.url, {
-        body: await request
-          .text()
-          .then((text) => text.replace('db44ec40', 'db44ec41')),
-        method: 'POST',
-        headers: { 'x-secret-key': 'db44ec40-3e02-47bd-8fc6-373935e30eae' },
-      });
-    },
   });
   expect(keys.length).toBe(5);
   const contentKey = keys.at(0);
