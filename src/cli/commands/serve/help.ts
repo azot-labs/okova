@@ -1,13 +1,13 @@
 import { col } from '../../utils';
 
 export const help = () => {
-  console.log(`inspectine serve: Run your API instance\n`);
-  console.log(`Usage: inspectine serve [...flags]\n`);
+  console.log(`orlan serve: Run your API instance\n`);
+  console.log(`Usage: orlan serve [...flags]\n`);
   console.log(`Flags:`);
   console.log(col(`--host`) + 'server host (default: 0.0.0.0)');
   console.log(col(`--port`) + 'server port (default: 4000)');
   console.log(
-    col(`--config`) + 'path to config file (default: inspectine.config.json)',
+    col(`--config`) + 'path to config file (default: orlan.config.json)',
   );
   console.log(
     col(`-c, --client`) +

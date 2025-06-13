@@ -8,8 +8,8 @@ export const pack = async (
   output?: string,
 ) => {
   const client = await importClient(input);
-  const ext = format || (output ? extname(output) : 'inspectine');
-  const data = await client.pack(ext as 'wvd' | 'inspectine' | undefined);
+  const ext = format || (output ? extname(output) : 'orlan');
+  const data = await client.pack(ext as 'wvd' | 'orlan' | undefined);
   const filename =
     `${client.info.get('company_name')}-${client.info.get('model_name')}`
       .replaceAll(' ', '-')

@@ -1,12 +1,12 @@
-# inspectine
+# orlan
 
-[![npm version](https://img.shields.io/npm/v/inspectine?style=flat&color=black)](https://www.npmjs.com/package/inspectine)
-![GitHub Downloads (all assets, latest release)](https://img.shields.io/github/downloads/azot-labs/inspectine/latest/total?style=flat&color=black)
-[![npm downloads](https://img.shields.io/npm/dt/inspectine?style=flat&color=black)](https://www.npmjs.com/package/inspectine)
+[![npm version](https://img.shields.io/npm/v/orlan?style=flat&color=black)](https://www.npmjs.com/package/orlan)
+![GitHub Downloads (all assets, latest release)](https://img.shields.io/github/downloads/azot-labs/orlan/latest/total?style=flat&color=black)
+[![npm downloads](https://img.shields.io/npm/dt/orlan?style=flat&color=black)](https://www.npmjs.com/package/orlan)
 
-Inspectine is a set of tools (JavaScript library, command-line utility and browser extension) for diagnosing, researching, and pentesting [DRM](https://www.urbandictionary.com/define.php?term=DRM) systems like [Widevine](https://www.widevine.com/about).
+Orlan (formerly known as Azot) is a set of tools (JavaScript library, command-line utility and browser extension) for diagnosing, researching, and pentesting [DRM](https://www.urbandictionary.com/define.php?term=DRM) systems like [Widevine](https://www.widevine.com/about).
 
-> Inspectine (formerly known as Azot) is still in the early stages of development, so until version 1.0 is released, performance may be unstable and major changes may be made
+> Orlan is still in the early stages of development, so until version 1.0 is released, performance may be unstable and major changes may be made
 
 ## Features
 
@@ -27,20 +27,20 @@ Inspectine is a set of tools (JavaScript library, command-line utility and brows
 ### JavaScript library
 
 ```bash
-npm install inspectine
+npm install orlan
 ```
 
 ### Command-line tool
 
 ```bash
-npm install -g inspectine
+npm install -g orlan
 ```
 
 ### Chrome extension
 
 **Developer Mode** needs to be enabled in `chrome://extensions/` page
 
-1. Download archive from [latest release](https://github.com/azot-labs/inspectine/releases/latest)
+1. Download archive from [latest release](https://github.com/azot-labs/orlan/releases/latest)
 2. Go to `chrome://extensions/` page
 3. Ensure Developer Mode enabled and then drag and drop downloaded zip file to this page
 
@@ -48,7 +48,7 @@ npm install -g inspectine
 
 ### Firefox extension
 
-1. Download archive from [latest release](https://github.com/azot-labs/inspectine/releases/latest)
+1. Download archive from [latest release](https://github.com/azot-labs/orlan/releases/latest)
 2. Go to `about:debugging#/runtime/this-firefox` page
 3. Click `Load Temporary Add-on` button and choose downloaded zip file
 
@@ -60,8 +60,8 @@ npm install -g inspectine
 
 ### Library
 
-See [examples](https://github.com/azot-labs/inspectine/blob/main/examples).
+See [examples](https://github.com/azot-labs/orlan/blob/main/examples).
 
 ### Command-line tool
 
-See help: `inspectine --help`
+See help: `orlan --help`

@@ -18,7 +18,7 @@ type ServeOptions = {
 };
 
 export const serve = async (options: ServeOptions = {}) => {
-  const configPath = options.config || 'inspectine.config.json';
+  const configPath = options.config || 'orlan.config.json';
   await loadConfig(configPath);
   if (options.client) config.clients.push(options.client);
   if (!config.clients.length) {

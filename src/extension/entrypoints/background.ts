@@ -1,11 +1,11 @@
 import { appStorage } from '@/utils/storage';
-import { Client, fromBase64, fromBuffer } from '@inspectine/lib';
-import { getMessageType } from '@inspectine/lib/widevine/message';
+import { Client, fromBase64, fromBuffer } from '@orlan/lib';
+import { getMessageType } from '@orlan/lib/widevine/message';
 
 export default defineBackground({
   type: 'module',
   main: () => {
-    console.log('[inspectine] Background service worker started', {
+    console.log('[orlan] Background service worker started', {
       id: browser.runtime.id,
     });
 
@@ -20,13 +20,13 @@ export default defineBackground({
 
     const loadClient = async () => {
       if (state.client) return state.client;
-      console.log('[inspectine] Loading Widevine client...');
+      console.log('[orlan] Loading Widevine client...');
       state.client = await appStorage.clients.active.getValue();
       if (state.client) {
-        console.log('[inspectine] Widevine client loaded');
+        console.log('[orlan] Widevine client loaded');
         return state.client;
       } else {
-        return console.log('[inspectine] Unable to load client');
+        return console.log('[orlan] Unable to load client');
       }
     };
 
@@ -35,7 +35,7 @@ export default defineBackground({
 
     browser.runtime.onMessage.addListener((message, sender, sendResponse) => {
       (async () => {
-        console.log('[inspectine] Received message', message);
+        console.log('[orlan] Received message', message);
 
         const settings = await appStorage.settings.getValue();
 
@@ -72,7 +72,7 @@ export default defineBackground({
         }
 
         if (!settings?.spoofing) {
-          console.log('[inspectine] Spoofing disabled, skipping message...');
+          console.log('[orlan] Spoofing disabled, skipping message...');
           sendResponse();
           return;
         }
@@ -111,17 +111,17 @@ export default defineBackground({
         } else if (message.action === 'license-request') {
           const { initData } = message;
           const session = state.sessions.get(initData);
-          console.log('[inspectine] Received message license-request', session);
+          console.log('[orlan] Received message license-request', session);
           if (!session) return;
           const event = events
             .get(session.sessionId)
             ?.find((e) => e.messageType === 'license-request');
-          if (!event?.message) return console.log(`[inspectine] No message`);
+          if (!event?.message) return console.log(`[orlan] No message`);
           const messageBase64 = fromBuffer(
             new Uint8Array(event.message),
           ).toBase64();
           console.log(events.get(session.sessionId));
-          console.log(`[inspectine] Sending challenge`, messageBase64, event);
+          console.log(`[orlan] Sending challenge`, messageBase64, event);
           sendResponse(messageBase64);
         } else if (message.action === 'update') {
           const { initData } = message;
@@ -129,12 +129,12 @@ export default defineBackground({
           const serviceCertificateMessageType = 5;
           const isServiceCertificate = type === serviceCertificateMessageType;
           // if (type === serviceCertificateMessageType) {
-          //   console.log('[inspectine] Service certificate. Skipping');
+          //   console.log('[orlan] Service certificate. Skipping');
           //   sendResponse();
           // }
           const session = state.sessions.get(initData);
           if (!session) {
-            console.log('[inspectine] Unable to find session');
+            console.log('[orlan] Unable to find session');
             sendResponse();
           }
           if (isServiceCertificate) {
@@ -161,7 +161,7 @@ export default defineBackground({
                   };
                 };
                 const results = keys.map((key) => toKey(key));
-                console.log('[inspectine] Received keys', results);
+                console.log('[orlan] Received keys', results);
                 appStorage.recentKeys.setValue(results);
                 appStorage.allKeys.add(...results);
                 sendResponse({ keys: results });

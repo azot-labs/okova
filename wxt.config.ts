@@ -6,7 +6,7 @@ import arraybuffer from 'vite-plugin-arraybuffer';
 export default defineConfig({
   srcDir: './src/extension',
   manifest: {
-    name: 'Inspectine',
+    name: 'Orlan',
     permissions: ['storage', 'tabs', 'activeTab', 'clipboardWrite'],
     host_permissions: ['https://*/*'],
     web_accessible_resources: [
@@ -25,7 +25,7 @@ export default defineConfig({
     plugins: [arraybuffer()],
     resolve: {
       alias: {
-        '@inspectine/lib': resolve(dirname('.'), './src/lib'),
+        '@orlan/lib': resolve(dirname('.'), './src/lib'),
       },
     },
   }),

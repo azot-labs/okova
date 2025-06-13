@@ -1,6 +1,6 @@
 import { Component } from 'solid-js';
 import { TbShieldPlus } from 'solid-icons/tb';
-import { Client } from '@inspectine/lib';
+import { Client } from '@orlan/lib';
 import { Cell } from './cell';
 import { useActiveClient, useClients } from '../utils/state';
 import { appStorage } from '@/utils/storage';

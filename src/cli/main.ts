@@ -30,9 +30,9 @@ const args = parseArgs({
 
 const help = () => {
   console.log(
-    `Inspectine is a research & pentesting toolkit for Google's Widevine DRM. (${pkg.version})\n`,
+    `Orlan is a research & pentesting toolkit for Google's Widevine DRM. (${pkg.version})\n`,
   );
-  console.log(`Usage: inspectine <command> [...flags]\n`);
+  console.log(`Usage: orlan <command> [...flags]\n`);
   console.log(`Commands:`);
   console.log(col(`serve`) + 'Run your API instance');
   console.log(col(`license <url>`) + 'Make a license request');
@@ -45,9 +45,7 @@ const help = () => {
   console.log(col(`-v, --version`) + 'Print version and exit');
   console.log(col(`-h, --help`) + 'Display this menu and exit');
   console.log('');
-  console.log(
-    `(more flags in inspectine license --help and inspectine client --help)`,
-  );
+  console.log(`(more flags in orlan license --help and orlan client --help)`);
 };
 
 (async () => {

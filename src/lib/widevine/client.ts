@@ -41,10 +41,7 @@ export class Client {
 
   #key?: { forDecrypt: CryptoKey; forSign: CryptoKey };
 
-  static async fromPacked(
-    data: Uint8Array,
-    format: 'wvd' | 'inspectine' = 'inspectine',
-  ) {
+  static async fromPacked(data: Uint8Array, format: 'wvd' | 'orlan' = 'orlan') {
     const isWvd = fromBuffer(data.slice(0, 3)).toText() == 'WVD';
     if (format === 'wvd' || isWvd) {
       const parsed = parseWvd(data);
@@ -55,7 +52,7 @@ export class Client {
       const client = new Client(parsed.clientId, type, securityLevel);
       await client.importKey(key);
       return client;
-    } else if (format === 'inspectine') {
+    } else if (format === 'orlan') {
       const parsed = JSON.parse(fromBuffer(data).toText());
       const clientId = ClientIdentification.fromObject(
         parsed.data.clientIdentification,
@@ -111,7 +108,7 @@ export class Client {
     return [id, key];
   }
 
-  async pack(format: 'wvd' | 'inspectine' = 'inspectine') {
+  async pack(format: 'wvd' | 'orlan' = 'orlan') {
     if (format === 'wvd') {
       const id = ClientIdentification.encode(this.id).finish();
       const key = await this.exportKey();
@@ -130,7 +127,7 @@ export class Client {
         privateKey: keyDerBinary,
       });
       return wvd;
-    } else if (format === 'inspectine') {
+    } else if (format === 'orlan') {
       const clientIdentification = this.id.toJSON();
       const privateKey = await this.exportKey();
       const payload = {

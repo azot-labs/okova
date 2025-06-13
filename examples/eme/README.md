@@ -1,6 +1,6 @@
 ## Encrypted Media Extensions API
 
-It's a minimal example of using `inspectine` to get a license for Bitmovin's Art of Motion Demo.
+It's a minimal example of using `orlan` to get a license for Bitmovin's Art of Motion Demo.
 
 This example similar to [example from EME](https://www.w3.org/TR/encrypted-media-2/#example-8).
 

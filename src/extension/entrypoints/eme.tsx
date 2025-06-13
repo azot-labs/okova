@@ -40,7 +40,7 @@ export default defineUnlistedScript(() => {
       });
 
       console.groupCollapsed(
-        `[inspectine] [${session.sessionId}] Generated request`,
+        `[orlan] [${session.sessionId}] Generated request`,
       );
       console.log(`Initialization Data Type: ${session.initDataType}`);
       console.log(`Initialization Data (PSSH): ${session.initData}`);
@@ -49,7 +49,7 @@ export default defineUnlistedScript(() => {
 
     const onKeyStatusesChange = async (session: MediaKeySession) => {
       console.groupCollapsed(
-        `[inspectine] [${session.sessionId}] Key statuses changed`,
+        `[orlan] [${session.sessionId}] Key statuses changed`,
       );
       console.log(`Initialization data type: ${session.initDataType}`);
       console.log(`Initialization data (PSSH): ${session.initData}`);
@@ -79,7 +79,7 @@ export default defineUnlistedScript(() => {
       session.messages?.set(messageType, base64.stringify(message));
 
       console.groupCollapsed(
-        `[inspectine] [${session.sessionId}] New message from browser CDM: ${messageType}`,
+        `[orlan] [${session.sessionId}] New message from browser CDM: ${messageType}`,
       );
       console.log(`Initialization data type: ${session.initDataType}`);
       console.log(`Initialization data (PSSH): ${session.initData}`);
@@ -104,7 +104,7 @@ export default defineUnlistedScript(() => {
       const challenge = base64.parse(response);
 
       console.groupCollapsed(
-        `[inspectine] [${session.sessionId}] Swapping a message from CDM with ours`,
+        `[orlan] [${session.sessionId}] Swapping a message from CDM with ours`,
       );
       console.log(`Initialization data type: ${session.initDataType}`);
       console.log(`Initialization data (PSSH): ${session.initData}`);
@@ -147,7 +147,7 @@ export default defineUnlistedScript(() => {
       const messageBase64 = base64.stringify(message);
 
       console.groupCollapsed(
-        `[inspectine] [${session.sessionId}] Update session with response`,
+        `[orlan] [${session.sessionId}] Update session with response`,
       );
       console.log(`Initialization data type: ${session.initDataType}`);
       console.log(`Initialization data (PSSH): ${session.initData}`);
@@ -167,7 +167,7 @@ export default defineUnlistedScript(() => {
       if (result) {
         const { keys } = result;
         console.groupCollapsed(
-          `[inspectine] [${session.sessionId}] Received keys from our CDM`,
+          `[orlan] [${session.sessionId}] Received keys from our CDM`,
         );
         for (const [id, value] of keys) console.log(`${id}:${value}`);
         console.groupEnd();
@@ -245,7 +245,7 @@ export default defineUnlistedScript(() => {
       MediaKeys.prototype,
       'setServerCertificate',
       (_target, _this, _args) => {
-        console.log(`[inspectine] Setting server certificate`, _this, _args);
+        console.log(`[orlan] Setting server certificate`, _this, _args);
         return _target.apply(_this, _args);
       },
     );
@@ -280,10 +280,10 @@ export default defineUnlistedScript(() => {
 
     interceptProperty(MediaKeySession.prototype, 'onmessage', {
       set: (target, value) => {
-        console.log('[inspectine] MediaKeySession.onmessage set:', value);
+        console.log('[orlan] MediaKeySession.onmessage set:', value);
       },
       get: (target, value) => {
-        console.log('[inspectine] MediaKeySession.onmessage get');
+        console.log('[orlan] MediaKeySession.onmessage get');
         return value;
       },
       call: async (_target, _this, [event]) => {
@@ -311,5 +311,5 @@ export default defineUnlistedScript(() => {
 
   patchEncryptedMediaExtensions();
 
-  console.log('[inspectine] EME interception added');
+  console.log('[orlan] EME interception added');
 });

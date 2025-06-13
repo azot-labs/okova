@@ -1,6 +1,6 @@
 {
-  "name": "inspectine",
-  "version": "0.8.4",
+  "name": "orlan",
+  "version": "0.9.0",
   "description": "Advanced DRM inspection toolkit",
   "type": "module",
   "files": [
@@ -10,7 +10,7 @@
   "main": "dist/lib/main.cjs",
   "module": "dist/lib/main.js",
   "bin": {
-    "inspectine": "dist/cli/main.cjs"
+    "orlan": "dist/cli/main.cjs"
   },
   "scripts": {
     "prepublishOnly": "npm run build:lib && npm run build:cli",
@@ -29,7 +29,7 @@
   },
   "repository": {
     "type": "git",
-    "url": "https://github.com/azot-labs/inspectine"
+    "url": "https://github.com/azot-labs/orlan"
   },
   "keywords": [
     "widevine",
@@ -44,7 +44,7 @@
   "license": "AGPL-3.0",
   "readmeFilename": "README.md",
   "bugs": {
-    "url": "https://github.com/azot-labs/inspectine/issues",
+    "url": "https://github.com/azot-labs/orlan/issues",
     "email": "vitalygashkov@vk.com"
   },
   "funding": [

@@ -4,14 +4,14 @@ import * as utils from '@noble/curves/utils';
 import { fromBase64, fromBuffer } from './utils';
 import { ElGamal } from './playready/elgamal';
 
-export const toPKCS8 = (pem: string) => {
-  const keyobj = KEYUTIL.getKey(pem);
+export const toPKCS8 = (pkcs1pem: string) => {
+  const keyobj = KEYUTIL.getKey(pkcs1pem);
   const pkcs8pem = KEYUTIL.getPEM(keyobj, 'PKCS8PRV');
   return pkcs8pem;
 };
 
-export const toPKCS1 = (pem: string) => {
-  const keyobj = KEYUTIL.getKey(pem);
+export const toPKCS1 = (pkcs8pem: string) => {
+  const keyobj = KEYUTIL.getKey(pkcs8pem);
   const pkcs1pem = KEYUTIL.getPEM(keyobj, 'PKCS1PRV');
   return pkcs1pem;
 };
