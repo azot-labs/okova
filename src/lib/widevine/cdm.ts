@@ -1,14 +1,15 @@
 import { Cdm } from '../api';
-import { Client } from './client';
+import { WidevineClient } from './client';
 import { Session } from './session';
 
 export class Widevine implements Cdm {
+  keySystem = 'com.widevine.alpha';
   sessions: Map<string, Session>;
-  client: Client;
+  client: WidevineClient;
 
-  static Client = Client;
+  static Client = WidevineClient;
 
-  constructor({ client }: { client: Client }) {
+  constructor({ client }: { client: WidevineClient }) {
     this.sessions = new Map();
     this.client = client;
   }

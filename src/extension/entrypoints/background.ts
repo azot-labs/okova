@@ -1,6 +1,7 @@
 import { appStorage } from '@/utils/storage';
-import { Client, fromBase64, fromBuffer } from '@orlan/lib';
+import { fromBase64, fromBuffer } from '@orlan/lib';
 import { getMessageType } from '@orlan/lib/widevine/message';
+import { WidevineClient } from '@orlan/lib/widevine/client';
 
 export default defineBackground({
   type: 'module',
@@ -10,7 +11,7 @@ export default defineBackground({
     });
 
     const state: {
-      client: Client | null;
+      client: WidevineClient | null;
       sessions: Map<string, MediaKeySession>;
     } = {
       client: null,

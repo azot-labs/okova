@@ -1,6 +1,7 @@
-import { fetchDecryptionKeys } from '../../../lib';
-import { importClient } from '../../utils';
 import { help } from './help';
+import { importClient } from '../../utils';
+import { fetchDecryptionKeys, PlayReady, Widevine } from '../../../lib';
+import { WidevineClient } from '../../../lib/widevine/client';
 
 type LicenseCommandParams = {
   url: string;
@@ -15,14 +16,19 @@ export const license = async (params: LicenseCommandParams) => {
     params.headers?.map((header) => header.split(':').map((s) => s.trim())) ||
       [],
   );
+  const client = await importClient(params.clientPath || process.cwd());
+  const cdm =
+    client instanceof WidevineClient
+      ? new Widevine({ client })
+      : new PlayReady({ client });
   const keys = await fetchDecryptionKeys({
-    server: params.url,
+    cdm,
     pssh: params.pssh,
-    client: await importClient(params.clientPath || process.cwd()),
+    server: params.url,
     headers,
   });
   for (const key of keys) {
-    console.log(`${key.id}:${key.value}`);
+    console.log(`${key.keyId}:${key.key}`);
   }
   return keys;
 };

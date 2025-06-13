@@ -9,6 +9,7 @@ export interface Key {
  * https://w3c.github.io/encrypted-media/index.html#dfn-cdm
  */
 export interface Cdm {
+  keySystem: string;
   createSession: (
     sessionType?: MediaKeySessionType,
   ) => Promise<string> | string;

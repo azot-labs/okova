@@ -12,7 +12,7 @@ import {
   getRandomHex,
 } from '../crypto/common';
 import { Key } from './key';
-import { Client } from './client';
+import { WidevineClient } from './client';
 import { PSSH, createPssh } from './pssh';
 import { deriveContext, deriveKeys } from './context';
 import { getMessageType } from './message';
@@ -64,7 +64,7 @@ export class Session extends EventTarget {
   sessionType: SessionType;
   privacyMode?: boolean = false;
 
-  #client: Client;
+  #client: WidevineClient;
   #log: Logger;
 
   #initData?: BufferSource;
@@ -73,7 +73,7 @@ export class Session extends EventTarget {
   #serviceCertificate?: SignedDrmCertificate;
   #contexts: Map<string, { enc: Uint8Array; auth: Uint8Array }>;
 
-  constructor(sessionType: SessionType = 'temporary', client: Client) {
+  constructor(sessionType: SessionType = 'temporary', client: WidevineClient) {
     super();
     this.sessionId = generateSessionId('android');
     this.keyStatuses = new Map();

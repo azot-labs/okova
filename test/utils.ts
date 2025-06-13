@@ -1,6 +1,7 @@
 import { join } from 'node:path';
 import { readFile } from 'node:fs/promises';
-import { Client, fetchDecryptionKeys } from '../src/lib';
+import { Widevine, fetchDecryptionKeys } from '../src/lib';
+import { WidevineClient } from '../src/lib/widevine/client';
 
 export const WORKDIR = join(process.cwd(), '');
 
@@ -15,10 +16,20 @@ export const read = async (filename: string) =>
 export const createClient = async () => {
   const id = await read('device_client_id_blob');
   const key = await read('device_private_key');
-  return Client.fromUnpacked(id, key);
+  return WidevineClient.fromUnpacked(id, key);
 };
 
-export const fetchDecryptionKeysWithDefaults = async (client?: Client) => {
+export const loadWidevineClient = async () => {
+  const clientPath = process.env.VITEST_WIDEVINE_CLIENT_PATH;
+  if (!clientPath) throw new Error('Widevine client not found. Skipping test');
+  const clientData = await readFile(clientPath);
+  const client = await Widevine.Client.from({ wvd: clientData });
+  return client;
+};
+
+export const fetchDecryptionKeysWithDefaults = async (
+  client?: WidevineClient,
+) => {
   return fetchDecryptionKeys({
     server: LICENSE_URL,
     pssh: PSSH,

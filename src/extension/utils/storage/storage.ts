@@ -1,5 +1,6 @@
 import { storage } from '#imports';
-import { Client, fromBase64, fromBuffer } from '../../../lib';
+import { WidevineClient } from '../../../lib/widevine/client';
+import { fromBase64, fromBuffer } from '../../../lib';
 import { asJson } from './utils';
 
 export type KeyInfo = {
@@ -56,7 +57,7 @@ export const appStorage = {
     raw: asJson(storage.defineItem<string[]>('local:clients')),
     active: {
       raw: storage.defineItem<string>('local:active-client'),
-      setValue: async (client: Client | null) => {
+      setValue: async (client: WidevineClient | null) => {
         if (!client) return appStorage.clients.active.raw.setValue(null);
         const clientBase64 = fromBuffer(await client.pack()).toBase64();
         return appStorage.clients.active.raw.setValue(clientBase64);
@@ -64,13 +65,13 @@ export const appStorage = {
       getValue: async () => {
         const clientBase64 = await appStorage.clients.active.raw.getValue();
         if (!clientBase64) return null;
-        const client = await Client.fromPacked(
+        const client = await WidevineClient.fromPacked(
           fromBase64(clientBase64).toBuffer(),
         );
         return client;
       },
     },
-    setValue: async (clients: Client[]) => {
+    setValue: async (clients: WidevineClient[]) => {
       const values = [];
       for (const client of clients) {
         const clientBuffer = await client.pack();
@@ -84,17 +85,19 @@ export const appStorage = {
       if (!values) return [];
       const clients = [];
       for (const value of values) {
-        const client = await Client.fromPacked(fromBase64(value).toBuffer());
+        const client = await WidevineClient.fromPacked(
+          fromBase64(value).toBuffer(),
+        );
         clients.push(client);
       }
       return clients;
     },
-    add: async (client: Client) => {
+    add: async (client: WidevineClient) => {
       const clients = await appStorage.clients.getValue();
       clients.push(client);
       await appStorage.clients.setValue(clients);
     },
-    remove: async (client: Client) => {
+    remove: async (client: WidevineClient) => {
       const clients = await appStorage.clients.getValue();
       const index = clients.findIndex(
         (c) => c.info.get('model_name') === client.info.get('model_name'),

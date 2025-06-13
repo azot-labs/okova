@@ -1,6 +1,6 @@
 import { BsCheckLg } from 'solid-icons/bs';
 import { TbTrash } from 'solid-icons/tb';
-import { Client } from '@@/src/lib';
+import { WidevineClient } from '@orlan/lib/widevine/client';
 import { appStorage } from '@/utils/storage';
 import { useActiveClient, useClients } from '../utils/state';
 import { Layout } from '../components/layout';
@@ -14,15 +14,15 @@ export const Clients = () => {
   const [activeClient, setActiveClient] = useActiveClient();
   const [clients, setClients] = useClients();
 
-  const setActive = async (client: Client) => {
+  const setActive = async (client: WidevineClient) => {
     setActiveClient(client);
     await appStorage.clients.active.setValue(client);
   };
 
-  const isActive = (client: Client) =>
+  const isActive = (client: WidevineClient) =>
     activeClient()?.info.get('model_name') === client.info.get('model_name');
 
-  const removeClient = async (client: Client) => {
+  const removeClient = async (client: WidevineClient) => {
     const newClients = clients().filter(
       (c) => c.info.get('model_name') !== client.info.get('model_name'),
     );

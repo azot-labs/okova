@@ -1,7 +1,7 @@
 import { readFile } from 'node:fs/promises';
 import { basename } from 'node:path';
 import { Session } from '../../../../lib/widevine/session';
-import { Client } from '../../../../lib/widevine/client';
+import { WidevineClient } from '../../../../lib/widevine/client';
 import { clients, config, sessions } from '../state';
 
 import { Hono } from 'hono';
@@ -30,7 +30,7 @@ app.post(
     }
     if (!clients.has(clientName)) {
       const wvd = await readFile(clientPath);
-      const client = await Client.fromPacked(wvd);
+      const client = await WidevineClient.fromPacked(wvd);
       clients.set(clientName, client);
     }
     const session = new Session('temporary', clients.get(clientName)!);

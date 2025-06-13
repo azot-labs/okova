@@ -1,11 +1,11 @@
 import { appStorage, KeyInfo, Settings } from '@/utils/storage';
-import { Client } from '@@/src/lib';
+import { WidevineClient } from '@orlan/lib/widevine/client';
 import { createSignal } from 'solid-js';
 
-const clientsSignal = createSignal<Client[]>([]);
+const clientsSignal = createSignal<WidevineClient[]>([]);
 export const useClients = () => clientsSignal;
 
-const activeClientSignal = createSignal<Client | null>(null);
+const activeClientSignal = createSignal<WidevineClient | null>(null);
 export const useActiveClient = () => activeClientSignal;
 
 const recentKeysSignal = createSignal<KeyInfo[]>([]);

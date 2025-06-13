@@ -3,7 +3,6 @@ import { expect, test } from 'vitest';
 import { fromBase64 } from '../src/lib';
 import { requestMediaKeySystemAccess } from '../src/lib/api';
 import { PlayReady } from '../src/lib/playready/cdm';
-import { Device } from '../src/lib/playready/device';
 
 test('playready cdm', async () => {
   const url =
@@ -17,13 +16,10 @@ test('playready cdm', async () => {
   if (!clientPath)
     return console.warn('PlayReady client not found. Skipping test');
   const clientData = await readFile(clientPath);
-  const client = new Device(clientData);
-  const cdm = PlayReady.fromDevice(client);
+  const client = await PlayReady.Client.from({ prd: clientData });
+  const cdm = new PlayReady({ client });
 
-  const keySystemAccess = requestMediaKeySystemAccess(
-    'com.microsoft.playready.recommendation',
-    [{ cdm }],
-  );
+  const keySystemAccess = requestMediaKeySystemAccess(cdm.keySystem, [{ cdm }]);
   const mediaKeys = await keySystemAccess.createMediaKeys();
   const session = mediaKeys.createSession();
   session.generateRequest(initDataType, initData);

@@ -1,6 +1,6 @@
 import { BinaryReader } from '../utils';
 
-export class Device {
+export class PlayReadyClient {
   _reader: BinaryReader;
 
   version: number;
@@ -12,8 +12,8 @@ export class Device {
   group_certificate_len: number;
   group_certificate: Uint8Array;
 
-  constructor(bytes: Uint8Array) {
-    this._reader = new BinaryReader(bytes);
+  constructor(data: Uint8Array) {
+    this._reader = new BinaryReader(data);
 
     this._reader.readBytes(3);
     this.version = this._reader.readUint8();
@@ -38,5 +38,13 @@ export class Device {
       default:
         throw new Error('Unsupported version');
     }
+  }
+
+  static async from(payload: { prd: Uint8Array }) {
+    return new PlayReadyClient(payload.prd);
+  }
+
+  async pack() {
+    return this._reader._raw_bytes;
   }
 }

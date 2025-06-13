@@ -29,7 +29,7 @@ const types = new Map<number, ClientType>([
   [WVD_DEVICE_TYPES.chrome, CLIENT_TYPE.chrome],
 ]);
 
-export class Client {
+export class WidevineClient {
   id: ClientIdentification;
   type: ClientType;
   securityLevel: SecurityLevel;
@@ -41,6 +41,16 @@ export class Client {
 
   #key?: { forDecrypt: CryptoKey; forSign: CryptoKey };
 
+  static async from(
+    payload: { wvd: Uint8Array } | { id: Uint8Array; key: Uint8Array },
+  ) {
+    if ('wvd' in payload) {
+      return await WidevineClient.fromPacked(payload.wvd);
+    } else {
+      return await WidevineClient.fromUnpacked(payload.id, payload.key);
+    }
+  }
+
   static async fromPacked(data: Uint8Array, format: 'wvd' = 'wvd') {
     const isWvd = fromBuffer(data.slice(0, 3)).toText() == 'WVD';
     if (format === 'wvd' || isWvd) {
@@ -49,7 +59,7 @@ export class Client {
       const key = fromText(pcks1).toBuffer();
       const type = types.get(parsed.deviceType);
       const securityLevel = parsed.securityLevel as SecurityLevel;
-      const client = new Client(parsed.clientId, type, securityLevel);
+      const client = new WidevineClient(parsed.clientId, type, securityLevel);
       await client.importKey(key);
       return client;
     } else {
@@ -58,7 +68,7 @@ export class Client {
   }
 
   static async fromUnpacked(id: Uint8Array, key: Uint8Array, vmp?: Uint8Array) {
-    const client = new Client(id);
+    const client = new WidevineClient(id);
     if (vmp) {
       client.vmp = FileHashes.decode(vmp);
       client.id.vmpData = vmp;

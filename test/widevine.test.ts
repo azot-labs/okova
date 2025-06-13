@@ -1,6 +1,6 @@
-import { expect, test } from 'vitest';
 import { readFile } from 'node:fs/promises';
-import { Client, fromBase64 } from '../src/lib';
+import { expect, test } from 'vitest';
+import { fromBase64 } from '../src/lib';
 import { requestMediaKeySystemAccess } from '../src/lib/api';
 import { Widevine } from '../src/lib/widevine/cdm';
 
@@ -15,12 +15,10 @@ test('widevine cdm', async () => {
   if (!clientPath)
     return console.warn('Widevine client not found. Skipping test');
   const clientData = await readFile(clientPath);
-  const client = await Client.fromPacked(clientData, 'wvd');
+  const client = await Widevine.Client.from({ wvd: clientData });
   const cdm = new Widevine({ client });
 
-  const keySystemAccess = requestMediaKeySystemAccess('com.widevine.alpha', [
-    { cdm },
-  ]);
+  const keySystemAccess = requestMediaKeySystemAccess(cdm.keySystem, [{ cdm }]);
   const mediaKeys = await keySystemAccess.createMediaKeys();
   const session = mediaKeys.createSession();
   session.generateRequest(initDataType, initData);

@@ -27,12 +27,13 @@ import { EccKey } from '../crypto/ecc-key';
 import { ElGamal } from '../crypto/elgamal';
 import { XmlKey } from './xml-key';
 import { Key } from './key';
-import { Device } from './device';
+import { PlayReadyClient } from './client';
 import { Pssh } from './pssh';
 
 const DEFAULT_CLIENT_VERSION = '10.0.16384.10011';
 
 export class PlayReady implements Cdm {
+  keySystem = 'com.microsoft.playready.recommendation';
   certificateChain: Uint8Array;
   encryptionKey: EccKey;
   signingKey: EccKey;
@@ -45,16 +46,29 @@ export class PlayReady implements Cdm {
 
   keys: Key[];
 
+  static Client = PlayReadyClient;
+
   constructor(
-    certificateChain: Uint8Array,
-    encryptionKey: Uint8Array,
-    signingKey: Uint8Array,
-    clientVersion = DEFAULT_CLIENT_VERSION,
+    options:
+      | { client: PlayReadyClient }
+      | {
+          certificateChain: Uint8Array;
+          encryptionKey: Uint8Array;
+          signingKey: Uint8Array;
+          clientVersion?: string;
+        },
   ) {
-    this.certificateChain = certificateChain;
-    this.encryptionKey = EccKey.from(encryptionKey);
-    this.signingKey = EccKey.from(signingKey);
-    this.clientVersion = clientVersion;
+    if ('client' in options) {
+      this.certificateChain = options.client.group_certificate;
+      this.encryptionKey = EccKey.from(options.client.encryption_key);
+      this.signingKey = EccKey.from(options.client.signing_key);
+      this.clientVersion = DEFAULT_CLIENT_VERSION;
+    } else {
+      this.certificateChain = options.certificateChain;
+      this.encryptionKey = EccKey.from(options.encryptionKey);
+      this.signingKey = EccKey.from(options.signingKey);
+      this.clientVersion = options.clientVersion ?? DEFAULT_CLIENT_VERSION;
+    }
 
     this.rgbMagicConstantZero = new Uint8Array([
       0x7e, 0xe9, 0xed, 0x4a, 0xf7, 0x73, 0x22, 0x4f, 0x00, 0xb8, 0xea, 0x7e,
@@ -67,14 +81,6 @@ export class PlayReady implements Cdm {
 
     this.parser = new DOMParser();
     this.keys = [];
-  }
-
-  static fromDevice(device: Device) {
-    return new PlayReady(
-      device.group_certificate,
-      device.encryption_key,
-      device.signing_key,
-    );
   }
 
   _getKeyCipher(xmlKey: XmlKey) {

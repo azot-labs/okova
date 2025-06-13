@@ -8,10 +8,11 @@ export const pack = async (
   output?: string,
 ) => {
   const client = await importClient(input);
-  const ext = format || (output ? extname(output) : 'orlan');
-  const data = await client.pack(ext as 'wvd' | 'orlan' | undefined);
+  const ext = format || (output ? extname(output) : '');
+  const data = await client.pack();
+  const info = 'info' in client ? client.info : null;
   const filename =
-    `${client.info.get('company_name')}-${client.info.get('model_name')}`
+    `${info?.get('company_name') ?? 'client'}-${info?.get('model_name') ?? ''}`
       .replaceAll(' ', '-')
       .toLowerCase();
   const outputPath = output || join(process.cwd(), `${filename}.${ext}`);
