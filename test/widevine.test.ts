@@ -1,15 +1,22 @@
 import { expect, test } from 'vitest';
-import { fromBase64 } from '../src/lib';
-import { PSSH, LICENSE_URL, createClient } from './utils';
+import { readFile } from 'node:fs/promises';
+import { Client, fromBase64 } from '../src/lib';
 import { requestMediaKeySystemAccess } from '../src/lib/api';
 import { Widevine } from '../src/lib/widevine/cdm';
 
 test('widevine cdm', async () => {
-  const client = await createClient();
-  const cdm = new Widevine({ client });
-
+  const url = 'https://cwip-shaka-proxy.appspot.com/no_auth';
+  const pssh =
+    'AAAAW3Bzc2gAAAAA7e+LqXnWSs6jyCfc1R0h7QAAADsIARIQ62dqu8s0Xpa7z2FmMPGj2hoNd2lkZXZpbmVfdGVzdCIQZmtqM2xqYVNkZmFsa3IzaioCSEQyAA==';
+  const initData = fromBase64(pssh).toBuffer();
   const initDataType = 'cenc';
-  const initData = fromBase64(PSSH).toBuffer();
+
+  const clientPath = process.env.VITEST_WIDEVINE_CLIENT_PATH;
+  if (!clientPath)
+    return console.warn('Widevine client not found. Skipping test');
+  const clientData = await readFile(clientPath);
+  const client = await Client.fromPacked(clientData, 'wvd');
+  const cdm = new Widevine({ client });
 
   const keySystemAccess = requestMediaKeySystemAccess('com.widevine.alpha', [
     { cdm },
@@ -19,7 +26,7 @@ test('widevine cdm', async () => {
   session.generateRequest(initDataType, initData);
   const licenseRequest = await session.waitForLicenseRequest();
 
-  const response = await fetch(LICENSE_URL, {
+  const response = await fetch(url, {
     body: licenseRequest,
     method: 'POST',
   })

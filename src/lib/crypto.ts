@@ -1,5 +1,8 @@
 import { KEYUTIL } from 'jsrsasign';
+import { p256 } from '@noble/curves/nist';
+import * as utils from '@noble/curves/utils';
 import { fromBase64, fromBuffer } from './utils';
+import { ElGamal } from './playready/elgamal';
 
 export const toPKCS8 = (pem: string) => {
   const keyobj = KEYUTIL.getKey(pem);
@@ -165,4 +168,47 @@ export const createHmacSha256 = async (
   );
   const signature = await crypto.subtle.sign('HMAC', hmacKey, data);
   return new Uint8Array(signature);
+};
+
+export const createSha256 = async (data: Uint8Array) => {
+  const hashBuffer = await crypto.subtle.digest('SHA-256', data);
+  const hashArray = new Uint8Array(hashBuffer);
+  return hashArray;
+};
+
+export const ecc256Sign = async (private_key: bigint, data: Uint8Array) => {
+  return p256.sign(await createSha256(data), private_key);
+};
+
+export const ecc256decrypt = (private_key: bigint, ciphertext: Uint8Array) => {
+  const decrypted = ElGamal.decrypt(
+    {
+      point1: {
+        x: utils.bytesToNumberBE(ciphertext.subarray(0, 32)),
+        y: utils.bytesToNumberBE(ciphertext.subarray(32, 64)),
+      },
+      point2: {
+        x: utils.bytesToNumberBE(ciphertext.subarray(64, 96)),
+        y: utils.bytesToNumberBE(ciphertext.subarray(96, 128)),
+      },
+    },
+    private_key,
+  );
+
+  return utils.numberToBytesBE(decrypted.x, 32);
+};
+
+export const aesEcbEncrypt = async (key: Uint8Array, data: Uint8Array) => {
+  const cryptoKey = await crypto.subtle.importKey('raw', key, 'AES-ECB', true, [
+    'encrypt',
+    'decrypt',
+  ]);
+
+  const encryptedBuffer = await crypto.subtle.encrypt(
+    { name: 'AES-ECB' },
+    cryptoKey,
+    data,
+  );
+
+  return new Uint8Array(encryptedBuffer);
 };
