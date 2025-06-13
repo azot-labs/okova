@@ -11,10 +11,9 @@ Orlan (formerly known as Azot) is a set of tools (JavaScript library, command-li
 ## Features
 
 - **Logging** details from [EME](https://w3c.github.io/encrypted-media/index.html) events in DevTools console
-- **Network-independent interception** via browser extension, so it doesn't matter if license request has one-time tokens or a custom request/response body format.
-- **Remote instance** to control sessions via REST API
-- **Converting clients** between formats via command-line tool
-- **Custom client support**: WVD / device_client_id_blob + device_private_key / client_id.bin + private_key.pem / PRD
+- **Network-independent interception** via browser extension, so it doesn't matter if license request has one-time tokens or a custom request/response body format
+- **Remote instance** to manage sessions via REST API
+- **Custom CDM client support**: create \*.wvd or \*.prd from raw client files and import them into browser extension
 - **Runtime agnostic** core: works in Node.js, Bun, Deno, browsers and more
 - **Encrypted Media Extensions API** compatibility via `requestMediaKeySystemAccess()` method
 
