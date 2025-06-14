@@ -114,20 +114,10 @@ export const Int32ub = createConstruct<number>({
 export const Bytes = (length: number | LengthFunc) =>
   createConstruct<Uint8Array>({
     _parse: (ctx) => {
-      const len = typeof length === 'function' ? length(ctx.context) : length;
+      let len = typeof length === 'function' ? length(ctx.context) : length;
 
-      // Log detailed context information
-      console.log(
-        `[Bytes-Parse] Context:`,
-        JSON.stringify(ctx.context, null, 2),
-      );
-      console.log(
-        `[Bytes-Parse] Length: ${len}, Offset: ${ctx.offset}, Total: ${ctx.dataView.byteLength}`,
-      );
-
-      if (len < 0) {
-        throw new Error(`Negative length calculated: ${len}`);
-      }
+      // Handle negative lengths like Python does
+      if (len < 0) len = 0;
 
       if (ctx.offset + len > ctx.dataView.byteLength) {
         throw new Error(
@@ -180,16 +170,17 @@ export const Struct = <T extends ContextData>(fields: {
 }) =>
   createConstruct<T>({
     _parse: (ctx) => {
+      const obj = {} as T;
       // Create a new context that inherits from parent
-      const obj: ContextData = Object.create(ctx.context);
+      const newContext = Object.create(ctx.context);
+      Object.assign(newContext, obj);
 
-      ctx.stack.push(obj);
+      ctx.stack.push(newContext);
       for (const key in fields) {
         obj[key] = fields[key]._parse(ctx);
       }
       ctx.stack.pop();
-
-      return obj as T;
+      return obj;
     },
     _build: (value, ctx) => {
       // Create a new context that inherits from parent
@@ -242,13 +233,23 @@ export const GreedyRange = <T>(subcon: Construct<T>) =>
   createConstruct<T[]>({
     _parse: (ctx) => {
       const items: T[] = [];
+      const startOffset = ctx.offset;
+
       while (ctx.offset < ctx.dataView.byteLength) {
-        items.push(subcon._parse(ctx));
+        try {
+          items.push(subcon._parse(ctx));
+        } catch (e) {
+          // If we haven't made progress, break to avoid infinite loops
+          if (ctx.offset === startOffset) {
+            break;
+          }
+          throw e;
+        }
       }
       return items;
     },
-    _build: (values, ctx) => {
-      for (const item of values) {
+    _build: (v, ctx) => {
+      for (const item of v) {
         subcon._build(item, ctx);
       }
     },
