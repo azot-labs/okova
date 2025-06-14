@@ -1,4 +1,4 @@
-import { describe, expect, test } from 'vitest';
+import { describe, expect, it, test } from 'vitest';
 import {
   Int16ub,
   Int32ub,
@@ -313,5 +313,43 @@ describe('Sized Construct with GreedyRange', () => {
     expect(result).toHaveLength(2);
     expect(result[0]).toEqual({ total_length: 12, data: 1234 });
     expect(result[1]).toEqual({ total_length: 8, data: 5678 });
+  });
+});
+
+describe('Sized Construct', () => {
+  // Keep your existing happy path test!
+  it('should correctly parse a sized item when used correctly', () => {
+    const PaddedItem = Sized(
+      Struct({ total_length: Int32ub, data: Int32ub }),
+      (item) => item.total_length,
+    );
+    const result = PaddedItem.parse(
+      new Uint8Array([0x00, 0x00, 0x00, 0x08, 0x00, 0x00, 0x16, 0x2e]),
+    );
+    expect(result).toEqual({ total_length: 8, data: 5678 });
+  });
+
+  // --- NEW "SAD PATH" TESTS ---
+  it('should throw a helpful error if arguments are swapped', () => {
+    const MyStruct = Struct({ total_length: Int32ub, data: Int32ub });
+    const myLengthFunc = (item: any) => item.total_length;
+
+    // We expect this to throw because the first argument is a function, not a construct.
+    const action = () => Sized(myLengthFunc as any, MyStruct as any);
+
+    expect(action).toThrow(
+      'Sized: Invalid sub-construct provided. The first argument must be a valid construct object (e.g., Struct, Bytes).',
+    );
+  });
+
+  it('should throw a helpful error if the length function is not a function', () => {
+    const MyStruct = Struct({ total_length: Int32ub, data: Int32ub });
+
+    // We expect this to throw because the second argument is an object, not a function.
+    const action = () => Sized(MyStruct, { not: 'a function' } as any);
+
+    expect(action).toThrow(
+      'Sized: Invalid length function provided. The second argument must be a function that returns a number.',
+    );
   });
 });
