@@ -94,6 +94,18 @@ const BasicInfo = Struct({
   client_id: Bytes(16),
 });
 
+const DomainInfo = Struct({
+  service_id: Bytes(16),
+  account_id: Bytes(16),
+  revision_timestamp: Int32ub,
+  domain_url_length: Int32ub,
+  domain_url: Bytes((ctx) => (ctx.domain_url_length + 3) & 0xfffffffc),
+});
+
+const PCInfo = Struct({
+  security_version: Int32ub,
+});
+
 const DeviceInfo = Struct({
   max_license: Int32ub,
   max_header: Int32ub,
@@ -139,6 +151,50 @@ const SignatureInfo = Struct({
   signature_key: Bytes((ctx) => ctx.signature_key_size / 8),
 });
 
+const SilverlightInfo = Struct({
+  security_version: Int32ub,
+  platform_identifier: Int32ub,
+});
+
+const MeteringInfo = Struct({
+  metering_id: Bytes(16),
+  metering_url_length: Int32ub,
+  metering_url: Bytes((ctx) => (ctx.metering_url_length + 3) & 0xfffffffc),
+});
+
+const ExtDataSignKeyInfo = Struct({
+  key_type: Int16ub,
+  key_length: Int16ub,
+  flags: Int32ub,
+  key: Bytes((ctx) => ctx.key_length / 8),
+});
+
+const DataRecord = Struct({
+  data_size: Int32ub,
+  data: Bytes((ctx) => ctx.data_size),
+});
+
+const ExtDataSignature = Struct({
+  signature_type: Int16ub,
+  signature_size: Int16ub,
+  signature: Bytes((ctx) => ctx.signature_size),
+});
+
+const ExtDataContainer = Struct({
+  record_count: Int32ub,
+  records: List((ctx) => ctx.record_count, DataRecord),
+  signature: ExtDataSignature,
+});
+
+const ServerInfo = Struct({
+  warning_days: Int32ub,
+});
+
+const SecurityVersion = Struct({
+  security_version: Int32ub,
+  platform_identifier: Int32ub,
+});
+
 export const Attribute = Struct({
   flags: Int16ub,
   tag: Int16ub,
@@ -147,15 +203,25 @@ export const Attribute = Struct({
     (ctx) => ctx.tag,
     {
       [BCertObjType.BASIC]: BasicInfo,
+      [BCertObjType.DOMAIN]: DomainInfo,
+      [BCertObjType.PC]: PCInfo,
       [BCertObjType.DEVICE]: DeviceInfo,
       [BCertObjType.FEATURE]: FeatureInfo,
       [BCertObjType.KEY]: KeyInfo,
       [BCertObjType.MANUFACTURER]: ManufacturerInfo,
       [BCertObjType.SIGNATURE]: SignatureInfo,
-      // TODO: Implement other types
+      [BCertObjType.SILVERLIGHT]: SilverlightInfo,
+      [BCertObjType.METERING]: MeteringInfo,
+      [BCertObjType.EXTDATASIGNKEY]: ExtDataSignKeyInfo,
+      [BCertObjType.EXTDATACONTAINER]: ExtDataContainer,
+      [BCertObjType.EXTDATASIGNATURE]: ExtDataSignature,
+      [BCertObjType.EXTDATA_HWID]: Bytes((ctx) => ctx.length - 8),
+      [BCertObjType.SERVER]: ServerInfo,
+      [BCertObjType.SECURITY_VERSION]: SecurityVersion,
+      [BCertObjType.SECURITY_VERSION_2]: SecurityVersion,
     },
     Bytes((ctx) => ctx.length - 8),
-  ), // default case
+  ),
 });
 
 export const BCert = Struct({
@@ -438,7 +504,9 @@ export class CertificateChain {
 
   static from(data: Uint8Array) {
     const certChain = BCertChain;
-    return new CertificateChain(certChain.parse(data), certChain);
+    const parsed = certChain.parse(data);
+    console.dir(parsed, { depth: Infinity });
+    return new CertificateChain(parsed, certChain);
   }
 
   dumps() {
