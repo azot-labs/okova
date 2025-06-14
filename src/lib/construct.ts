@@ -13,6 +13,14 @@ function getContextStack(ctx: ParsingContext | BuildingContext): ContextData {
   return ctx.stack[ctx.stack.length - 1];
 }
 
+function checkBounds(ctx: ParsingContext, byteLength: number) {
+  if (ctx.offset + byteLength > ctx.dataView.byteLength) {
+    throw new Error(
+      `Not enough data: needed ${byteLength} bytes, only ${ctx.dataView.byteLength - ctx.offset} available`,
+    );
+  }
+}
+
 class ParsingContext {
   public stack: ContextData[] = [{}];
   constructor(
@@ -75,6 +83,7 @@ function createConstruct<T>(
 
 export const Int16ub = createConstruct<number>({
   _parse: (ctx) => {
+    checkBounds(ctx, 2);
     const v = ctx.dataView.getUint16(ctx.offset);
     ctx.offset += 2;
     return v;
@@ -89,6 +98,7 @@ export const Int16ub = createConstruct<number>({
 
 export const Int32ub = createConstruct<number>({
   _parse: (ctx) => {
+    checkBounds(ctx, 4);
     const v = ctx.dataView.getUint32(ctx.offset);
     ctx.offset += 4;
     return v;
@@ -105,11 +115,32 @@ export const Bytes = (length: number | LengthFunc) =>
   createConstruct<Uint8Array>({
     _parse: (ctx) => {
       const len = typeof length === 'function' ? length(ctx.context) : length;
+
+      // Log detailed context information
+      console.log(
+        `[Bytes-Parse] Context:`,
+        JSON.stringify(ctx.context, null, 2),
+      );
+      console.log(
+        `[Bytes-Parse] Length: ${len}, Offset: ${ctx.offset}, Total: ${ctx.dataView.byteLength}`,
+      );
+
+      if (len < 0) {
+        throw new Error(`Negative length calculated: ${len}`);
+      }
+
+      if (ctx.offset + len > ctx.dataView.byteLength) {
+        throw new Error(
+          `Not enough data: needed ${len} bytes, only ${ctx.dataView.byteLength - ctx.offset} available`,
+        );
+      }
+
       const value = new Uint8Array(
         ctx.dataView.buffer,
         ctx.dataView.byteOffset + ctx.offset,
         len,
       );
+
       ctx.offset += len;
       return value;
     },
@@ -137,7 +168,7 @@ export const Const = (expected: Uint8Array) =>
       if (!arraysEqual(actual, expected)) {
         throw new Error(`Constant mismatch`);
       }
-      return null;
+      return null; // Fixed to return null
     },
     _build: (_, ctx) => {
       ctx.buffers.push(expected);
@@ -149,23 +180,26 @@ export const Struct = <T extends ContextData>(fields: {
 }) =>
   createConstruct<T>({
     _parse: (ctx) => {
-      const obj = {} as T;
-      ctx.stack.push(obj);
+      // Create a new context that inherits from parent
+      const obj: ContextData = Object.create(ctx.context);
 
+      ctx.stack.push(obj);
       for (const key in fields) {
         obj[key] = fields[key]._parse(ctx);
       }
-
       ctx.stack.pop();
-      return obj;
+
+      return obj as T;
     },
     _build: (value, ctx) => {
-      ctx.stack.push(value);
+      // Create a new context that inherits from parent
+      const mergedContext = Object.create(ctx.context);
+      Object.assign(mergedContext, value);
 
+      ctx.stack.push(mergedContext);
       for (const key in fields) {
         fields[key]._build(value[key], ctx);
       }
-
       ctx.stack.pop();
     },
   });
@@ -175,9 +209,15 @@ export const List = <T>(count: number | LengthFunc, subcon: Construct<T>) =>
     _parse: (ctx) => {
       const c = typeof count === 'function' ? count(ctx.context) : count;
       const items: T[] = [];
+
+      // Create a new context for each item
       for (let i = 0; i < c; i++) {
+        const itemContext = { ...ctx.context, _index: i };
+        ctx.stack.push(itemContext);
         items.push(subcon._parse(ctx));
+        ctx.stack.pop();
       }
+
       return items;
     },
     _build: (values, ctx) => {
@@ -187,8 +227,13 @@ export const List = <T>(count: number | LengthFunc, subcon: Construct<T>) =>
           `List length mismatch: expected ${c}, got ${values.length}`,
         );
       }
-      for (const item of values) {
-        subcon._build(item, ctx);
+
+      for (let i = 0; i < values.length; i++) {
+        const value = values[i];
+        const itemContext = { ...ctx.context, _index: i };
+        ctx.stack.push(itemContext);
+        subcon._build(value, ctx);
+        ctx.stack.pop();
       }
     },
   });
@@ -225,7 +270,7 @@ export const Switch = <T, K extends Construct<any>>(
         const subcon = cases[key] || defaultCase;
         if (!subcon) throw new Error(`Switch case not found for key: ${key}`);
 
-        // Parse using the temporary context
+        // Parse using the current context
         const result = subcon._parse(ctx);
 
         // Merge the result into our temporary context
