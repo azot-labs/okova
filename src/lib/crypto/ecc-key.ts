@@ -52,4 +52,8 @@ export class EccKey {
   privateSha256Digest() {
     return createSha256(this.publicBytes());
   }
+
+  publicSha256Digest() {
+    return createSha256(this.publicBytes());
+  }
 }

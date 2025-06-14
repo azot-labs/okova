@@ -176,7 +176,18 @@ export const createSha256 = async (data: Uint8Array) => {
   return hashArray;
 };
 
-export const ecc256Sign = async (private_key: bigint, data: Uint8Array) => {
+export const ecc256Verify = async (
+  publicKey: Uint8Array,
+  data: Uint8Array,
+  signature: Uint8Array,
+) => {
+  return p256.verify(signature, await createSha256(data), publicKey);
+};
+
+export const ecc256Sign = async (
+  private_key: bigint | string | Uint8Array,
+  data: Uint8Array,
+) => {
   return p256.sign(await createSha256(data), private_key);
 };
 

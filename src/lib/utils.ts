@@ -64,7 +64,7 @@ export const fromHex = (data: string) => ({
     return btoa(String.fromCharCode(...parseHex(data)));
   },
   toBuffer: () => {
-    return new Uint8Array(parseHex(data));
+    return new Uint8Array(parseHex(data)) as unknown as Uint8Array;
   },
   toText: () => {
     return decode(new Uint8Array(parseHex(data)));
