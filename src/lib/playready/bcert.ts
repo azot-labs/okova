@@ -10,6 +10,7 @@ import {
   List,
   Construct,
   Prefixed,
+  Sized,
 } from '../construct';
 import { createSha256, ecc256Sign } from '../crypto/common';
 import { EccKey } from '../crypto/ecc-key';
@@ -228,13 +229,19 @@ export const Attribute = Struct({
   ),
 });
 
-export const BCert = Struct({
-  signature: Const(Buffer.from('CERT')),
-  version: Int32ub,
-  total_length: Int32ub,
-  certificate_length: Int32ub,
-  attributes: Prefixed((ctx) => ctx.certificate_length, GreedyRange(Attribute)),
-});
+export const BCert = Sized(
+  Struct({
+    signature: Const(Buffer.from('CERT')),
+    version: Int32ub,
+    total_length: Int32ub,
+    certificate_length: Int32ub,
+    attributes: Prefixed(
+      (ctx) => ctx.certificate_length,
+      GreedyRange(Attribute),
+    ),
+  }),
+  (ctx) => ctx.total_length,
+);
 
 type BCertType = ReturnType<typeof BCert.parse>;
 

@@ -338,37 +338,7 @@ export const GreedyRange = <T>(subcon: Construct<T>) =>
         const startOffset = ctx.offset;
         try {
           const item = subcon._parse(ctx);
-
-          // --- NEW LOGIC ---
-          // After parsing, check if the item has a 'total_length' field.
-          // If so, this implies the struct is self-sizing, and we need
-          // to manually consume any padding to align the stream correctly.
-          if (
-            item &&
-            typeof item === 'object' &&
-            'total_length' in item &&
-            typeof (item as any).total_length === 'number'
-          ) {
-            const expectedBytes = (item as any).total_length as number;
-            const consumedBytes = ctx.offset - startOffset;
-
-            if (expectedBytes > consumedBytes) {
-              const paddingBytes = expectedBytes - consumedBytes;
-              ctx.log(`Consuming ${paddingBytes} bytes of padding...`);
-              checkBounds(ctx, paddingBytes);
-              ctx.offset += paddingBytes;
-            } else if (expectedBytes < consumedBytes) {
-              // This is a sanity check. It would mean the sub-parser
-              // read more than the total_length, which is an error.
-              throw new Error(
-                `Sub-parser consumed ${consumedBytes} bytes, but item's total_length was only ${expectedBytes}`,
-              );
-            }
-          }
-          // --- END NEW LOGIC ---
-
           items.push(item);
-
           if (ctx.offset === startOffset) {
             // Prevent infinite loops if subcon consumes 0 bytes
             ctx.log('Sub-parser consumed 0 bytes, breaking GreedyRange.');
@@ -467,5 +437,162 @@ export const Prefixed = <T>(length: LengthFunc, subcon: Construct<T>) =>
       // during parsing, so we don't build a length field here. We just
       // ensure the built data is what we expect.
       ctx.buffers.push(subBuffer);
+    },
+  });
+
+/**
+ * Enforces that a sub-construct consumes a specific number of bytes,
+ * consuming any leftover bytes as padding. The total size is determined
+ * by a function that inspects the parsed data itself.
+ */
+export const Sized = <T>(
+  subcon: Construct<T>,
+  lengthFunc: (item: T) => number, // Changed signature!
+) => {
+  if (
+    !subcon ||
+    typeof subcon._parse !== 'function' ||
+    typeof subcon._build !== 'function'
+  ) {
+    throw new Error(
+      'Sized: Invalid sub-construct provided. The first argument must be a valid construct object (e.g., Struct, Bytes).',
+    );
+  }
+  if (typeof lengthFunc !== 'function') {
+    throw new Error(
+      'Sized: Invalid length function provided. The second argument must be a function that returns a number.',
+    );
+  }
+  return createConstruct<T>(`Sized<${(subcon as any)._name}>`, {
+    _parse: (ctx) => {
+      const startOffset = ctx.offset;
+      ctx.enter(`Sized<${(subcon as any)._name}>`);
+
+      // 1. Parse the inner content first.
+      const item = subcon._parse(ctx);
+
+      // 2. Determine the total size by inspecting the returned item.
+      //    This is much cleaner and less error-prone.
+      const expectedTotalSize = lengthFunc(item);
+
+      if (typeof expectedTotalSize !== 'number' || isNaN(expectedTotalSize)) {
+        throw new Error(
+          `Sized: Invalid length returned by function: ${expectedTotalSize}`,
+        );
+      }
+
+      const consumedSize = ctx.offset - startOffset;
+
+      if (expectedTotalSize < consumedSize) {
+        throw new Error(
+          `Sized: Sub-parser consumed ${consumedSize} bytes, which is more than the expected total size of ${expectedTotalSize}.`,
+        );
+      }
+
+      // 3. Calculate and consume any remaining padding.
+      const paddingSize = expectedTotalSize - consumedSize;
+      if (paddingSize > 0) {
+        ctx.log(`Consuming ${paddingSize} bytes of padding.`);
+        checkBounds(ctx, paddingSize);
+        ctx.offset += paddingSize;
+      }
+
+      ctx.leave(`Sized<${(subcon as any)._name}>`, item);
+      return item;
+    },
+    _build: (v, ctx) => {
+      // This build logic now works correctly with the new signature.
+      const subBuildingContext = new BuildingContext();
+      subBuildingContext.stack = [...ctx.stack];
+      subcon._build(v, subBuildingContext);
+      const subBuffer = concatUint8Arrays(subBuildingContext.buffers);
+
+      const expectedTotalSize = lengthFunc(v);
+      const paddingSize = expectedTotalSize - subBuffer.length;
+
+      if (paddingSize < 0) {
+        throw new Error(
+          `Sized build: Built data (${subBuffer.length} bytes) is larger than expected total size (${expectedTotalSize} bytes).`,
+        );
+      }
+
+      ctx.buffers.push(subBuffer);
+      if (paddingSize > 0) {
+        ctx.buffers.push(new Uint8Array(paddingSize)); // Add zero-filled padding
+      }
+    },
+  });
+};
+
+/**
+ * A construct that wraps another, parsing the sub-construct first,
+ * and then consuming any remaining "padding" bytes to fill a total
+ * size. The total size is determined by a function that inspects the
+ * parsed data itself.
+ *
+ * @param subcon The inner construct to parse.
+ * @param lengthFunc A function that receives the parsed object and returns
+ *   the total expected size for that object in the stream.
+ */
+export const Padded = <T>(
+  subcon: Construct<T>,
+  lengthFunc: (item: T) => number,
+) =>
+  createConstruct<T>(`Padded<${(subcon as any)._name}>`, {
+    _parse: (ctx) => {
+      const startOffset = ctx.offset;
+      ctx.enter(`Padded<${(subcon as any)._name}>`);
+
+      // 1. Parse the inner content first.
+      const item = subcon._parse(ctx);
+
+      // 2. Determine the total expected size by inspecting the parsed item.
+      const expectedTotalSize = lengthFunc(item);
+      if (typeof expectedTotalSize !== 'number' || isNaN(expectedTotalSize)) {
+        throw new Error(
+          `Padded: Invalid length returned by function: ${expectedTotalSize}`,
+        );
+      }
+
+      const consumedSize = ctx.offset - startOffset;
+
+      if (expectedTotalSize < consumedSize) {
+        throw new Error(
+          `Padded: Sub-parser consumed ${consumedSize} bytes, which is more than the expected total size of ${expectedTotalSize}.`,
+        );
+      }
+
+      // 3. Calculate and consume any remaining padding.
+      const paddingSize = expectedTotalSize - consumedSize;
+      if (paddingSize > 0) {
+        ctx.log(`Consuming ${paddingSize} bytes of padding.`);
+        checkBounds(ctx, paddingSize);
+        ctx.offset += paddingSize;
+      }
+
+      ctx.leave(`Padded<${(subcon as any)._name}>`, item);
+      return item;
+    },
+    _build: (v, ctx) => {
+      // For building, we first build the sub-construct to see how big it is,
+      // then calculate and add the necessary padding.
+      const subBuildingContext = new BuildingContext();
+      subBuildingContext.stack = [...ctx.stack];
+      subcon._build(v, subBuildingContext);
+      const subBuffer = concatUint8Arrays(subBuildingContext.buffers);
+
+      const expectedTotalSize = lengthFunc(v);
+      const paddingSize = expectedTotalSize - subBuffer.length;
+
+      if (paddingSize < 0) {
+        throw new Error(
+          `Padded build: Built data (${subBuffer.length} bytes) is larger than expected total size (${expectedTotalSize} bytes).`,
+        );
+      }
+
+      ctx.buffers.push(subBuffer);
+      if (paddingSize > 0) {
+        ctx.buffers.push(new Uint8Array(paddingSize)); // Add zero-filled padding
+      }
     },
   });
