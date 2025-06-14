@@ -9,6 +9,10 @@ export type Construct<T> = {
   _build(value: T, context: BuildingContext): void;
 };
 
+function getContextStack(ctx: ParsingContext | BuildingContext): ContextData {
+  return ctx.stack[ctx.stack.length - 1];
+}
+
 class ParsingContext {
   public stack: ContextData[] = [{}];
   constructor(
@@ -16,7 +20,7 @@ class ParsingContext {
     public offset: number = 0,
   ) {}
   get context(): ContextData {
-    return this.stack[this.stack.length - 1];
+    return getContextStack(this);
   }
 }
 
@@ -29,8 +33,25 @@ class BuildingContext {
     }
   }
   get context(): ContextData {
-    return this.stack[this.stack.length - 1];
+    return getContextStack(this);
   }
+}
+
+// Uint8Array utilities
+function arraysEqual(a: Uint8Array, b: Uint8Array): boolean {
+  if (a.length !== b.length) return false;
+  return a.every((val, i) => val === b[i]);
+}
+
+function concatUint8Arrays(arrays: Uint8Array[]): Uint8Array {
+  const totalLength = arrays.reduce((sum, arr) => sum + arr.length, 0);
+  const result = new Uint8Array(totalLength);
+  let offset = 0;
+  for (const arr of arrays) {
+    result.set(arr, offset);
+    offset += arr.length;
+  }
+  return result;
 }
 
 function createConstruct<T>(
@@ -42,12 +63,12 @@ function createConstruct<T>(
       const context = new ParsingContext(
         new DataView(data.buffer, data.byteOffset, data.byteLength),
       );
-      return this._parse(context);
+      return methods._parse(context);
     },
     build(obj: T): Uint8Array {
-      const context = new BuildingContext(obj);
-      this._build(obj, context);
-      return Buffer.concat(context.buffers);
+      const context = new BuildingContext();
+      methods._build(obj, context);
+      return concatUint8Arrays(context.buffers);
     },
   };
 }
@@ -59,9 +80,10 @@ export const Int16ub = createConstruct<number>({
     return v;
   },
   _build: (v, ctx) => {
-    const b = Buffer.alloc(2);
-    b.writeUInt16BE(v, 0);
-    ctx.buffers.push(b);
+    const buffer = new ArrayBuffer(2);
+    const view = new DataView(buffer);
+    view.setUint16(0, v, false);
+    ctx.buffers.push(new Uint8Array(buffer));
   },
 });
 
@@ -72,9 +94,10 @@ export const Int32ub = createConstruct<number>({
     return v;
   },
   _build: (v, ctx) => {
-    const b = Buffer.alloc(4);
-    b.writeUInt32BE(v, 0);
-    ctx.buffers.push(b);
+    const buffer = new ArrayBuffer(4);
+    const view = new DataView(buffer);
+    view.setUint32(0, v, false);
+    ctx.buffers.push(new Uint8Array(buffer));
   },
 });
 
@@ -90,18 +113,35 @@ export const Bytes = (length: number | LengthFunc) =>
       ctx.offset += len;
       return value;
     },
-    _build: (v, ctx) => ctx.buffers.push(v),
+    _build: (v, ctx) => {
+      const len = typeof length === 'function' ? length(ctx.context) : length;
+      if (v.length !== len) {
+        throw new Error(
+          `Bytes length mismatch: expected ${len}, got ${v.length}`,
+        );
+      }
+      ctx.buffers.push(v);
+    },
   });
 
 export const Const = (expected: Uint8Array) =>
-  createConstruct<Uint8Array>({
+  createConstruct<null>({
     _parse: (ctx) => {
-      const data = Bytes(expected.length)._parse(ctx);
-      if (Buffer.compare(data, expected) !== 0)
+      const actual = new Uint8Array(
+        ctx.dataView.buffer,
+        ctx.dataView.byteOffset + ctx.offset,
+        expected.length,
+      );
+      ctx.offset += expected.length;
+
+      if (!arraysEqual(actual, expected)) {
         throw new Error(`Constant mismatch`);
-      return data;
+      }
+      return null;
     },
-    _build: (v, ctx) => ctx.buffers.push(expected),
+    _build: (_, ctx) => {
+      ctx.buffers.push(expected);
+    },
   });
 
 export const Struct = <T extends ContextData>(fields: {
@@ -109,19 +149,23 @@ export const Struct = <T extends ContextData>(fields: {
 }) =>
   createConstruct<T>({
     _parse: (ctx) => {
-      const newContext = {} as T;
-      ctx.stack.push(newContext);
+      const obj = {} as T;
+      ctx.stack.push(obj);
+
       for (const key in fields) {
-        (newContext as any)[key] = fields[key]._parse(ctx);
+        obj[key] = fields[key]._parse(ctx);
       }
+
       ctx.stack.pop();
-      return newContext;
+      return obj;
     },
-    _build: (v, ctx) => {
-      ctx.stack.push(v);
+    _build: (value, ctx) => {
+      ctx.stack.push(value);
+
       for (const key in fields) {
-        fields[key]._build(v[key], ctx);
+        fields[key]._build(value[key], ctx);
       }
+
       ctx.stack.pop();
     },
   });
@@ -130,20 +174,39 @@ export const List = <T>(count: number | LengthFunc, subcon: Construct<T>) =>
   createConstruct<T[]>({
     _parse: (ctx) => {
       const c = typeof count === 'function' ? count(ctx.context) : count;
-      return Array.from({ length: c }, () => subcon._parse(ctx));
+      const items: T[] = [];
+      for (let i = 0; i < c; i++) {
+        items.push(subcon._parse(ctx));
+      }
+      return items;
     },
-    _build: (v, ctx) => v.forEach((item) => subcon._build(item, ctx)),
+    _build: (values, ctx) => {
+      const c = typeof count === 'function' ? count(ctx.context) : count;
+      if (values.length !== c) {
+        throw new Error(
+          `List length mismatch: expected ${c}, got ${values.length}`,
+        );
+      }
+      for (const item of values) {
+        subcon._build(item, ctx);
+      }
+    },
   });
 
 export const GreedyRange = <T>(subcon: Construct<T>) =>
   createConstruct<T[]>({
     _parse: (ctx) => {
       const items: T[] = [];
-      while (ctx.offset < ctx.dataView.byteLength)
+      while (ctx.offset < ctx.dataView.byteLength) {
         items.push(subcon._parse(ctx));
+      }
       return items;
     },
-    _build: (v, ctx) => v.forEach((item) => subcon._build(item, ctx)),
+    _build: (values, ctx) => {
+      for (const item of values) {
+        subcon._build(item, ctx);
+      }
+    },
   });
 
 export const Switch = <T, K extends Construct<any>>(
@@ -153,16 +216,40 @@ export const Switch = <T, K extends Construct<any>>(
 ) => {
   return createConstruct<T>({
     _parse: (ctx) => {
-      const key = switchOn(ctx.context);
-      const subcon = cases[key] || defaultCase;
-      if (!subcon) throw new Error(`Switch case not found for key: ${key}`);
-      return subcon._parse(ctx);
+      // Create a temporary context that includes parent context
+      const tempContext = { ...ctx.context };
+      ctx.stack.push(tempContext);
+
+      try {
+        const key = switchOn(tempContext);
+        const subcon = cases[key] || defaultCase;
+        if (!subcon) throw new Error(`Switch case not found for key: ${key}`);
+
+        // Parse using the temporary context
+        const result = subcon._parse(ctx);
+
+        // Merge the result into our temporary context
+        Object.assign(tempContext, result);
+
+        return result;
+      } finally {
+        ctx.stack.pop();
+      }
     },
-    _build: (v, ctx) => {
-      const key = switchOn(ctx.context);
-      const subcon = cases[key] || defaultCase;
-      if (!subcon) throw new Error(`Switch case not found for key: ${key}`);
-      subcon._build(v, ctx);
+    _build: (value, ctx) => {
+      // Create a temporary context with merged properties
+      const tempContext = { ...ctx.context, ...value };
+      ctx.stack.push(tempContext);
+
+      try {
+        const key = switchOn(tempContext);
+        const subcon = cases[key] || defaultCase;
+        if (!subcon) throw new Error(`Switch case not found for key: ${key}`);
+
+        subcon._build(value, ctx);
+      } finally {
+        ctx.stack.pop();
+      }
     },
-  }) as K;
+  }) as Construct<T>;
 };
