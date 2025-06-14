@@ -3,6 +3,9 @@ type ContextData = { [key: string]: any };
 type LengthFunc = (context: ContextData) => number;
 type SwitchFunc = (context: ContextData) => any;
 
+/**
+ * The core interface for all construct objects.
+ */
 export type Construct<T> = {
   _name: string;
   parse(data: Uint8Array, debug?: boolean): T;
@@ -18,7 +21,9 @@ function getContextStack(ctx: ParsingContext | BuildingContext): ContextData {
 function checkBounds(ctx: ParsingContext, byteLength: number) {
   if (ctx.offset + byteLength > ctx.dataView.byteLength) {
     throw new Error(
-      `Not enough data: needed ${byteLength} bytes, only ${ctx.dataView.byteLength - ctx.offset} available`,
+      `Not enough data: needed ${byteLength} bytes, only ${
+        ctx.dataView.byteLength - ctx.offset
+      } available`,
     );
   }
 }
@@ -31,6 +36,10 @@ class ParsingContext {
     public debug: boolean = false,
     private logDepth: number = 0,
   ) {}
+
+  get bytesRemaining(): number {
+    return this.dataView.byteLength - this.offset;
+  }
 
   log(message: string) {
     if (this.debug) {
@@ -55,39 +64,81 @@ class ParsingContext {
         const hex = Array.from(result.slice(0, 16), (byte) =>
           byte.toString(16).padStart(2, '0'),
         ).join(' ');
-        resultStr = `parsed: Uint8Array(len=${result.length}) [${hex}${result.length > 16 ? '...' : ''}]`;
+        resultStr = `parsed: Uint8Array(len=${result.length}) [${hex}${
+          result.length > 16 ? '...' : ''
+        }]`;
       } else {
         resultStr = `parsed: ${JSON.stringify(result)}`;
       }
     }
     this.log(
-      `<= ${name} at new offset ${this.offset} (0x${this.offset.toString(16)}) ${resultStr}`,
+      `<= ${name} at new offset ${this.offset} (0x${this.offset.toString(
+        16,
+      )}) ${resultStr}`,
     );
   }
 
   get context(): ContextData {
     return getContextStack(this);
   }
-
-  get bytesRemaining(): number {
-    return this.dataView.byteLength - this.offset;
-  }
 }
 
 class BuildingContext {
   public stack: ContextData[] = [{}];
   public buffers: Uint8Array[] = [];
-  constructor(initialObj?: ContextData) {
+
+  constructor(
+    public initialObj?: ContextData,
+    public debug: boolean = false,
+    private logDepth: number = 0,
+  ) {
     if (initialObj) {
       this.stack = [initialObj];
     }
   }
+
   get context(): ContextData {
     return getContextStack(this);
   }
+
+  log(message: string) {
+    if (this.debug) {
+      console.log(`${'  '.repeat(this.logDepth)}${message}`);
+    }
+  }
+
+  enter(name: string) {
+    if (!this.debug) return;
+    /* this.log(
+      `=> ${name} at offset ${this.offset} (0x${this.offset.toString(16)})`,
+    ); */
+    this.logDepth++;
+  }
+
+  leave(name: string, result?: any) {
+    if (!this.debug) return;
+    this.logDepth--;
+    let resultStr = '';
+    if (result !== undefined) {
+      if (result instanceof Uint8Array) {
+        const hex = Array.from(result.slice(0, 16), (byte) =>
+          byte.toString(16).padStart(2, '0'),
+        ).join(' ');
+        resultStr = `parsed: Uint8Array(len=${result.length}) [${hex}${
+          result.length > 16 ? '...' : ''
+        }]`;
+      } else {
+        resultStr = `parsed: ${JSON.stringify(result)}`;
+      }
+    }
+    // this.log(
+    //   `<= ${name} at new offset ${this.offset} (0x${this.offset.toString(
+    //     16,
+    //   )}) ${resultStr}`,
+    // );
+  }
 }
 
-// Uint8Array utilities
 function arraysEqual(a: Uint8Array, b: Uint8Array): boolean {
   if (a.length !== b.length) return false;
   return a.every((val, i) => val === b[i]);
@@ -124,7 +175,7 @@ function createConstruct<T>(
     },
     build(obj: T): Uint8Array {
       const context = new BuildingContext();
-      methods._build(obj, context);
+      this._build(obj, context);
       return concatUint8Arrays(context.buffers);
     },
   };
@@ -134,7 +185,7 @@ export const Int16ub = createConstruct<number>('Int16ub', {
   _parse: (ctx) => {
     ctx.enter('Int16ub');
     checkBounds(ctx, 2);
-    const v = ctx.dataView.getUint16(ctx.offset);
+    const v = ctx.dataView.getUint16(ctx.offset, false);
     ctx.offset += 2;
     ctx.leave('Int16ub', v);
     return v;
@@ -151,7 +202,7 @@ export const Int32ub = createConstruct<number>('Int32ub', {
   _parse: (ctx) => {
     ctx.enter('Int32ub');
     checkBounds(ctx, 4);
-    const v = ctx.dataView.getUint32(ctx.offset, false); // Explicitly big-endian
+    const v = ctx.dataView.getUint32(ctx.offset, false);
     ctx.offset += 4;
     ctx.leave('Int32ub', v);
     return v;
@@ -167,17 +218,14 @@ export const Int32ub = createConstruct<number>('Int32ub', {
 export const Bytes = (length: number | LengthFunc) =>
   createConstruct<Uint8Array>('Bytes', {
     _parse: (ctx) => {
-      const len = typeof length === 'function' ? length(ctx.context) : length;
-      ctx.enter(`Bytes(len=${len})`);
-
+      let len = typeof length === 'function' ? length(ctx.context) : length;
       if (typeof len !== 'number' || isNaN(len)) {
-        throw new Error(`Invalid length for Bytes: ${len}`);
+        throw new Error(
+          `Invalid length for Bytes: ${len}, context: ${JSON.stringify(ctx.context)}`,
+        );
       }
-      if (len < 0) {
-        // As per your original code, treat negative as zero
-        ctx.leave('Bytes', new Uint8Array(0));
-        return new Uint8Array(0);
-      }
+      ctx.enter(`Bytes(len=${len})`);
+      if (len < 0) len = 0;
       checkBounds(ctx, len);
       const value = new Uint8Array(
         ctx.dataView.buffer,
@@ -203,6 +251,7 @@ export const Const = (expected: Uint8Array) =>
   createConstruct<null>('Const', {
     _parse: (ctx) => {
       ctx.enter('Const');
+      checkBounds(ctx, expected.length);
       const actual = new Uint8Array(
         ctx.dataView.buffer,
         ctx.dataView.byteOffset + ctx.offset,
@@ -214,7 +263,7 @@ export const Const = (expected: Uint8Array) =>
         throw new Error(`Constant mismatch`);
       }
       ctx.leave('Const');
-      return null; // Fixed to return null
+      return null;
     },
     _build: (_, ctx) => {
       ctx.buffers.push(expected);
@@ -227,33 +276,19 @@ export const Struct = <T extends ContextData>(fields: {
   createConstruct<T>('Struct', {
     _parse: (ctx) => {
       ctx.enter('Struct');
-      // Create a new object that inherits from the parent context.
-      // This object will be both our result and the context for our children.
       const newContext = Object.create(ctx.context);
-
-      // Push this new context onto the stack.
       ctx.stack.push(newContext);
-
-      // Parse each field. The result will be added to newContext.
       for (const key in fields) {
         const result = fields[key]._parse(ctx);
-        // Assign the parsed value. It will now be visible to subsequent fields.
         newContext[key] = result;
       }
-
-      // Pop our context from the stack.
       ctx.stack.pop();
-
-      ctx.leave('Struct');
-      // Return a plain object copy of our context to prevent prototype chain leakage.
+      ctx.leave('Struct', newContext);
       return Object.assign({}, newContext);
     },
     _build: (value, ctx) => {
-      // The build logic was mostly correct.
-      // Create a new context that inherits from parent and includes the new value.
       const mergedContext = Object.create(ctx.context);
       Object.assign(mergedContext, value);
-
       ctx.stack.push(mergedContext);
       for (const key in fields) {
         fields[key]._build(value[key], ctx);
@@ -263,21 +298,18 @@ export const Struct = <T extends ContextData>(fields: {
   });
 
 export const List = <T>(count: number | LengthFunc, subcon: Construct<T>) =>
-  createConstruct<T[]>('List', {
+  createConstruct<T[]>(`List<${(subcon as any)._name}>`, {
     _parse: (ctx) => {
-      ctx.enter('List');
       const c = typeof count === 'function' ? count(ctx.context) : count;
+      ctx.enter(`List(count=${c})`);
       const items: T[] = [];
-
-      // Create a new context for each item
       for (let i = 0; i < c; i++) {
         const itemContext = { ...ctx.context, _index: i };
         ctx.stack.push(itemContext);
         items.push(subcon._parse(ctx));
         ctx.stack.pop();
       }
-
-      ctx.leave('List');
+      ctx.leave(`List(count=${c})`, items);
       return items;
     },
     _build: (values, ctx) => {
@@ -287,7 +319,6 @@ export const List = <T>(count: number | LengthFunc, subcon: Construct<T>) =>
           `List length mismatch: expected ${c}, got ${values.length}`,
         );
       }
-
       for (let i = 0; i < values.length; i++) {
         const value = values[i];
         const itemContext = { ...ctx.context, _index: i };
@@ -303,20 +334,53 @@ export const GreedyRange = <T>(subcon: Construct<T>) =>
     _parse: (ctx) => {
       ctx.enter(`GreedyRange<${(subcon as any)._name}>`);
       const items: T[] = [];
-
-      // Loop as long as there are bytes left in the current context's view.
       while (ctx.bytesRemaining > 0) {
         const startOffset = ctx.offset;
         try {
           const item = subcon._parse(ctx);
+
+          // --- NEW LOGIC ---
+          // After parsing, check if the item has a 'total_length' field.
+          // If so, this implies the struct is self-sizing, and we need
+          // to manually consume any padding to align the stream correctly.
+          if (
+            item &&
+            typeof item === 'object' &&
+            'total_length' in item &&
+            typeof (item as any).total_length === 'number'
+          ) {
+            const expectedBytes = (item as any).total_length as number;
+            const consumedBytes = ctx.offset - startOffset;
+
+            if (expectedBytes > consumedBytes) {
+              const paddingBytes = expectedBytes - consumedBytes;
+              ctx.log(`Consuming ${paddingBytes} bytes of padding...`);
+              checkBounds(ctx, paddingBytes);
+              ctx.offset += paddingBytes;
+            } else if (expectedBytes < consumedBytes) {
+              // This is a sanity check. It would mean the sub-parser
+              // read more than the total_length, which is an error.
+              throw new Error(
+                `Sub-parser consumed ${consumedBytes} bytes, but item's total_length was only ${expectedBytes}`,
+              );
+            }
+          }
+          // --- END NEW LOGIC ---
+
           items.push(item);
-          // This prevents an infinite loop if a sub-parser consumes 0 bytes.
+
           if (ctx.offset === startOffset) {
+            // Prevent infinite loops if subcon consumes 0 bytes
+            ctx.log('Sub-parser consumed 0 bytes, breaking GreedyRange.');
             break;
           }
         } catch (e) {
-          // A parsing error (e.g., failed Const check) is a valid way to end the range.
-          // We break the loop instead of throwing the error.
+          // A parsing error is a valid way to terminate the range.
+          ctx.log(
+            `GreedyRange terminated due to sub-parser error: ${
+              e instanceof Error ? e.message : e
+            }`,
+          );
           break;
         }
       }
@@ -324,11 +388,13 @@ export const GreedyRange = <T>(subcon: Construct<T>) =>
       return items;
     },
     _build: (v, ctx) => {
-      // ctx.enter(`GreedyRange<${(subcon as any)._name}>`);
+      ctx.enter(`GreedyRange<${(subcon as any)._name}>`);
       for (const item of v) {
         subcon._build(item, ctx);
+        // Note: A complete build implementation would also need to handle
+        // adding padding back, but we're focused on parsing for now.
       }
-      // ctx.leave(`GreedyRange<${(subcon as any)._name}>`);
+      ctx.leave(`GreedyRange<${(subcon as any)._name}>`);
     },
   });
 
@@ -339,40 +405,67 @@ export const Switch = <T, K extends Construct<any>>(
 ) => {
   return createConstruct<T>('Switch', {
     _parse: (ctx) => {
-      ctx.enter('Switch');
-      // Use the current context directly to get the key.
       const key = switchOn(ctx.context);
+      ctx.enter(`Switch(key=${key})`);
       const subcon = cases[key] || defaultCase;
-
-      if (!subcon) {
-        throw new Error(`Switch case not found for key: ${key}`);
-      }
-
-      // Parse using the selected sub-construct. No new context stack is needed here.
-      ctx.leave('Switch');
-      return subcon._parse(ctx);
+      if (!subcon) throw new Error(`Switch case not found for key: ${key}`);
+      const result = subcon._parse(ctx);
+      ctx.leave(`Switch(key=${key})`, result);
+      return result;
     },
     _build: (value, ctx) => {
-      // The build logic can also be slightly simplified.
       const tempContext = { ...ctx.context, ...value };
-
-      // No need to push to the stack here if the sub-constructs
-      // handle their own context correctly.
       const key = switchOn(tempContext);
+      ctx.enter(`Switch(key=${key})`);
       const subcon = cases[key] || defaultCase;
+      if (!subcon) throw new Error(`Switch case not found for key: ${key}`);
 
-      if (!subcon) {
-        throw new Error(`Switch case not found for key: ${key}`);
-      }
-
-      // We pass a context that has the value's properties merged in.
       const buildContext = Object.create(ctx.context);
       Object.assign(buildContext, value);
       ctx.stack.push(buildContext);
-
       subcon._build(value, ctx);
-
       ctx.stack.pop();
+      ctx.leave(`Switch(key=${key})`);
     },
   }) as Construct<T>;
 };
+
+export const Prefixed = <T>(length: LengthFunc, subcon: Construct<T>) =>
+  createConstruct<T>(`Prefixed<${(subcon as any)._name}>`, {
+    _parse: (ctx) => {
+      const len = length(ctx.context);
+      ctx.enter(`Prefixed(len=${len})`);
+      checkBounds(ctx, len);
+
+      // Create a new DataView and ParsingContext for the sub-parser,
+      // scoped to the specified length.
+      const subDataView = new DataView(
+        ctx.dataView.buffer,
+        ctx.dataView.byteOffset + ctx.offset,
+        len,
+      );
+      const subContext = new ParsingContext(subDataView, 0, ctx.debug);
+      subContext.stack = [...ctx.stack];
+
+      const result = subcon._parse(subContext);
+
+      // Advance the offset of the *main* context by the full length
+      // of the prefixed section.
+      ctx.offset += len;
+
+      ctx.leave(`Prefixed(len=${len})`, result);
+      return result;
+    },
+    _build: (v, ctx) => {
+      // Build the sub-construct in a temporary context to get its buffer.
+      const subBuildingContext = new BuildingContext();
+      subBuildingContext.stack = [...ctx.stack];
+      subcon._build(v, subBuildingContext);
+      const subBuffer = concatUint8Arrays(subBuildingContext.buffers);
+
+      // In this version of Prefixed, the length is determined by the context
+      // during parsing, so we don't build a length field here. We just
+      // ensure the built data is what we expect.
+      ctx.buffers.push(subBuffer);
+    },
+  });

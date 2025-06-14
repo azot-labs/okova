@@ -9,6 +9,7 @@ import {
   Switch,
   List,
   Construct,
+  Prefixed,
 } from '../construct';
 import { createSha256, ecc256Sign } from '../crypto/common';
 import { EccKey } from '../crypto/ecc-key';
@@ -199,28 +200,31 @@ export const Attribute = Struct({
   flags: Int16ub,
   tag: Int16ub,
   length: Int32ub,
-  attribute: Switch(
-    (ctx) => ctx.tag,
-    {
-      [BCertObjType.BASIC]: BasicInfo,
-      [BCertObjType.DOMAIN]: DomainInfo,
-      [BCertObjType.PC]: PCInfo,
-      [BCertObjType.DEVICE]: DeviceInfo,
-      [BCertObjType.FEATURE]: FeatureInfo,
-      [BCertObjType.KEY]: KeyInfo,
-      [BCertObjType.MANUFACTURER]: ManufacturerInfo,
-      [BCertObjType.SIGNATURE]: SignatureInfo,
-      [BCertObjType.SILVERLIGHT]: SilverlightInfo,
-      [BCertObjType.METERING]: MeteringInfo,
-      [BCertObjType.EXTDATASIGNKEY]: ExtDataSignKeyInfo,
-      [BCertObjType.EXTDATACONTAINER]: ExtDataContainer,
-      [BCertObjType.EXTDATASIGNATURE]: ExtDataSignature,
-      [BCertObjType.EXTDATA_HWID]: Bytes((ctx) => ctx.length - 8),
-      [BCertObjType.SERVER]: ServerInfo,
-      [BCertObjType.SECURITY_VERSION]: SecurityVersion,
-      [BCertObjType.SECURITY_VERSION_2]: SecurityVersion,
-    },
-    Bytes((ctx) => ctx.length - 8),
+  attribute: Prefixed(
+    (ctx) => ctx.length - 8,
+    Switch(
+      (ctx) => ctx.tag,
+      {
+        [BCertObjType.BASIC]: BasicInfo,
+        [BCertObjType.DOMAIN]: DomainInfo,
+        [BCertObjType.PC]: PCInfo,
+        [BCertObjType.DEVICE]: DeviceInfo,
+        [BCertObjType.FEATURE]: FeatureInfo,
+        [BCertObjType.KEY]: KeyInfo,
+        [BCertObjType.MANUFACTURER]: ManufacturerInfo,
+        [BCertObjType.SIGNATURE]: SignatureInfo,
+        [BCertObjType.SILVERLIGHT]: SilverlightInfo,
+        [BCertObjType.METERING]: MeteringInfo,
+        [BCertObjType.EXTDATASIGNKEY]: ExtDataSignKeyInfo,
+        [BCertObjType.EXTDATACONTAINER]: ExtDataContainer,
+        [BCertObjType.EXTDATASIGNATURE]: ExtDataSignature,
+        [BCertObjType.EXTDATA_HWID]: Bytes((ctx) => ctx.length - 8),
+        [BCertObjType.SERVER]: ServerInfo,
+        [BCertObjType.SECURITY_VERSION]: SecurityVersion,
+        [BCertObjType.SECURITY_VERSION_2]: SecurityVersion,
+      },
+      Bytes((ctx) => ctx.length - 8),
+    ),
   ),
 });
 
@@ -229,7 +233,7 @@ export const BCert = Struct({
   version: Int32ub,
   total_length: Int32ub,
   certificate_length: Int32ub,
-  attributes: GreedyRange(Attribute),
+  attributes: Prefixed((ctx) => ctx.certificate_length, GreedyRange(Attribute)),
 });
 
 type BCertType = ReturnType<typeof BCert.parse>;
@@ -240,7 +244,8 @@ export const BCertChain = Struct({
   total_length: Int32ub,
   flags: Int32ub,
   certificate_count: Int32ub,
-  certificates: GreedyRange(BCert),
+  // The header is 20 bytes (4*5). The certificates fill the rest of the 'total_length'.
+  certificates: Prefixed((ctx) => ctx.total_length - 20, GreedyRange(BCert)),
 });
 
 type BCertChainType = ReturnType<typeof BCertChain.parse>;
@@ -504,7 +509,7 @@ export class CertificateChain {
 
   static from(data: Uint8Array) {
     const certChain = BCertChain;
-    const parsed = certChain.parse(data);
+    const parsed = BCertChain.parse(data, true);
     console.dir(parsed, { depth: Infinity });
     return new CertificateChain(parsed, certChain);
   }

@@ -266,3 +266,81 @@ describe('Construct Library', () => {
     });
   });
 });
+
+describe('GreedyRange Construct', () => {
+  test('should correctly parse items with padding by respecting total_length', () => {
+    // ARRANGE
+
+    // 1. Define a simple structure that reports its own total length.
+    //    The key is that the fields inside ('total_length' and 'data')
+    //    do not add up to the value of 'total_length', leaving padding.
+    const PaddedItem = Struct({
+      total_length: Int32ub, // This will tell GreedyRange the item's full size
+      data: Int32ub, // Some payload data
+    });
+
+    // The parser we are testing
+    const PaddedListParser = GreedyRange(PaddedItem);
+
+    // 2. Construct the binary data for two items.
+    //
+    //    Item 1:
+    //    - total_length: 12 bytes (0x0000000C)
+    //    - data: 1234 (0x000004D2)
+    //    - The struct's fields consume 4 + 4 = 8 bytes.
+    //    - This leaves 12 - 8 = 4 bytes of padding.
+    //    - We'll use 0xFF for padding to make it distinct.
+    //
+    //    Item 2:
+    //    - total_length: 8 bytes (0x00000008)
+    //    - data: 5678 (0x0000162E)
+    //    - The struct's fields consume 4 + 4 = 8 bytes.
+    //    - This leaves 8 - 8 = 0 bytes of padding (an important edge case).
+    //
+    const binaryData = new Uint8Array([
+      // --- Item 1 (12 bytes total) ---
+      0x00,
+      0x00,
+      0x00,
+      0x0c, // total_length = 12
+      0x00,
+      0x00,
+      0x04,
+      0xd2, // data = 1234
+      0xff,
+      0xff,
+      0xff,
+      0xff, // 4 bytes of padding
+      // --- Item 2 (8 bytes total) ---
+      0x00,
+      0x00,
+      0x00,
+      0x08, // total_length = 8
+      0x00,
+      0x00,
+      0x16,
+      0x2e, // data = 5678
+      // No padding
+    ]);
+
+    // ACT
+    const result = PaddedListParser.parse(binaryData);
+
+    // ASSERT
+    // The parser should have found both items, correctly skipping the
+    // padding of the first item to find the second.
+    expect(result).toHaveLength(2);
+
+    // Check the content of the first parsed item
+    expect(result[0]).toEqual({
+      total_length: 12,
+      data: 1234,
+    });
+
+    // Check the content of the second parsed item
+    expect(result[1]).toEqual({
+      total_length: 8,
+      data: 5678,
+    });
+  });
+});
