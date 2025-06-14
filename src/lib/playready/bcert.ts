@@ -179,7 +179,7 @@ export const BCertChain = Struct({
 
 type BCertChainType = ReturnType<typeof BCertChain.parse>;
 
-class Certificate {
+export class Certificate {
   parsed: BCertType;
   _BCERT: Construct<BCertType>;
 
@@ -420,7 +420,7 @@ class Certificate {
   }
 }
 
-class CertificateChain {
+export class CertificateChain {
   ECC256MSBCertRootIssuerPubKey = fromHex(
     '864d61cff2256e422c568b3c28001cfb3e1527658584ba0521b79b1828d936de1d826a8fc3e6e7fa7a90d5ca2946f1f64a2efb9f5dcffe7e434eb44293fac5ab',
   ).toBuffer();
