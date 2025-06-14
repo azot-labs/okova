@@ -1,9 +1,11 @@
+// construct.ts
 type ContextData = { [key: string]: any };
 type LengthFunc = (context: ContextData) => number;
 type SwitchFunc = (context: ContextData) => any;
 
 export type Construct<T> = {
-  parse(data: Uint8Array): T;
+  _name: string;
+  parse(data: Uint8Array, debug?: boolean): T;
   build(obj: T): Uint8Array;
   _parse(context: ParsingContext): T;
   _build(value: T, context: BuildingContext): void;
@@ -26,9 +28,49 @@ class ParsingContext {
   constructor(
     public dataView: DataView,
     public offset: number = 0,
+    public debug: boolean = false,
+    private logDepth: number = 0,
   ) {}
+
+  log(message: string) {
+    if (this.debug) {
+      console.log(`${'  '.repeat(this.logDepth)}${message}`);
+    }
+  }
+
+  enter(name: string) {
+    if (!this.debug) return;
+    this.log(
+      `=> ${name} at offset ${this.offset} (0x${this.offset.toString(16)})`,
+    );
+    this.logDepth++;
+  }
+
+  leave(name: string, result?: any) {
+    if (!this.debug) return;
+    this.logDepth--;
+    let resultStr = '';
+    if (result !== undefined) {
+      if (result instanceof Uint8Array) {
+        const hex = Array.from(result.slice(0, 16), (byte) =>
+          byte.toString(16).padStart(2, '0'),
+        ).join(' ');
+        resultStr = `parsed: Uint8Array(len=${result.length}) [${hex}${result.length > 16 ? '...' : ''}]`;
+      } else {
+        resultStr = `parsed: ${JSON.stringify(result)}`;
+      }
+    }
+    this.log(
+      `<= ${name} at new offset ${this.offset} (0x${this.offset.toString(16)}) ${resultStr}`,
+    );
+  }
+
   get context(): ContextData {
     return getContextStack(this);
+  }
+
+  get bytesRemaining(): number {
+    return this.dataView.byteLength - this.offset;
   }
 }
 
@@ -63,15 +105,22 @@ function concatUint8Arrays(arrays: Uint8Array[]): Uint8Array {
 }
 
 function createConstruct<T>(
-  methods: Omit<Construct<T>, 'parse' | 'build'>,
+  name: string,
+  methods: Omit<Construct<T>, 'parse' | 'build' | '_name'>,
 ): Construct<T> {
   return {
+    _name: name,
     ...methods,
-    parse(data: Uint8Array): T {
+    parse(data: Uint8Array, debug: boolean = false): T {
       const context = new ParsingContext(
         new DataView(data.buffer, data.byteOffset, data.byteLength),
+        0,
+        debug,
       );
-      return methods._parse(context);
+      context.enter(`TopLevel<${name}>`);
+      const result = this._parse(context);
+      context.leave(`TopLevel<${name}>`, result);
+      return result;
     },
     build(obj: T): Uint8Array {
       const context = new BuildingContext();
@@ -81,11 +130,13 @@ function createConstruct<T>(
   };
 }
 
-export const Int16ub = createConstruct<number>({
+export const Int16ub = createConstruct<number>('Int16ub', {
   _parse: (ctx) => {
+    ctx.enter('Int16ub');
     checkBounds(ctx, 2);
     const v = ctx.dataView.getUint16(ctx.offset);
     ctx.offset += 2;
+    ctx.leave('Int16ub', v);
     return v;
   },
   _build: (v, ctx) => {
@@ -96,11 +147,13 @@ export const Int16ub = createConstruct<number>({
   },
 });
 
-export const Int32ub = createConstruct<number>({
+export const Int32ub = createConstruct<number>('Int32ub', {
   _parse: (ctx) => {
+    ctx.enter('Int32ub');
     checkBounds(ctx, 4);
-    const v = ctx.dataView.getUint32(ctx.offset);
+    const v = ctx.dataView.getUint32(ctx.offset, false); // Explicitly big-endian
     ctx.offset += 4;
+    ctx.leave('Int32ub', v);
     return v;
   },
   _build: (v, ctx) => {
@@ -112,26 +165,27 @@ export const Int32ub = createConstruct<number>({
 });
 
 export const Bytes = (length: number | LengthFunc) =>
-  createConstruct<Uint8Array>({
+  createConstruct<Uint8Array>('Bytes', {
     _parse: (ctx) => {
-      let len = typeof length === 'function' ? length(ctx.context) : length;
+      const len = typeof length === 'function' ? length(ctx.context) : length;
+      ctx.enter(`Bytes(len=${len})`);
 
-      // Handle negative lengths like Python does
-      if (len < 0) len = 0;
-
-      if (ctx.offset + len > ctx.dataView.byteLength) {
-        throw new Error(
-          `Not enough data: needed ${len} bytes, only ${ctx.dataView.byteLength - ctx.offset} available`,
-        );
+      if (typeof len !== 'number' || isNaN(len)) {
+        throw new Error(`Invalid length for Bytes: ${len}`);
       }
-
+      if (len < 0) {
+        // As per your original code, treat negative as zero
+        ctx.leave('Bytes', new Uint8Array(0));
+        return new Uint8Array(0);
+      }
+      checkBounds(ctx, len);
       const value = new Uint8Array(
         ctx.dataView.buffer,
         ctx.dataView.byteOffset + ctx.offset,
         len,
       );
-
       ctx.offset += len;
+      ctx.leave('Bytes', value);
       return value;
     },
     _build: (v, ctx) => {
@@ -146,8 +200,9 @@ export const Bytes = (length: number | LengthFunc) =>
   });
 
 export const Const = (expected: Uint8Array) =>
-  createConstruct<null>({
+  createConstruct<null>('Const', {
     _parse: (ctx) => {
+      ctx.enter('Const');
       const actual = new Uint8Array(
         ctx.dataView.buffer,
         ctx.dataView.byteOffset + ctx.offset,
@@ -158,6 +213,7 @@ export const Const = (expected: Uint8Array) =>
       if (!arraysEqual(actual, expected)) {
         throw new Error(`Constant mismatch`);
       }
+      ctx.leave('Const');
       return null; // Fixed to return null
     },
     _build: (_, ctx) => {
@@ -168,22 +224,33 @@ export const Const = (expected: Uint8Array) =>
 export const Struct = <T extends ContextData>(fields: {
   [key in keyof T]: Construct<T[key]>;
 }) =>
-  createConstruct<T>({
+  createConstruct<T>('Struct', {
     _parse: (ctx) => {
-      const obj = {} as T;
-      // Create a new context that inherits from parent
+      ctx.enter('Struct');
+      // Create a new object that inherits from the parent context.
+      // This object will be both our result and the context for our children.
       const newContext = Object.create(ctx.context);
-      Object.assign(newContext, obj);
 
+      // Push this new context onto the stack.
       ctx.stack.push(newContext);
+
+      // Parse each field. The result will be added to newContext.
       for (const key in fields) {
-        obj[key] = fields[key]._parse(ctx);
+        const result = fields[key]._parse(ctx);
+        // Assign the parsed value. It will now be visible to subsequent fields.
+        newContext[key] = result;
       }
+
+      // Pop our context from the stack.
       ctx.stack.pop();
-      return obj;
+
+      ctx.leave('Struct');
+      // Return a plain object copy of our context to prevent prototype chain leakage.
+      return Object.assign({}, newContext);
     },
     _build: (value, ctx) => {
-      // Create a new context that inherits from parent
+      // The build logic was mostly correct.
+      // Create a new context that inherits from parent and includes the new value.
       const mergedContext = Object.create(ctx.context);
       Object.assign(mergedContext, value);
 
@@ -196,8 +263,9 @@ export const Struct = <T extends ContextData>(fields: {
   });
 
 export const List = <T>(count: number | LengthFunc, subcon: Construct<T>) =>
-  createConstruct<T[]>({
+  createConstruct<T[]>('List', {
     _parse: (ctx) => {
+      ctx.enter('List');
       const c = typeof count === 'function' ? count(ctx.context) : count;
       const items: T[] = [];
 
@@ -209,6 +277,7 @@ export const List = <T>(count: number | LengthFunc, subcon: Construct<T>) =>
         ctx.stack.pop();
       }
 
+      ctx.leave('List');
       return items;
     },
     _build: (values, ctx) => {
@@ -230,28 +299,36 @@ export const List = <T>(count: number | LengthFunc, subcon: Construct<T>) =>
   });
 
 export const GreedyRange = <T>(subcon: Construct<T>) =>
-  createConstruct<T[]>({
+  createConstruct<T[]>(`GreedyRange<${(subcon as any)._name}>`, {
     _parse: (ctx) => {
+      ctx.enter(`GreedyRange<${(subcon as any)._name}>`);
       const items: T[] = [];
-      const startOffset = ctx.offset;
 
-      while (ctx.offset < ctx.dataView.byteLength) {
+      // Loop as long as there are bytes left in the current context's view.
+      while (ctx.bytesRemaining > 0) {
+        const startOffset = ctx.offset;
         try {
-          items.push(subcon._parse(ctx));
-        } catch (e) {
-          // If we haven't made progress, break to avoid infinite loops
+          const item = subcon._parse(ctx);
+          items.push(item);
+          // This prevents an infinite loop if a sub-parser consumes 0 bytes.
           if (ctx.offset === startOffset) {
             break;
           }
-          throw e;
+        } catch (e) {
+          // A parsing error (e.g., failed Const check) is a valid way to end the range.
+          // We break the loop instead of throwing the error.
+          break;
         }
       }
+      ctx.leave(`GreedyRange<${(subcon as any)._name}>`, items);
       return items;
     },
     _build: (v, ctx) => {
+      // ctx.enter(`GreedyRange<${(subcon as any)._name}>`);
       for (const item of v) {
         subcon._build(item, ctx);
       }
+      // ctx.leave(`GreedyRange<${(subcon as any)._name}>`);
     },
   });
 
@@ -260,42 +337,42 @@ export const Switch = <T, K extends Construct<any>>(
   cases: { [key: string]: K },
   defaultCase?: Construct<any>,
 ) => {
-  return createConstruct<T>({
+  return createConstruct<T>('Switch', {
     _parse: (ctx) => {
-      // Create a temporary context that includes parent context
-      const tempContext = { ...ctx.context };
-      ctx.stack.push(tempContext);
+      ctx.enter('Switch');
+      // Use the current context directly to get the key.
+      const key = switchOn(ctx.context);
+      const subcon = cases[key] || defaultCase;
 
-      try {
-        const key = switchOn(tempContext);
-        const subcon = cases[key] || defaultCase;
-        if (!subcon) throw new Error(`Switch case not found for key: ${key}`);
-
-        // Parse using the current context
-        const result = subcon._parse(ctx);
-
-        // Merge the result into our temporary context
-        Object.assign(tempContext, result);
-
-        return result;
-      } finally {
-        ctx.stack.pop();
+      if (!subcon) {
+        throw new Error(`Switch case not found for key: ${key}`);
       }
+
+      // Parse using the selected sub-construct. No new context stack is needed here.
+      ctx.leave('Switch');
+      return subcon._parse(ctx);
     },
     _build: (value, ctx) => {
-      // Create a temporary context with merged properties
+      // The build logic can also be slightly simplified.
       const tempContext = { ...ctx.context, ...value };
-      ctx.stack.push(tempContext);
 
-      try {
-        const key = switchOn(tempContext);
-        const subcon = cases[key] || defaultCase;
-        if (!subcon) throw new Error(`Switch case not found for key: ${key}`);
+      // No need to push to the stack here if the sub-constructs
+      // handle their own context correctly.
+      const key = switchOn(tempContext);
+      const subcon = cases[key] || defaultCase;
 
-        subcon._build(value, ctx);
-      } finally {
-        ctx.stack.pop();
+      if (!subcon) {
+        throw new Error(`Switch case not found for key: ${key}`);
       }
+
+      // We pass a context that has the value's properties merged in.
+      const buildContext = Object.create(ctx.context);
+      Object.assign(buildContext, value);
+      ctx.stack.push(buildContext);
+
+      subcon._build(value, ctx);
+
+      ctx.stack.pop();
     },
   }) as Construct<T>;
 };
