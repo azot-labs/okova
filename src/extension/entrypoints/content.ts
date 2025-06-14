@@ -24,11 +24,11 @@ export default defineContentScript({
     // Injecting scripts into current page
     inject('manifest.js');
     if (settings?.requestInterception) {
-      console.log(`[orlan] Injecting request interception...`);
+      console.log(`[okova] Injecting request interception...`);
       inject('network.js');
     }
     if (settings?.emeInterception) {
-      console.log(`[orlan] Injecting EME interception...`);
+      console.log(`[okova] Injecting EME interception...`);
       inject('eme.js');
     }
 

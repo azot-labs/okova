@@ -1,6 +1,6 @@
 # Remote Session
 
-It's a minimal example of using `orlan` to connect to remote Orlan API instance in your JavaSript code. See [examples/instance](https://github.com/azot-labs/orlan/tree/main/examples/instance) to learn how to run your own instance.
+It's a minimal example of using `okova` to connect to remote Okova API instance in your JavaSript code. See [examples/instance](https://github.com/azot-labs/okova/tree/main/examples/instance) to learn how to run your own instance.
 
 ## Quick start
 

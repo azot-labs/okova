@@ -1,12 +1,12 @@
-# orlan
+# okova
 
-[![npm version](https://img.shields.io/npm/v/orlan?style=flat&color=black)](https://www.npmjs.com/package/orlan)
-![GitHub Downloads (all assets, latest release)](https://img.shields.io/github/downloads/azot-labs/orlan/latest/total?style=flat&color=black)
-[![npm downloads](https://img.shields.io/npm/dt/orlan?style=flat&color=black)](https://www.npmjs.com/package/orlan)
+[![npm version](https://img.shields.io/npm/v/okova?style=flat&color=black)](https://www.npmjs.com/package/okova)
+![GitHub Downloads (all assets, latest release)](https://img.shields.io/github/downloads/azot-labs/okova/latest/total?style=flat&color=black)
+[![npm downloads](https://img.shields.io/npm/dt/okova?style=flat&color=black)](https://www.npmjs.com/package/okova)
 
-Orlan (formerly known as Azot) is a set of tools (JavaScript library, command-line utility and browser extension) for diagnosing, researching, and pentesting [DRM](https://www.urbandictionary.com/define.php?term=DRM) systems like [Widevine](https://www.widevine.com/about).
+Okova (formerly known as Azot) is a set of tools (JavaScript library, command-line utility and browser extension) for diagnosing, researching, and pentesting [DRM](https://www.urbandictionary.com/define.php?term=DRM) systems like [Widevine](https://www.widevine.com/about).
 
-> Orlan is still in the early stages of development, so until version 1.0 is released, performance may be unstable and major changes may be made
+> Okova is still in the early stages of development, so until version 1.0 is released, performance may be unstable and major changes may be made
 
 ## Features
 
@@ -24,20 +24,20 @@ Orlan (formerly known as Azot) is a set of tools (JavaScript library, command-li
 ### JavaScript library
 
 ```bash
-npm install orlan
+npm install okova
 ```
 
 ### Command-line tool
 
 ```bash
-npm install -g orlan
+npm install -g okova
 ```
 
 ### Chrome extension
 
 **Developer Mode** needs to be enabled in `chrome://extensions/` page
 
-1. Download archive from [latest release](https://github.com/azot-labs/orlan/releases/latest)
+1. Download archive from [latest release](https://github.com/azot-labs/okova/releases/latest)
 2. Go to `chrome://extensions/` page
 3. Ensure Developer Mode enabled and then drag and drop downloaded zip file to this page
 
@@ -45,7 +45,7 @@ npm install -g orlan
 
 ### Firefox extension
 
-1. Download archive from [latest release](https://github.com/azot-labs/orlan/releases/latest)
+1. Download archive from [latest release](https://github.com/azot-labs/okova/releases/latest)
 2. Go to `about:debugging#/runtime/this-firefox` page
 3. Click `Load Temporary Add-on` button and choose downloaded zip file
 
@@ -57,8 +57,8 @@ npm install -g orlan
 
 ### Library
 
-See [examples](https://github.com/azot-labs/orlan/blob/main/examples).
+See [examples](https://github.com/azot-labs/okova/blob/main/examples).
 
 ### Command-line tool
 
-See help: `orlan --help`
+See help: `okova --help`

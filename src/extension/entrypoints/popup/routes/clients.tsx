@@ -1,6 +1,6 @@
 import { BsCheckLg } from 'solid-icons/bs';
 import { TbTrash } from 'solid-icons/tb';
-import { WidevineClient } from '@orlan/lib/widevine/client';
+import { WidevineClient } from '@okova/lib/widevine/client';
 import { appStorage } from '@/utils/storage';
 import { useActiveClient, useClients } from '../utils/state';
 import { Layout } from '../components/layout';

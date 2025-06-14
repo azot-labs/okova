@@ -85,7 +85,7 @@ export default defineUnlistedScript(() => {
           globalThis.fetch = cachedFetch;
         } catch (error2) {
           console.warn(
-            'Orlan was unable to patch the fetch() function in this environment. ',
+            'Okova was unable to patch the fetch() function in this environment. ',
           );
         }
       }
@@ -189,5 +189,5 @@ export default defineUnlistedScript(() => {
   patchXmlHttpRequest();
   patchBlobFetch();
 
-  console.log('[orlan] Response interception added');
+  console.log('[okova] Response interception added');
 });

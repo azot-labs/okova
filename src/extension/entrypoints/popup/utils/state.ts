@@ -1,5 +1,5 @@
 import { appStorage, KeyInfo, Settings } from '@/utils/storage';
-import { WidevineClient } from '@orlan/lib/widevine/client';
+import { WidevineClient } from '@okova/lib/widevine/client';
 import { createSignal } from 'solid-js';
 
 const clientsSignal = createSignal<WidevineClient[]>([]);

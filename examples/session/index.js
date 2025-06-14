@@ -1,5 +1,5 @@
 import { readFile } from 'node:fs/promises';
-import { Client, Session, fromBase64 } from 'orlan';
+import { Client, Session, fromBase64 } from 'okova';
 
 async function main() {
   // Prepare pssh

@@ -1,10 +1,10 @@
 {
-  "name": "orlan-instance",
+  "name": "okova-instance",
   "version": "1.0.0",
   "main": "index.js",
   "private": true,
   "scripts": {
-    "start": "orlan serve"
+    "start": "okova serve"
   },
   "keywords": [],
   "license": "ISC",
@@ -12,6 +12,6 @@
     "node": "20 || 21 || 22 || 23"
   },
   "dependencies": {
-    "orlan": "^0.9.0"
+    "okova": "^0.9.0"
   }
 }

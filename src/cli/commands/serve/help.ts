@@ -1,13 +1,13 @@
 import { col } from '../../utils';
 
 export const help = () => {
-  console.log(`orlan serve: Run your API instance\n`);
-  console.log(`Usage: orlan serve [...flags]\n`);
+  console.log(`okova serve: Run your API instance\n`);
+  console.log(`Usage: okova serve [...flags]\n`);
   console.log(`Flags:`);
   console.log(col(`--host`) + 'server host (default: 0.0.0.0)');
   console.log(col(`--port`) + 'server port (default: 4000)');
   console.log(
-    col(`--config`) + 'path to config file (default: orlan.config.json)',
+    col(`--config`) + 'path to config file (default: okova.config.json)',
   );
   console.log(
     col(`-c, --client`) +

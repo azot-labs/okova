@@ -1,5 +1,5 @@
 {
-  "name": "orlan-session",
+  "name": "okova-session",
   "version": "1.0.0",
   "private": true,
   "type": "module",
@@ -12,6 +12,6 @@
   "license": "ISC",
   "description": "",
   "dependencies": {
-    "orlan": "^0.9.0"
+    "okova": "^0.9.0"
   }
 }

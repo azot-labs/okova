@@ -1,6 +1,6 @@
 import { Component } from 'solid-js';
 import { TbShieldPlus } from 'solid-icons/tb';
-import { WidevineClient } from '@orlan/lib/widevine/client';
+import { WidevineClient } from '@okova/lib/widevine/client';
 import { Cell } from './cell';
 import { useActiveClient, useClients } from '../utils/state';
 import { appStorage } from '@/utils/storage';

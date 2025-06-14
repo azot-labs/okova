@@ -1,12 +1,12 @@
 import { appStorage } from '@/utils/storage';
-import { fromBase64, fromBuffer } from '@orlan/lib';
-import { getMessageType } from '@orlan/lib/widevine/message';
-import { WidevineClient } from '@orlan/lib/widevine/client';
+import { fromBase64, fromBuffer } from '@okova/lib';
+import { getMessageType } from '@okova/lib/widevine/message';
+import { WidevineClient } from '@okova/lib/widevine/client';
 
 export default defineBackground({
   type: 'module',
   main: () => {
-    console.log('[orlan] Background service worker started', {
+    console.log('[okova] Background service worker started', {
       id: browser.runtime.id,
     });
 
@@ -21,13 +21,13 @@ export default defineBackground({
 
     const loadClient = async () => {
       if (state.client) return state.client;
-      console.log('[orlan] Loading Widevine client...');
+      console.log('[okova] Loading Widevine client...');
       state.client = await appStorage.clients.active.getValue();
       if (state.client) {
-        console.log('[orlan] Widevine client loaded');
+        console.log('[okova] Widevine client loaded');
         return state.client;
       } else {
-        return console.log('[orlan] Unable to load client');
+        return console.log('[okova] Unable to load client');
       }
     };
 
@@ -36,7 +36,7 @@ export default defineBackground({
 
     browser.runtime.onMessage.addListener((message, sender, sendResponse) => {
       (async () => {
-        console.log('[orlan] Received message', message);
+        console.log('[okova] Received message', message);
 
         const settings = await appStorage.settings.getValue();
 
@@ -73,7 +73,7 @@ export default defineBackground({
         }
 
         if (!settings?.spoofing) {
-          console.log('[orlan] Spoofing disabled, skipping message...');
+          console.log('[okova] Spoofing disabled, skipping message...');
           sendResponse();
           return;
         }
@@ -112,17 +112,17 @@ export default defineBackground({
         } else if (message.action === 'license-request') {
           const { initData } = message;
           const session = state.sessions.get(initData);
-          console.log('[orlan] Received message license-request', session);
+          console.log('[okova] Received message license-request', session);
           if (!session) return;
           const event = events
             .get(session.sessionId)
             ?.find((e) => e.messageType === 'license-request');
-          if (!event?.message) return console.log(`[orlan] No message`);
+          if (!event?.message) return console.log(`[okova] No message`);
           const messageBase64 = fromBuffer(
             new Uint8Array(event.message),
           ).toBase64();
           console.log(events.get(session.sessionId));
-          console.log(`[orlan] Sending challenge`, messageBase64, event);
+          console.log(`[okova] Sending challenge`, messageBase64, event);
           sendResponse(messageBase64);
         } else if (message.action === 'update') {
           const { initData } = message;
@@ -130,12 +130,12 @@ export default defineBackground({
           const serviceCertificateMessageType = 5;
           const isServiceCertificate = type === serviceCertificateMessageType;
           // if (type === serviceCertificateMessageType) {
-          //   console.log('[orlan] Service certificate. Skipping');
+          //   console.log('[okova] Service certificate. Skipping');
           //   sendResponse();
           // }
           const session = state.sessions.get(initData);
           if (!session) {
-            console.log('[orlan] Unable to find session');
+            console.log('[okova] Unable to find session');
             sendResponse();
           }
           if (isServiceCertificate) {
@@ -162,7 +162,7 @@ export default defineBackground({
                   };
                 };
                 const results = keys.map((key) => toKey(key));
-                console.log('[orlan] Received keys', results);
+                console.log('[okova] Received keys', results);
                 appStorage.recentKeys.setValue(results);
                 appStorage.allKeys.add(...results);
                 sendResponse({ keys: results });
