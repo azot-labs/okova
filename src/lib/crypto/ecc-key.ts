@@ -34,8 +34,10 @@ export class EccKey {
     return EccKey.construct(utils.bytesToNumberBE(privateBytes));
   }
 
-  dumps() {
-    return new Uint8Array([...this.privateBytes(), ...this.publicBytes()]);
+  dumps(privateOnly = false) {
+    return privateOnly
+      ? new Uint8Array([...this.privateBytes()])
+      : new Uint8Array([...this.privateBytes(), ...this.publicBytes()]);
   }
 
   privateBytes() {

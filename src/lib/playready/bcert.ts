@@ -511,7 +511,7 @@ export class CertificateChain {
 
   static from(data: Uint8Array) {
     const certChain = BCertChain;
-    const parsed = BCertChain.parse(data, true);
+    const parsed = BCertChain.parse(data, false);
     return new CertificateChain(parsed, certChain);
   }
 
@@ -572,9 +572,9 @@ export class CertificateChain {
         `No Certificate at index ${index}, ${this.count()} total`,
       );
     }
+    this.parsed.total_length -= this.get(index).dumps().length;
     this.parsed.certificates.splice(index, 1);
     this.parsed.certificate_count--;
-    this.parsed.total_length -= this.get(index).dumps().length;
   }
 
   get(index: number) {

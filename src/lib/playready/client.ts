@@ -1,15 +1,18 @@
 import { equalBytes } from '@noble/curves/utils';
 import { EccKey } from '../crypto/ecc-key';
-import { BinaryReader, getRandomBytes } from '../utils';
+import { getRandomBytes } from '../utils';
 import { Certificate, CertificateChain } from './bcert';
 import { InvalidCertificateChain } from './exceptions';
+import { PRD_MAGIC, PRD3 } from './prd';
 
 export class PlayReadyClient {
-  groupKey?: Uint8Array;
-  encryptionKey: Uint8Array;
-  signingKey: Uint8Array;
+  groupKey?: EccKey;
+  encryptionKey: EccKey;
+  signingKey: EccKey;
 
-  groupCertificate: Uint8Array;
+  groupCertificate: CertificateChain;
+
+  securityLevel: number;
 
   constructor(data: {
     groupKey?: Uint8Array;
@@ -17,10 +20,11 @@ export class PlayReadyClient {
     signingKey: Uint8Array;
     groupCertificate: Uint8Array;
   }) {
-    this.groupKey = data.groupKey;
-    this.encryptionKey = data.encryptionKey;
-    this.signingKey = data.signingKey;
-    this.groupCertificate = data.groupCertificate;
+    this.groupKey = EccKey.from(data.groupKey!);
+    this.encryptionKey = EccKey.from(data.encryptionKey);
+    this.signingKey = EccKey.from(data.signingKey);
+    this.groupCertificate = CertificateChain.from(data.groupCertificate);
+    this.securityLevel = this.groupCertificate.getSecurityLevel();
   }
 
   static async from(
@@ -34,37 +38,17 @@ export class PlayReadyClient {
         },
   ) {
     if ('prd' in payload) {
-      const reader = new BinaryReader(payload.prd);
-      const magic = reader.readBytes(3);
-      const version = reader.readUint8();
-      switch (version) {
-        case 2: {
-          const groupCertificateLen = reader.readUint32();
-          const groupCertificate = reader.readBytes(groupCertificateLen);
-          const encryptionKey = reader.readBytes(96);
-          const signingKey = reader.readBytes(96);
-          return new PlayReadyClient({
-            groupCertificate,
-            encryptionKey,
-            signingKey,
-          });
-        }
-        case 3: {
-          const groupKey = reader.readBytes(96);
-          const encryptionKey = reader.readBytes(96);
-          const signingKey = reader.readBytes(96);
-          const groupCertificateLen = reader.readUint32();
-          const groupCertificate = reader.readBytes(groupCertificateLen);
-          return new PlayReadyClient({
-            groupKey,
-            encryptionKey,
-            signingKey,
-            groupCertificate,
-          });
-        }
-        default:
-          throw new Error('Unsupported version');
-      }
+      const parsed = PRD3.parse(payload.prd);
+      const groupKey = parsed.group_key;
+      const encryptionKey = parsed.encryption_key;
+      const signingKey = parsed.signing_key;
+      const groupCertificate = parsed.group_certificate;
+      return new PlayReadyClient({
+        groupKey,
+        encryptionKey,
+        signingKey,
+        groupCertificate,
+      });
     } else {
       const groupKey = EccKey.from(payload.groupKey);
       const encryptionKey = payload.encryptionKey
@@ -101,7 +85,23 @@ export class PlayReadyClient {
     }
   }
 
-  async pack() {
-    // return this._reader._raw_bytes;
+  pack() {
+    return PRD3.build({
+      signature: PRD_MAGIC,
+      version: 3,
+      group_key: this.groupKey!.dumps(),
+      encryption_key: this.encryptionKey.dumps(),
+      signing_key: this.signingKey.dumps(),
+      group_certificate_length: this.groupCertificate.dumps().length,
+      group_certificate: this.groupCertificate.dumps(),
+    });
+  }
+
+  unpack() {
+    this.groupCertificate.remove(0);
+    return {
+      'zgpriv.dat': this.groupKey!.dumps(true),
+      'bgroupcert.dat': this.groupCertificate.dumps(),
+    };
   }
 }

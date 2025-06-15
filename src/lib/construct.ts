@@ -180,6 +180,25 @@ function createConstruct<T>(
   };
 }
 
+export const Int8ub = createConstruct<number>('Int8ub', {
+  _parse: (ctx) => {
+    ctx.enter('Int8ub');
+    checkBounds(ctx, 1);
+    const v = ctx.dataView.getUint8(ctx.offset);
+    ctx.offset += 1;
+    ctx.leave('Int8ub', v);
+    return v;
+  },
+  _build: (v, ctx) => {
+    ctx.enter('Int8ub', v);
+    const buffer = new ArrayBuffer(1);
+    const view = new DataView(buffer);
+    view.setUint8(0, v);
+    ctx.buffers.push(new Uint8Array(buffer));
+    ctx.leave('Int8ub', 1);
+  },
+});
+
 export const Int16ub = createConstruct<number>('Int16ub', {
   _parse: (ctx) => {
     ctx.enter('Int16ub');
@@ -414,7 +433,7 @@ export const Switch = <T, K extends Construct<any>>(
       ctx.stack.pop();
       ctx.leave(`Switch(key=${key})`);
     },
-  }) as Construct<T>;
+  }) as K;
 };
 
 export const Prefixed = <T>(length: LengthFunc, subcon: Construct<T>) =>
