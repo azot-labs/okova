@@ -9,7 +9,7 @@ type SwitchFunc = (context: ContextData) => any;
 export type Construct<T> = {
   _name: string;
   parse(data: Uint8Array, debug?: boolean): T;
-  build(obj: T): Uint8Array;
+  build(obj: T, debug?: boolean): Uint8Array;
   _parse(context: ParsingContext): T;
   _build(value: T, context: BuildingContext): void;
 };
@@ -68,7 +68,7 @@ class ParsingContext {
           result.length > 16 ? '...' : ''
         }]`;
       } else {
-        resultStr = `parsed: ${JSON.stringify(result)}`;
+        resultStr = `parsed: ${JSON.stringify(result).slice(0, 64)}...`;
       }
     }
     this.log(
@@ -107,35 +107,31 @@ class BuildingContext {
     }
   }
 
-  enter(name: string) {
+  // UPDATED: enter now accepts the value being built for better logging
+  enter(name: string, value?: any) {
     if (!this.debug) return;
-    /* this.log(
-      `=> ${name} at offset ${this.offset} (0x${this.offset.toString(16)})`,
-    ); */
+    let valueStr = '';
+    if (value !== undefined) {
+      if (value instanceof Uint8Array) {
+        valueStr = ` with value: Uint8Array(len=${value.length})`;
+      } else {
+        const json = JSON.stringify(value);
+        // Truncate long JSON strings to keep logs clean
+        valueStr = ` with value: ${
+          json.length > 120 ? json.substring(0, 117) + '...' : json
+        }`;
+      }
+    }
+    this.log(`=> Building ${name}${valueStr}`);
     this.logDepth++;
   }
 
-  leave(name: string, result?: any) {
+  leave(name: string, bytesWritten?: number) {
     if (!this.debug) return;
     this.logDepth--;
-    let resultStr = '';
-    if (result !== undefined) {
-      if (result instanceof Uint8Array) {
-        const hex = Array.from(result.slice(0, 16), (byte) =>
-          byte.toString(16).padStart(2, '0'),
-        ).join(' ');
-        resultStr = `parsed: Uint8Array(len=${result.length}) [${hex}${
-          result.length > 16 ? '...' : ''
-        }]`;
-      } else {
-        resultStr = `parsed: ${JSON.stringify(result)}`;
-      }
-    }
-    // this.log(
-    //   `<= ${name} at new offset ${this.offset} (0x${this.offset.toString(
-    //     16,
-    //   )}) ${resultStr}`,
-    // );
+    const bytesStr =
+      bytesWritten !== undefined ? ` (wrote ${bytesWritten} bytes)` : '';
+    this.log(`<= Finished Building ${name}${bytesStr}`);
   }
 }
 
@@ -173,10 +169,13 @@ function createConstruct<T>(
       context.leave(`TopLevel<${name}>`, result);
       return result;
     },
-    build(obj: T): Uint8Array {
-      const context = new BuildingContext();
+    build(obj: T, debug: boolean = false): Uint8Array {
+      const context = new BuildingContext(undefined, debug);
+      context.enter(`TopLevel<${name}>`, obj);
       this._build(obj, context);
-      return concatUint8Arrays(context.buffers);
+      const finalBuffer = concatUint8Arrays(context.buffers);
+      context.leave(`TopLevel<${name}>`, finalBuffer.length);
+      return finalBuffer;
     },
   };
 }
@@ -191,10 +190,12 @@ export const Int16ub = createConstruct<number>('Int16ub', {
     return v;
   },
   _build: (v, ctx) => {
+    ctx.enter('Int16ub', v);
     const buffer = new ArrayBuffer(2);
     const view = new DataView(buffer);
     view.setUint16(0, v, false);
     ctx.buffers.push(new Uint8Array(buffer));
+    ctx.leave('Int16ub', 2);
   },
 });
 
@@ -208,10 +209,12 @@ export const Int32ub = createConstruct<number>('Int32ub', {
     return v;
   },
   _build: (v, ctx) => {
+    ctx.enter('Int32ub', v);
     const buffer = new ArrayBuffer(4);
     const view = new DataView(buffer);
     view.setUint32(0, v, false);
     ctx.buffers.push(new Uint8Array(buffer));
+    ctx.leave('Int32ub', 4);
   },
 });
 
@@ -238,17 +241,19 @@ export const Bytes = (length: number | LengthFunc) =>
     },
     _build: (v, ctx) => {
       const len = typeof length === 'function' ? length(ctx.context) : length;
+      ctx.enter(`Bytes(len=${len})`, v);
       if (v.length !== len) {
         throw new Error(
           `Bytes length mismatch: expected ${len}, got ${v.length}`,
         );
       }
       ctx.buffers.push(v);
+      ctx.leave(`Bytes(len=${len})`, v.length);
     },
   });
 
 export const Const = (expected: Uint8Array) =>
-  createConstruct<null>('Const', {
+  createConstruct<Uint8Array>('Const', {
     _parse: (ctx) => {
       ctx.enter('Const');
       checkBounds(ctx, expected.length);
@@ -260,13 +265,22 @@ export const Const = (expected: Uint8Array) =>
       ctx.offset += expected.length;
 
       if (!arraysEqual(actual, expected)) {
-        throw new Error(`Constant mismatch`);
+        throw new Error(
+          `Constant mismatch: expected [${expected}] but got [${actual}]`,
+        );
       }
-      ctx.leave('Const');
-      return null;
+      ctx.leave('Const', expected);
+      return expected;
     },
-    _build: (_, ctx) => {
+    _build: (value, ctx) => {
+      ctx.enter('Const', value);
+      if (value && !arraysEqual(value, expected)) {
+        throw new Error(
+          `Const build mismatch: expected [${expected}] but got [${value}]`,
+        );
+      }
       ctx.buffers.push(expected);
+      ctx.leave('Const', expected.length);
     },
   });
 
@@ -283,10 +297,12 @@ export const Struct = <T extends ContextData>(fields: {
         newContext[key] = result;
       }
       ctx.stack.pop();
-      ctx.leave('Struct', newContext);
-      return Object.assign({}, newContext);
+      const finalResult = Object.assign({}, newContext);
+      ctx.leave('Struct', finalResult);
+      return finalResult;
     },
     _build: (value, ctx) => {
+      ctx.enter('Struct', value);
       const mergedContext = Object.create(ctx.context);
       Object.assign(mergedContext, value);
       ctx.stack.push(mergedContext);
@@ -294,6 +310,7 @@ export const Struct = <T extends ContextData>(fields: {
         fields[key]._build(value[key], ctx);
       }
       ctx.stack.pop();
+      ctx.leave('Struct');
     },
   });
 
@@ -313,6 +330,7 @@ export const List = <T>(count: number | LengthFunc, subcon: Construct<T>) =>
       return items;
     },
     _build: (values, ctx) => {
+      ctx.enter(`List(count=${values.length})`, values);
       const c = typeof count === 'function' ? count(ctx.context) : count;
       if (values.length !== c) {
         throw new Error(
@@ -326,6 +344,7 @@ export const List = <T>(count: number | LengthFunc, subcon: Construct<T>) =>
         subcon._build(value, ctx);
         ctx.stack.pop();
       }
+      ctx.leave(`List(count=${values.length})`, values.length);
     },
   });
 
@@ -335,22 +354,22 @@ export const GreedyRange = <T>(subcon: Construct<T>) =>
       ctx.enter(`GreedyRange<${(subcon as any)._name}>`);
       const items: T[] = [];
       while (ctx.bytesRemaining > 0) {
+        // This is the offset before we ATTEMPT to parse the next item.
         const startOffset = ctx.offset;
         try {
           const item = subcon._parse(ctx);
           items.push(item);
           if (ctx.offset === startOffset) {
-            // Prevent infinite loops if subcon consumes 0 bytes
             ctx.log('Sub-parser consumed 0 bytes, breaking GreedyRange.');
             break;
           }
         } catch (e) {
-          // A parsing error is a valid way to terminate the range.
           ctx.log(
             `GreedyRange terminated due to sub-parser error: ${
               e instanceof Error ? e.message : e
             }`,
           );
+          ctx.offset = startOffset;
           break;
         }
       }
@@ -361,8 +380,6 @@ export const GreedyRange = <T>(subcon: Construct<T>) =>
       ctx.enter(`GreedyRange<${(subcon as any)._name}>`);
       for (const item of v) {
         subcon._build(item, ctx);
-        // Note: A complete build implementation would also need to handle
-        // adding padding back, but we're focused on parsing for now.
       }
       ctx.leave(`GreedyRange<${(subcon as any)._name}>`);
     },
@@ -447,7 +464,7 @@ export const Prefixed = <T>(length: LengthFunc, subcon: Construct<T>) =>
  */
 export const Sized = <T>(
   subcon: Construct<T>,
-  lengthFunc: (item: T) => number, // Changed signature!
+  lengthFunc: (item: T) => number,
 ) => {
   if (
     !subcon ||
@@ -467,12 +484,7 @@ export const Sized = <T>(
     _parse: (ctx) => {
       const startOffset = ctx.offset;
       ctx.enter(`Sized<${(subcon as any)._name}>`);
-
-      // 1. Parse the inner content first.
       const item = subcon._parse(ctx);
-
-      // 2. Determine the total size by inspecting the returned item.
-      //    This is much cleaner and less error-prone.
       const expectedTotalSize = lengthFunc(item);
 
       if (typeof expectedTotalSize !== 'number' || isNaN(expectedTotalSize)) {
@@ -480,29 +492,24 @@ export const Sized = <T>(
           `Sized: Invalid length returned by function: ${expectedTotalSize}`,
         );
       }
-
       const consumedSize = ctx.offset - startOffset;
-
       if (expectedTotalSize < consumedSize) {
         throw new Error(
           `Sized: Sub-parser consumed ${consumedSize} bytes, which is more than the expected total size of ${expectedTotalSize}.`,
         );
       }
-
-      // 3. Calculate and consume any remaining padding.
       const paddingSize = expectedTotalSize - consumedSize;
       if (paddingSize > 0) {
         ctx.log(`Consuming ${paddingSize} bytes of padding.`);
         checkBounds(ctx, paddingSize);
         ctx.offset += paddingSize;
       }
-
       ctx.leave(`Sized<${(subcon as any)._name}>`, item);
       return item;
     },
     _build: (v, ctx) => {
-      // This build logic now works correctly with the new signature.
-      const subBuildingContext = new BuildingContext();
+      ctx.enter(`Sized<${(subcon as any)._name}>`, v);
+      const subBuildingContext = new BuildingContext(undefined, ctx.debug);
       subBuildingContext.stack = [...ctx.stack];
       subcon._build(v, subBuildingContext);
       const subBuffer = concatUint8Arrays(subBuildingContext.buffers);
@@ -515,84 +522,14 @@ export const Sized = <T>(
           `Sized build: Built data (${subBuffer.length} bytes) is larger than expected total size (${expectedTotalSize} bytes).`,
         );
       }
-
       ctx.buffers.push(subBuffer);
       if (paddingSize > 0) {
-        ctx.buffers.push(new Uint8Array(paddingSize)); // Add zero-filled padding
+        ctx.buffers.push(new Uint8Array(paddingSize));
       }
+      ctx.leave(
+        `Sized<${(subcon as any)._name}>`,
+        subBuffer.length + paddingSize,
+      );
     },
   });
 };
-
-/**
- * A construct that wraps another, parsing the sub-construct first,
- * and then consuming any remaining "padding" bytes to fill a total
- * size. The total size is determined by a function that inspects the
- * parsed data itself.
- *
- * @param subcon The inner construct to parse.
- * @param lengthFunc A function that receives the parsed object and returns
- *   the total expected size for that object in the stream.
- */
-export const Padded = <T>(
-  subcon: Construct<T>,
-  lengthFunc: (item: T) => number,
-) =>
-  createConstruct<T>(`Padded<${(subcon as any)._name}>`, {
-    _parse: (ctx) => {
-      const startOffset = ctx.offset;
-      ctx.enter(`Padded<${(subcon as any)._name}>`);
-
-      // 1. Parse the inner content first.
-      const item = subcon._parse(ctx);
-
-      // 2. Determine the total expected size by inspecting the parsed item.
-      const expectedTotalSize = lengthFunc(item);
-      if (typeof expectedTotalSize !== 'number' || isNaN(expectedTotalSize)) {
-        throw new Error(
-          `Padded: Invalid length returned by function: ${expectedTotalSize}`,
-        );
-      }
-
-      const consumedSize = ctx.offset - startOffset;
-
-      if (expectedTotalSize < consumedSize) {
-        throw new Error(
-          `Padded: Sub-parser consumed ${consumedSize} bytes, which is more than the expected total size of ${expectedTotalSize}.`,
-        );
-      }
-
-      // 3. Calculate and consume any remaining padding.
-      const paddingSize = expectedTotalSize - consumedSize;
-      if (paddingSize > 0) {
-        ctx.log(`Consuming ${paddingSize} bytes of padding.`);
-        checkBounds(ctx, paddingSize);
-        ctx.offset += paddingSize;
-      }
-
-      ctx.leave(`Padded<${(subcon as any)._name}>`, item);
-      return item;
-    },
-    _build: (v, ctx) => {
-      // For building, we first build the sub-construct to see how big it is,
-      // then calculate and add the necessary padding.
-      const subBuildingContext = new BuildingContext();
-      subBuildingContext.stack = [...ctx.stack];
-      subcon._build(v, subBuildingContext);
-      const subBuffer = concatUint8Arrays(subBuildingContext.buffers);
-
-      const expectedTotalSize = lengthFunc(v);
-      const paddingSize = expectedTotalSize - subBuffer.length;
-
-      if (paddingSize < 0) {
-        throw new Error(
-          `Padded build: Built data (${subBuffer.length} bytes) is larger than expected total size (${expectedTotalSize} bytes).`,
-        );
-      }
-
-      ctx.buffers.push(subBuffer);
-      if (paddingSize > 0) {
-        ctx.buffers.push(new Uint8Array(paddingSize)); // Add zero-filled padding
-      }
-    },
-  });
