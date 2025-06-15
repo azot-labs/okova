@@ -448,7 +448,10 @@ export class Certificate {
 
   dumps = (): Uint8Array => BCert.build(this.parsed);
 
-  async verify(publicKey: Uint8Array, index: number): Promise<Uint8Array> {
+  async verify(
+    publicKey: Uint8Array,
+    index: number,
+  ): Promise<Uint8Array | undefined> {
     const signatureObject = this.getAttribute(BCertObjType.SIGNATURE);
 
     if (!signatureObject || !('signature_key' in signatureObject.attribute))
@@ -485,10 +488,7 @@ export class Certificate {
     }
 
     const issuerKey = this.getIssuerKey();
-    if (!issuerKey)
-      throw new InvalidCertificate(
-        `Could not find issuer key in certificate ${index}`,
-      );
+
     return issuerKey;
   }
 }
