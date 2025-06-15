@@ -8,7 +8,11 @@ export const importClient = async (input: string, output?: string) => {
   const isDir = inputStat.isDirectory();
 
   const outputInfo = output ? await stat(output).catch(() => null) : null;
-  const importForUnpack = !outputInfo || outputInfo?.isDirectory();
+  const importForUnpack =
+    !outputInfo ||
+    outputInfo?.isDirectory() ||
+    input.endsWith('.wvd') ||
+    input.endsWith('.prd');
   if (isDir) {
     const entries = isDir ? await readdir(input) : [];
 
@@ -21,14 +25,17 @@ export const importClient = async (input: string, output?: string) => {
     const widevineKeyFile = find('private_key');
     const wvdFile = endsWith('.wvd');
 
-    const isWidevine = !!(widevineIdFile && widevineKeyFile) || !!wvdFile;
+    const isWidevine =
+      (!!(widevineIdFile && widevineKeyFile) || !!wvdFile) &&
+      !output?.endsWith('.prd');
 
     const playreadyCertificateFile = find('bgroupcert');
     const playreadyKeyFile = find('zgpriv');
     const prdFile = endsWith('.prd');
 
     const isPlayReady =
-      !!(playreadyCertificateFile && playreadyKeyFile) || !!prdFile;
+      (!!(playreadyCertificateFile && playreadyKeyFile) || !!prdFile) &&
+      !output?.endsWith('.wvd');
 
     if (isWidevine) {
       if (importForUnpack && wvdFile) {

@@ -3,7 +3,7 @@ import { join } from 'node:path';
 import { importClient } from '../../utils';
 
 export const unpack = async (input = process.cwd(), output?: string) => {
-  const client = await importClient(input);
+  const client = await importClient(input, output);
   if (!('unpack' in client)) return;
   const unpacked = await client.unpack();
   const outputs: string[] = [];

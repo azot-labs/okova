@@ -7,7 +7,7 @@ export const pack = async (
   format?: string,
   output?: string,
 ) => {
-  const client = await importClient(input);
+  const client = await importClient(input, output);
   const ext = format || (output ? extname(output) : '');
   const data = await client.pack();
   const filename = `${client.getName()}`.replaceAll(' ', '-').toLowerCase();

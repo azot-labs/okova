@@ -29,9 +29,7 @@ const args = parseArgs({
 });
 
 const help = () => {
-  console.log(
-    `Okova is a research & pentesting toolkit for Google's Widevine DRM. (${pkg.version})\n`,
-  );
+  console.log(`Okova – advanced DRM inspection toolkit. (${pkg.version})\n`);
   console.log(`Usage: okova <command> [...flags]\n`);
   console.log(`Commands:`);
   console.log(col(`serve`) + 'Run your API instance');
