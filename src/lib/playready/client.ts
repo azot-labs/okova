@@ -1,5 +1,8 @@
+import { equalBytes } from '@noble/curves/utils';
 import { EccKey } from '../crypto/ecc-key';
-import { BinaryReader } from '../utils';
+import { BinaryReader, getRandomBytes } from '../utils';
+import { Certificate, CertificateChain } from './bcert';
+import { InvalidCertificateChain } from './exceptions';
 
 export class PlayReadyClient {
   groupKey?: Uint8Array;
@@ -70,11 +73,30 @@ export class PlayReadyClient {
       const signingKey = payload.signingKey
         ? EccKey.from(payload.signingKey)
         : EccKey.generate();
+      const certificateChain = CertificateChain.from(payload.groupCertificate);
+      const issuerKey = certificateChain.get(0).getIssuerKey();
+      const groupKeyBytes = groupKey.publicBytes();
+      if (issuerKey && !equalBytes(issuerKey, groupKeyBytes)) {
+        throw new InvalidCertificateChain(
+          'Group key does not match this certificate',
+        );
+      }
+      const newCertificate = await Certificate.newLeafCert({
+        certId: getRandomBytes(16),
+        securityLevel: certificateChain.getSecurityLevel(),
+        clientId: getRandomBytes(16),
+        signingKey: signingKey,
+        encryptionKey: encryptionKey,
+        groupKey: groupKey,
+        parent: certificateChain,
+      });
+      certificateChain.prepend(newCertificate);
+      await certificateChain.verify();
       return new PlayReadyClient({
         groupKey: groupKey.dumps(),
         encryptionKey: encryptionKey.dumps(),
         signingKey: signingKey.dumps(),
-        groupCertificate: payload.groupCertificate,
+        groupCertificate: certificateChain.dumps(),
       });
     }
   }
