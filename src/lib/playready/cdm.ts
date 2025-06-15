@@ -59,9 +59,9 @@ export class PlayReady implements Cdm {
         },
   ) {
     if ('client' in options) {
-      this.certificateChain = options.client.groupCertificate;
-      this.encryptionKey = EccKey.from(options.client.encryptionKey);
-      this.signingKey = EccKey.from(options.client.signingKey);
+      this.certificateChain = options.client.groupCertificate.dumps();
+      this.encryptionKey = options.client.encryptionKey;
+      this.signingKey = options.client.signingKey;
       this.clientVersion = DEFAULT_CLIENT_VERSION;
     } else {
       this.certificateChain = options.certificateChain;
