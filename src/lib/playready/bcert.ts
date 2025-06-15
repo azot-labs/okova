@@ -1,4 +1,3 @@
-import { p256 } from '@noble/curves/nist';
 import {
   Bytes,
   Const,
@@ -12,7 +11,7 @@ import {
   Prefixed,
   Sized,
 } from '../construct';
-import { createSha256, ecc256Sign } from '../crypto/common';
+import { ecc256Sign, ecc256Verify } from '../crypto/common';
 import { EccKey } from '../crypto/ecc-key';
 import { fromHex } from '../utils';
 import { InvalidCertificate, InvalidCertificateChain } from './exceptions';
@@ -197,51 +196,50 @@ const SecurityVersion = Struct({
   platform_identifier: Int32ub,
 });
 
-export const Attribute = Struct({
-  flags: Int16ub,
-  tag: Int16ub,
-  length: Int32ub,
-  attribute: Prefixed(
-    (ctx) => ctx.length - 8,
-    Switch(
-      (ctx) => ctx.tag,
-      {
-        [BCertObjType.BASIC]: BasicInfo,
-        [BCertObjType.DOMAIN]: DomainInfo,
-        [BCertObjType.PC]: PCInfo,
-        [BCertObjType.DEVICE]: DeviceInfo,
-        [BCertObjType.FEATURE]: FeatureInfo,
-        [BCertObjType.KEY]: KeyInfo,
-        [BCertObjType.MANUFACTURER]: ManufacturerInfo,
-        [BCertObjType.SIGNATURE]: SignatureInfo,
-        [BCertObjType.SILVERLIGHT]: SilverlightInfo,
-        [BCertObjType.METERING]: MeteringInfo,
-        [BCertObjType.EXTDATASIGNKEY]: ExtDataSignKeyInfo,
-        [BCertObjType.EXTDATACONTAINER]: ExtDataContainer,
-        [BCertObjType.EXTDATASIGNATURE]: ExtDataSignature,
-        [BCertObjType.EXTDATA_HWID]: Bytes((ctx) => ctx.length - 8),
-        [BCertObjType.SERVER]: ServerInfo,
-        [BCertObjType.SECURITY_VERSION]: SecurityVersion,
-        [BCertObjType.SECURITY_VERSION_2]: SecurityVersion,
-      },
-      Bytes((ctx) => ctx.length - 8),
-    ),
-  ),
-});
-
-export const BCert = Sized(
+export const Attribute = Sized(
   Struct({
-    signature: Const(Buffer.from('CERT')),
-    version: Int32ub,
-    total_length: Int32ub,
-    certificate_length: Int32ub,
-    attributes: Prefixed(
-      (ctx) => ctx.certificate_length,
-      GreedyRange(Attribute),
+    flags: Int16ub,
+    tag: Int16ub,
+    length: Int32ub,
+    attribute: Prefixed(
+      (ctx) => ctx.length - 8,
+      Switch(
+        (ctx) => ctx.tag,
+        {
+          [BCertObjType.BASIC]: BasicInfo,
+          [BCertObjType.DOMAIN]: DomainInfo,
+          [BCertObjType.PC]: PCInfo,
+          [BCertObjType.DEVICE]: DeviceInfo,
+          [BCertObjType.FEATURE]: FeatureInfo,
+          [BCertObjType.KEY]: KeyInfo,
+          [BCertObjType.MANUFACTURER]: ManufacturerInfo,
+          [BCertObjType.SIGNATURE]: SignatureInfo,
+          [BCertObjType.SILVERLIGHT]: SilverlightInfo,
+          [BCertObjType.METERING]: MeteringInfo,
+          [BCertObjType.EXTDATASIGNKEY]: ExtDataSignKeyInfo,
+          [BCertObjType.EXTDATACONTAINER]: ExtDataContainer,
+          [BCertObjType.EXTDATASIGNATURE]: ExtDataSignature,
+          [BCertObjType.EXTDATA_HWID]: Bytes((ctx) => ctx.length - 8),
+          [BCertObjType.SERVER]: ServerInfo,
+          [BCertObjType.SECURITY_VERSION]: SecurityVersion,
+          [BCertObjType.SECURITY_VERSION_2]: SecurityVersion,
+        },
+        Bytes((ctx) => ctx.length - 8),
+      ),
     ),
   }),
-  (ctx) => ctx.total_length,
+  (item) => item.length,
 );
+
+export const BCertBody = Struct({
+  signature: Const(Buffer.from('CERT')),
+  version: Int32ub,
+  total_length: Int32ub,
+  certificate_length: Int32ub,
+  attributes: GreedyRange(Attribute),
+});
+
+export const BCert = Sized(BCertBody, (ctx) => ctx.total_length);
 
 type BCertType = ReturnType<typeof BCert.parse>;
 
@@ -274,7 +272,7 @@ export class Certificate {
     encryptionKey: EccKey;
     groupKey: EccKey;
     parent: CertificateChain;
-    expiry: number;
+    expiry?: number;
   }) {
     const basicInfo = {
       cert_id: params.certId,
@@ -282,7 +280,7 @@ export class Certificate {
       flags: BCertFlag.EMPTY,
       cert_type: BCertCertType.DEVICE,
       public_key_digest: await params.signingKey.publicSha256Digest(),
-      expiration_date: params.expiry,
+      expiration_date: params.expiry ?? 0xffffffff,
       client_id: params.clientId,
     };
 
@@ -364,8 +362,8 @@ export class Certificate {
     const newBCertContainer = {
       signature: Buffer.from('CERT'),
       version: 1,
-      total_length: 0, // filled at a later time
-      certificate_length: 0, // filled at a later time
+      // total_length: 0, // filled at a later time
+      // certificate_length: 0, // filled at a later time
       attributes: [
         basicInfoAttribute,
         deviceInfoAttribute,
@@ -375,13 +373,18 @@ export class Certificate {
       ],
     };
 
-    const payload = BCert.build(newBCertContainer);
+    const payload = BCertBody.build(newBCertContainer); // !valid
+    const payloadLength = payload.length;
 
-    newBCertContainer.certificate_length = payload.length;
-    newBCertContainer.total_length = payload.length + 144; // signature length
+    newBCertContainer.certificate_length = payloadLength;
+    newBCertContainer.total_length = payloadLength + 144; // signature length
 
-    const signPayload = BCert.build(newBCertContainer);
-    const signature = await ecc256Sign(params.groupKey.dumps(), signPayload);
+    const signPayload = BCert.build(newBCertContainer).subarray(
+      0,
+      payloadLength,
+    );
+
+    const signature = await ecc256Sign(params.groupKey.privateKey, signPayload);
 
     const groupKeyPublicBytes = params.groupKey.publicBytes();
 
@@ -402,7 +405,7 @@ export class Certificate {
 
     newBCertContainer.attributes.push(signatureInfoAttribute);
 
-    return newBCertContainer;
+    return new Certificate(newBCertContainer);
   }
 
   static loads(data: Uint8Array) {
@@ -447,40 +450,32 @@ export class Certificate {
 
   async verify(publicKey: Uint8Array, index: number): Promise<Uint8Array> {
     const signatureObject = this.getAttribute(BCertObjType.SIGNATURE);
+
     if (!signatureObject || !('signature_key' in signatureObject.attribute))
       throw new InvalidCertificate(
         `No signature object in certificate ${index}`,
       );
 
-    const sigAttr = signatureObject.attribute;
-    if (Buffer.compare(publicKey, sigAttr.signature_key) !== 0)
+    const signatureAttribute = signatureObject.attribute;
+    if (Buffer.compare(publicKey, signatureAttribute.signature_key) !== 0)
       throw new InvalidCertificate(
         `Signature keys of certificate ${index} do not match`,
       );
 
-    // const sigKey = EccKey.construct(sigAttr.signature_key);
-    // const signatureKey = ECC.construct({
-    //   curve: 'P-256',
-    //   point_x: Buffer.from(sigAttr.signature_key.slice(0, 32)),
-    //   point_y: Buffer.from(sigAttr.signature_key.slice(32, 64)),
-    // });
-
-    // Temporarily remove signature attribute to build the payload that was signed
-    const originalAttributes = this.parsed.attributes;
-    this.parsed.attributes = originalAttributes.filter(
-      (a) => a.tag !== BCertObjType.SIGNATURE,
+    const fullCertData = this.dumps();
+    const signPayload = fullCertData.slice(
+      0,
+      fullCertData.length - signatureObject.length,
     );
-    const signPayload = this.dumps();
-    this.parsed.attributes = originalAttributes; // Restore attributes
 
-    const uncompressedPubKey = Buffer.concat([
-      Buffer.from([0x04]),
-      Buffer.from(sigAttr.signature_key),
-    ]);
-    const isValid = p256.verify(
-      sigAttr.signature,
-      await createSha256(signPayload),
-      uncompressedPubKey,
+    const uncompressedPublicKey = new Uint8Array(65);
+    uncompressedPublicKey[0] = 0x04; // Uncompressed key prefix
+    uncompressedPublicKey.set(signatureAttribute.signature_key, 1);
+
+    const isValid = await ecc256Verify(
+      uncompressedPublicKey,
+      signPayload,
+      signatureAttribute.signature,
     );
 
     if (!isValid) {
@@ -517,7 +512,6 @@ export class CertificateChain {
   static from(data: Uint8Array) {
     const certChain = BCertChain;
     const parsed = BCertChain.parse(data, true);
-    console.dir(parsed, { depth: Infinity });
     return new CertificateChain(parsed, certChain);
   }
 
@@ -526,11 +520,11 @@ export class CertificateChain {
   }
 
   getSecurityLevel() {
-    return this.get(0).getSecurityLevel();
+    return this.get(0).getSecurityLevel() as number;
   }
 
   getName() {
-    return this.get(0).getName();
+    return this.get(0).getName() as string;
   }
 
   async verify() {
