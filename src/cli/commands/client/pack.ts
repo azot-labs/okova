@@ -10,11 +10,7 @@ export const pack = async (
   const client = await importClient(input);
   const ext = format || (output ? extname(output) : '');
   const data = await client.pack();
-  const info = 'info' in client ? client.info : null;
-  const filename =
-    `${info?.get('company_name') ?? 'client'}-${info?.get('model_name') ?? ''}`
-      .replaceAll(' ', '-')
-      .toLowerCase();
+  const filename = `${client.getName()}`.replaceAll(' ', '-').toLowerCase();
   const outputPath = output || join(process.cwd(), `${filename}.${ext}`);
   await writeFile(outputPath, data);
   console.log(`Client packed: ${outputPath}`);

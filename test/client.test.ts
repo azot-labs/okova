@@ -7,17 +7,17 @@ test('export client', async () => {
   const originalId = await read('device_client_id_blob');
   const originalKey = await read('device_private_key');
   const client = await WidevineClient.fromUnpacked(originalId, originalKey);
-  const [exportedId, exportedKey] = await client.unpack();
+  const unpacked = await client.unpack();
 
   const originalIdText = fromBuffer(originalId).toBase64();
-  const exportedIdText = fromBuffer(exportedId).toBase64();
+  const exportedIdText = fromBuffer(unpacked.device_client_id_blob).toBase64();
   expect(originalIdText).toBe(exportedIdText);
 
   const originalKeyText = fromBuffer(originalKey)
     .toText()
     .split('\n')
     .map((s) => s.trim());
-  const exportedKeyText = fromBuffer(exportedKey)
+  const exportedKeyText = fromBuffer(unpacked.device_private_key)
     .toText()
     .split('\n')
     .map((s) => s.trim());

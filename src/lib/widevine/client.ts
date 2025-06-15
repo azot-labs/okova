@@ -100,10 +100,17 @@ export class WidevineClient {
     this.info = new Map(clientInfo.map((item) => [item.name!, item.value!]));
   }
 
-  async unpack(): Promise<[id: Uint8Array, key: Uint8Array]> {
+  getName() {
+    return `${this.info.get('company_name')}_${this.info.get('model_name')}`;
+  }
+
+  async unpack() {
     const id = ClientIdentification.encode(this.id).finish();
     const key = await this.exportKey();
-    return [id, key];
+    return {
+      device_client_id_blob: id,
+      device_private_key: key,
+    };
   }
 
   async pack(format: 'wvd' = 'wvd') {

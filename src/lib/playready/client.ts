@@ -85,6 +85,17 @@ export class PlayReadyClient {
     }
   }
 
+  getName() {
+    const name = `${this.groupCertificate.getName()}_sl${this.securityLevel}`;
+    return name
+      .split('')
+      .filter((char) => char.match(/[a-z0-9_-]/))
+      .join('')
+      .trim()
+      .toLowerCase()
+      .replaceAll(' ', '_');
+  }
+
   pack() {
     return PRD3.build({
       signature: PRD_MAGIC,

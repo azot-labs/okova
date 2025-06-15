@@ -5,10 +5,12 @@ import { importClient } from '../../utils';
 export const unpack = async (input = process.cwd(), output?: string) => {
   const client = await importClient(input);
   if (!('unpack' in client)) return;
-  const [id, key] = await client.unpack();
-  const idOutput = join(output || process.cwd(), `device_client_id_blob`);
-  const keyOutput = join(output || process.cwd(), `device_private_key`);
-  await writeFile(idOutput, id);
-  await writeFile(keyOutput, key);
-  console.log(`Client unpacked: ${idOutput}, ${keyOutput}`);
+  const unpacked = await client.unpack();
+  const outputs: string[] = [];
+  for (const [filename, data] of Object.entries(unpacked)) {
+    const outputPath = join(output || process.cwd(), filename);
+    await writeFile(outputPath, data);
+    outputs.push(outputPath);
+  }
+  console.log(`Client unpacked: ${outputs.join(', ')}`);
 };
