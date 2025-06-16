@@ -1,16 +1,4 @@
-import {
-  Bytes,
-  Const,
-  GreedyRange,
-  Int16ub,
-  Int32ub,
-  Struct,
-  Switch,
-  List,
-  Construct,
-  Prefixed,
-  Sized,
-} from '../construct';
+import { Schema, b } from '../construct';
 import { ecc256Sign, ecc256Verify } from '../crypto/common';
 import { EccKey } from '../crypto/ecc-key';
 import { fromHex } from '../utils';
@@ -85,125 +73,125 @@ export const BCertFeatures = {
   SUPPORTS_PR3_FEATURES: 0x0000000d,
 } as const;
 
-const BasicInfo = Struct({
-  cert_id: Bytes(16),
-  security_level: Int32ub,
-  flags: Int32ub,
-  cert_type: Int32ub,
-  public_key_digest: Bytes(32),
-  expiration_date: Int32ub,
-  client_id: Bytes(16),
+const BasicInfo = b.object({
+  cert_id: b.bytes(16),
+  security_level: b.uint32(),
+  flags: b.uint32(),
+  cert_type: b.uint32(),
+  public_key_digest: b.bytes(32),
+  expiration_date: b.uint32(),
+  client_id: b.bytes(16),
 });
 
-const DomainInfo = Struct({
-  service_id: Bytes(16),
-  account_id: Bytes(16),
-  revision_timestamp: Int32ub,
-  domain_url_length: Int32ub,
-  domain_url: Bytes((ctx) => (ctx.domain_url_length + 3) & 0xfffffffc),
+const DomainInfo = b.object({
+  service_id: b.bytes(16),
+  account_id: b.bytes(16),
+  revision_timestamp: b.uint32(),
+  domain_url_length: b.uint32(),
+  domain_url: b.bytes((ctx) => (ctx.domain_url_length + 3) & 0xfffffffc),
 });
 
-const PCInfo = Struct({
-  security_version: Int32ub,
+const PCInfo = b.object({
+  security_version: b.uint32(),
 });
 
-const DeviceInfo = Struct({
-  max_license: Int32ub,
-  max_header: Int32ub,
-  max_chain_depth: Int32ub,
+const DeviceInfo = b.object({
+  max_license: b.uint32(),
+  max_header: b.uint32(),
+  max_chain_depth: b.uint32(),
 });
 
-const FeatureInfo = Struct({
-  feature_count: Int32ub,
-  features: List((ctx) => ctx.feature_count, Int32ub),
+const FeatureInfo = b.object({
+  feature_count: b.uint32(),
+  features: b.array(b.uint32(), (ctx) => ctx.feature_count),
 });
 
-const CertKey = Struct({
-  type: Int16ub,
-  length: Int16ub,
-  flags: Int32ub,
-  key: Bytes((ctx) => ctx.length / 8),
-  usages_count: Int32ub,
-  usages: List((ctx) => ctx.usages_count, Int32ub),
+const CertKey = b.object({
+  type: b.uint16(),
+  length: b.uint16(),
+  flags: b.uint32(),
+  key: b.bytes((ctx) => ctx.length / 8),
+  usages_count: b.uint32(),
+  usages: b.array(b.uint32(), (ctx) => ctx.usages_count),
 });
 
-const KeyInfo = Struct({
-  key_count: Int32ub,
-  cert_keys: List((ctx) => ctx.key_count, CertKey),
+const KeyInfo = b.object({
+  key_count: b.uint32(),
+  cert_keys: b.array(CertKey, (ctx) => ctx.key_count),
 });
 
-const ManufacturerInfo = Struct({
-  flags: Int32ub,
-  manufacturer_name_length: Int32ub,
-  manufacturer_name: Bytes(
+const ManufacturerInfo = b.object({
+  flags: b.uint32(),
+  manufacturer_name_length: b.uint32(),
+  manufacturer_name: b.bytes(
     (ctx) => (ctx.manufacturer_name_length + 3) & 0xfffffffc,
   ),
-  model_name_length: Int32ub,
-  model_name: Bytes((ctx) => (ctx.model_name_length + 3) & 0xfffffffc),
-  model_number_length: Int32ub,
-  model_number: Bytes((ctx) => (ctx.model_number_length + 3) & 0xfffffffc),
+  model_name_length: b.uint32(),
+  model_name: b.bytes((ctx) => (ctx.model_name_length + 3) & 0xfffffffc),
+  model_number_length: b.uint32(),
+  model_number: b.bytes((ctx) => (ctx.model_number_length + 3) & 0xfffffffc),
 });
 
-const SignatureInfo = Struct({
-  signature_type: Int16ub,
-  signature_size: Int16ub,
-  signature: Bytes((ctx) => ctx.signature_size),
-  signature_key_size: Int32ub,
-  signature_key: Bytes((ctx) => ctx.signature_key_size / 8),
+const SignatureInfo = b.object({
+  signature_type: b.uint16(),
+  signature_size: b.uint16(),
+  signature: b.bytes((ctx) => ctx.signature_size),
+  signature_key_size: b.uint32(),
+  signature_key: b.bytes((ctx) => ctx.signature_key_size / 8),
 });
 
-const SilverlightInfo = Struct({
-  security_version: Int32ub,
-  platform_identifier: Int32ub,
+const SilverlightInfo = b.object({
+  security_version: b.uint32(),
+  platform_identifier: b.uint32(),
 });
 
-const MeteringInfo = Struct({
-  metering_id: Bytes(16),
-  metering_url_length: Int32ub,
-  metering_url: Bytes((ctx) => (ctx.metering_url_length + 3) & 0xfffffffc),
+const MeteringInfo = b.object({
+  metering_id: b.bytes(16),
+  metering_url_length: b.uint32(),
+  metering_url: b.bytes((ctx) => (ctx.metering_url_length + 3) & 0xfffffffc),
 });
 
-const ExtDataSignKeyInfo = Struct({
-  key_type: Int16ub,
-  key_length: Int16ub,
-  flags: Int32ub,
-  key: Bytes((ctx) => ctx.key_length / 8),
+const ExtDataSignKeyInfo = b.object({
+  key_type: b.uint16(),
+  key_length: b.uint16(),
+  flags: b.uint32(),
+  key: b.bytes((ctx) => ctx.key_length / 8),
 });
 
-const DataRecord = Struct({
-  data_size: Int32ub,
-  data: Bytes((ctx) => ctx.data_size),
+const DataRecord = b.object({
+  data_size: b.uint32(),
+  data: b.bytes((ctx) => ctx.data_size),
 });
 
-const ExtDataSignature = Struct({
-  signature_type: Int16ub,
-  signature_size: Int16ub,
-  signature: Bytes((ctx) => ctx.signature_size),
+const ExtDataSignature = b.object({
+  signature_type: b.uint16(),
+  signature_size: b.uint16(),
+  signature: b.bytes((ctx) => ctx.signature_size),
 });
 
-const ExtDataContainer = Struct({
-  record_count: Int32ub,
-  records: List((ctx) => ctx.record_count, DataRecord),
+const ExtDataContainer = b.object({
+  record_count: b.uint32(),
+  records: b.array(DataRecord, (ctx) => ctx.record_count),
   signature: ExtDataSignature,
 });
 
-const ServerInfo = Struct({
-  warning_days: Int32ub,
+const ServerInfo = b.object({
+  warning_days: b.uint32(),
 });
 
-const SecurityVersion = Struct({
-  security_version: Int32ub,
-  platform_identifier: Int32ub,
+const SecurityVersion = b.object({
+  security_version: b.uint32(),
+  platform_identifier: b.uint32(),
 });
 
-export const Attribute = Sized(
-  Struct({
-    flags: Int16ub,
-    tag: Int16ub,
-    length: Int32ub,
-    attribute: Prefixed(
+export const Attribute = b.sized(
+  b.object({
+    flags: b.uint16(),
+    tag: b.uint16(),
+    length: b.uint32(),
+    attribute: b.prefixed(
       (ctx) => ctx.length - 8,
-      Switch(
+      b.switch(
         (ctx) => ctx.tag,
         {
           [BCertObjType.BASIC]: BasicInfo,
@@ -219,47 +207,50 @@ export const Attribute = Sized(
           [BCertObjType.EXTDATASIGNKEY]: ExtDataSignKeyInfo,
           [BCertObjType.EXTDATACONTAINER]: ExtDataContainer,
           [BCertObjType.EXTDATASIGNATURE]: ExtDataSignature,
-          [BCertObjType.EXTDATA_HWID]: Bytes((ctx) => ctx.length - 8),
+          [BCertObjType.EXTDATA_HWID]: b.bytes((ctx) => ctx.length - 8),
           [BCertObjType.SERVER]: ServerInfo,
           [BCertObjType.SECURITY_VERSION]: SecurityVersion,
           [BCertObjType.SECURITY_VERSION_2]: SecurityVersion,
         },
-        Bytes((ctx) => ctx.length - 8),
+        b.bytes((ctx) => ctx.length - 8),
       ),
     ),
   }),
   (item) => item.length,
 );
 
-export const BCertBody = Struct({
-  signature: Const(Buffer.from('CERT')),
-  version: Int32ub,
-  total_length: Int32ub,
-  certificate_length: Int32ub,
-  attributes: GreedyRange(Attribute),
+export const BCertBody = b.object({
+  signature: b.literal('CERT'),
+  version: b.uint32(),
+  total_length: b.uint32(),
+  certificate_length: b.uint32(),
+  attributes: b.greedyRange(Attribute),
 });
 
-export const BCert = Sized(BCertBody, (ctx) => ctx.total_length);
+export const BCert = b.sized(BCertBody, (ctx) => ctx.total_length);
 
 type BCertType = ReturnType<typeof BCert.parse>;
 
-export const BCertChain = Struct({
-  signature: Const(Buffer.from('CHAI')),
-  version: Int32ub,
-  total_length: Int32ub,
-  flags: Int32ub,
-  certificate_count: Int32ub,
+export const BCertChain = b.object({
+  signature: b.literal('CHAI'),
+  version: b.uint32(),
+  total_length: b.uint32(),
+  flags: b.uint32(),
+  certificate_count: b.uint32(),
   // The header is 20 bytes (4*5). The certificates fill the rest of the 'total_length'.
-  certificates: Prefixed((ctx) => ctx.total_length - 20, GreedyRange(BCert)),
+  certificates: b.prefixed(
+    (ctx) => ctx.total_length - 20,
+    b.greedyRange(BCert),
+  ),
 });
 
 type BCertChainType = ReturnType<typeof BCertChain.parse>;
 
 export class Certificate {
   parsed: BCertType;
-  _BCERT: Construct<BCertType>;
+  _BCERT: Schema<BCertType>;
 
-  constructor(parsedBCert: BCertType, bcertObj: Construct<BCertType> = BCert) {
+  constructor(parsedBCert: BCertType, bcertObj: Schema<BCertType> = BCert) {
     this.parsed = parsedBCert;
     this._BCERT = bcertObj;
   }
@@ -320,7 +311,7 @@ export class Certificate {
       attribute: feature,
     };
 
-    const signingKeyPublicBytes = params.signingKey.publicBytes();
+    const signingKeyPublicBytes = params.signingKey.publicb.bytes();
 
     const certKeySign = {
       type: BCertKeyType.ECC256,
@@ -331,7 +322,7 @@ export class Certificate {
       usages: [BCertKeyUsage.SIGN],
     };
 
-    const encryptionKeyPublicBytes = params.encryptionKey.publicBytes();
+    const encryptionKeyPublicBytes = params.encryptionKey.publicb.bytes();
 
     const certKeyEncrypt = {
       type: BCertKeyType.ECC256,
@@ -386,12 +377,12 @@ export class Certificate {
 
     const signature = await ecc256Sign(params.groupKey.privateKey, signPayload);
 
-    const groupKeyPublicBytes = params.groupKey.publicBytes();
+    const groupKeyPublicBytes = params.groupKey.publicb.bytes();
 
     const signatureInfo = {
       signature_type: BCertSignatureType.P256,
-      signature_size: signature.toCompactRawBytes().length,
-      signature: signature.toCompactRawBytes(),
+      signature_size: signature.toCompactRawb.bytes().length,
+      signature: signature.toCompactRawb.bytes(),
       signature_key_size: groupKeyPublicBytes.length * 8,
       signature_key: groupKeyPublicBytes,
     };
@@ -499,11 +490,11 @@ export class CertificateChain {
   ).toBuffer();
 
   parsed: BCertChainType;
-  _BCERT_CHAIN: Construct<BCertChainType>;
+  _BCERT_CHAIN: Schema<BCertChainType>;
 
   constructor(
     parsedBCertChain: BCertChainType,
-    bcertChainObj: Construct<BCertChainType> = BCertChain,
+    bcertChainObj: Schema<BCertChainType> = BCertChain,
   ) {
     this.parsed = parsedBCertChain;
     this._BCERT_CHAIN = bcertChainObj;

@@ -1,31 +1,31 @@
-import { Bytes, Const, Int32ub, Int8ub, Struct, Switch } from '../construct';
+import { b } from '../construct';
 import { fromText } from '../utils';
 
 export const PRD_MAGIC = fromText('PRD').toBuffer();
 
-export const PRD2 = Struct({
-  signature: Const(PRD_MAGIC),
-  version: Int8ub,
-  group_certificate_length: Int32ub,
-  group_certificate: Bytes((ctx) => ctx.group_certificate_length),
-  encryption_key: Bytes(96),
-  signing_key: Bytes(96),
+export const PRD2 = b.object({
+  signature: b.literal('PRD'),
+  version: b.uint8(),
+  group_certificate_length: b.uint32(),
+  group_certificate: b.bytes((ctx) => ctx.group_certificate_length),
+  encryption_key: b.bytes(96),
+  signing_key: b.bytes(96),
 });
 
-export const PRD3 = Struct({
-  signature: Const(PRD_MAGIC),
-  version: Int8ub,
-  group_key: Bytes(96),
-  encryption_key: Bytes(96),
-  signing_key: Bytes(96),
-  group_certificate_length: Int32ub,
-  group_certificate: Bytes((ctx) => ctx.group_certificate_length),
+export const PRD3 = b.object({
+  signature: b.literal('PRD'),
+  version: b.uint8(),
+  group_key: b.bytes(96),
+  encryption_key: b.bytes(96),
+  signing_key: b.bytes(96),
+  group_certificate_length: b.uint32(),
+  group_certificate: b.bytes((ctx) => ctx.group_certificate_length),
 });
 
-export const PRD = Struct({
-  signature: Const(PRD_MAGIC),
-  version: Int8ub,
-  data: Switch((ctx) => ctx.version, {
+export const PRD = b.object({
+  signature: b.literal('PRD'),
+  version: b.uint8(),
+  data: b.switch((ctx) => ctx.version, {
     2: PRD2,
     3: PRD3,
   }),

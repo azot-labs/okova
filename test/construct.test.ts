@@ -1,34 +1,23 @@
 import { describe, expect, it, test } from 'vitest';
-import {
-  Int16ub,
-  Int32ub,
-  Bytes,
-  Const,
-  Struct,
-  List,
-  GreedyRange,
-  Switch,
-  Sized,
-  Prefixed,
-} from '../src/lib/construct';
+import { b } from '../src/lib/construct';
 
 describe('Construct Library', () => {
   test('Int16ub parses and builds correctly', () => {
     const value = 0x1234;
     const buffer = new Uint8Array([0x12, 0x34]);
-    expect(Int16ub.parse(buffer)).toBe(value);
-    expect(Int16ub.build(value)).toEqual(buffer);
+    expect(b.uint16().parse(buffer)).toBe(value);
+    expect(b.uint16().build(value)).toEqual(buffer);
   });
 
   test('Int32ub parses and builds correctly', () => {
     const value = 0x12345678;
     const buffer = new Uint8Array([0x12, 0x34, 0x56, 0x78]);
-    expect(Int32ub.parse(buffer)).toBe(value);
-    expect(Int32ub.build(value)).toEqual(buffer);
+    expect(b.uint32().parse(buffer)).toBe(value);
+    expect(b.uint32().build(value)).toEqual(buffer);
   });
 
   test('Bytes with fixed length', () => {
-    const fixedBytes = Bytes(3);
+    const fixedBytes = b.bytes(3);
     const data = new Uint8Array([1, 2, 3]);
     expect(fixedBytes.parse(data)).toEqual(data);
     expect(fixedBytes.build(data)).toEqual(data);
@@ -39,14 +28,16 @@ describe('Construct Library', () => {
   });
 
   test('Bytes with dynamic length', () => {
-    const dynamicBytes = Bytes((ctx) => ctx.length);
+    const dynamicBytes = b.bytes((ctx) => ctx.length);
     const input = new Uint8Array([0x00, 0x04, 1, 2, 3, 4]);
     const expectedData = new Uint8Array([1, 2, 3, 4]);
 
-    const result = Struct({
-      length: Int16ub,
-      data: dynamicBytes,
-    }).parse(input);
+    const result = b
+      .object({
+        length: b.uint16(),
+        data: dynamicBytes,
+      })
+      .parse(input);
 
     expect(result).toEqual({
       length: 4,
@@ -55,17 +46,17 @@ describe('Construct Library', () => {
   });
 
   test('Const validates constant values', () => {
-    const magic = Const(new Uint8Array([0x4d, 0x5a]));
+    const magic = b.literal(new Uint8Array([0x4d, 0x5a]));
     const invalidData = new Uint8Array([0x41, 0x42]);
 
     expect(() => magic.parse(invalidData)).toThrow('Constant mismatch');
   });
 
   test('Struct handles nested structures', () => {
-    const person = Struct({
-      id: Int32ub,
-      name: Bytes(5),
-      age: Int16ub,
+    const person = b.object({
+      id: b.uint32(),
+      name: b.bytes(5),
+      age: b.uint16(),
     });
 
     const data = new Uint8Array([
@@ -93,7 +84,7 @@ describe('Construct Library', () => {
   });
 
   test('List with fixed count', () => {
-    const list = List(3, Int16ub);
+    const list = b.array(b.uint16(), 3);
     const data = new Uint8Array([0x00, 0x01, 0x00, 0x02, 0x00, 0x03]);
     const expected = [1, 2, 3];
 
@@ -103,9 +94,9 @@ describe('Construct Library', () => {
   });
 
   test('List with dynamic count', () => {
-    const list = List((ctx) => ctx.count, Int16ub);
-    const structure = Struct({
-      count: Int16ub,
+    const list = b.array(b.uint16(), (ctx) => ctx.count);
+    const structure = b.object({
+      count: b.uint16(),
       values: list,
     });
 
@@ -130,7 +121,7 @@ describe('Construct Library', () => {
   });
 
   test('GreedyRange parses until end of data', () => {
-    const range = GreedyRange(Int16ub);
+    const range = b.greedyRange(b.uint16());
     const data = new Uint8Array([0x00, 0x01, 0x00, 0x02, 0x00, 0x03]);
     expect(range.parse(data)).toEqual([1, 2, 3]);
     expect(range.build([1, 2, 3])).toEqual(data);
@@ -138,19 +129,19 @@ describe('Construct Library', () => {
 
   test('Switch handles different cases', () => {
     // Define the parser with proper context handling
-    const parser = Struct({
-      type: Int16ub,
-      data: Switch(
+    const parser = b.object({
+      type: b.uint16(),
+      data: b.switch(
         (ctx) => ctx.type,
         {
-          1: Struct({
-            value: Int16ub,
+          1: b.object({
+            value: b.uint16(),
           }),
-          2: Struct({
-            value: Int32ub,
+          2: b.object({
+            value: b.uint32(),
           }),
         },
-        Struct({}), // Empty struct for default case
+        b.object({}), // Empty struct for default case
       ),
     });
 
@@ -198,21 +189,21 @@ describe('Construct Library', () => {
   });
 
   test('Context propagation in nested structs', () => {
-    const parser = Struct({
-      header: Struct({
-        type: Int16ub,
-        length: Int16ub,
+    const parser = b.object({
+      header: b.object({
+        type: b.uint16(),
+        length: b.uint16(),
       }),
-      data: Switch(
+      data: b.switch(
         (ctx) => ctx.header.type, // Access type through header
         {
-          1: Struct({
-            value: Int32ub,
-            extra: Bytes((ctx) => ctx.header.length - 4), // Access length through header
+          1: b.object({
+            value: b.uint32(),
+            extra: b.bytes((ctx) => ctx.header.length - 4), // Access length through header
           }),
-          2: Struct({
-            count: Int16ub,
-            items: List((ctx) => ctx.count, Int16ub),
+          2: b.object({
+            count: b.uint16(),
+            items: b.array(b.uint16(), (ctx) => ctx.count),
           }),
         },
       ),
@@ -269,15 +260,15 @@ describe('Construct Library', () => {
 describe('Sized Construct with GreedyRange', () => {
   test('should correctly parse items with padding by respecting the item length', () => {
     // ARRANGE
-    const PaddedItem = Sized(
-      Struct({
-        total_length: Int32ub,
-        data: Int32ub,
+    const PaddedItem = b.sized(
+      b.object({
+        total_length: b.uint32(),
+        data: b.uint32(),
       }),
       (item) => item.total_length, // The function now receives the parsed item
     );
 
-    const PaddedListParser = GreedyRange(PaddedItem);
+    const PaddedListParser = b.greedyRange(PaddedItem);
 
     const binaryData = new Uint8Array([
       // Item 1 (12 bytes total)
@@ -317,8 +308,8 @@ describe('Sized Construct with GreedyRange', () => {
 describe('Sized Construct', () => {
   // Keep your existing happy path test!
   it('should correctly parse a sized item when used correctly', () => {
-    const PaddedItem = Sized(
-      Struct({ total_length: Int32ub, data: Int32ub }),
+    const PaddedItem = b.sized(
+      b.object({ total_length: b.uint32(), data: b.uint32() }),
       (item) => item.total_length,
     );
     const result = PaddedItem.parse(
@@ -329,11 +320,11 @@ describe('Sized Construct', () => {
 
   // --- NEW "SAD PATH" TESTS ---
   it('should throw a helpful error if arguments are swapped', () => {
-    const MyStruct = Struct({ total_length: Int32ub, data: Int32ub });
+    const MyStruct = b.object({ total_length: b.uint32(), data: b.uint32() });
     const myLengthFunc = (item: any) => item.total_length;
 
     // We expect this to throw because the first argument is a function, not a construct.
-    const action = () => Sized(myLengthFunc as any, MyStruct as any);
+    const action = () => b.sized(myLengthFunc as any, MyStruct as any);
 
     expect(action).toThrow(
       'Sized: Invalid sub-construct provided. The first argument must be a valid construct object (e.g., Struct, Bytes).',
@@ -341,10 +332,10 @@ describe('Sized Construct', () => {
   });
 
   it('should throw a helpful error if the length function is not a function', () => {
-    const MyStruct = Struct({ total_length: Int32ub, data: Int32ub });
+    const MyStruct = b.object({ total_length: b.uint32(), data: b.uint32() });
 
     // We expect this to throw because the second argument is an object, not a function.
-    const action = () => Sized(MyStruct, { not: 'a function' } as any);
+    const action = () => b.sized(MyStruct, { not: 'a function' } as any);
 
     expect(action).toThrow(
       'Sized: Invalid length function provided. The second argument must be a function that returns a number.',
@@ -355,7 +346,7 @@ describe('Sized Construct', () => {
 describe('Construct Build and Symmetry Tests', () => {
   it('Int32ub should build and parse symmetrically', () => {
     // Arrange
-    const parser = Int32ub;
+    const parser = b.uint32();
     const obj = 123456789;
     const expectedBytes = new Uint8Array([0x07, 0x5b, 0xcd, 0x15]);
 
@@ -372,7 +363,7 @@ describe('Construct Build and Symmetry Tests', () => {
 
   it('Bytes should build and parse symmetrically', () => {
     // Arrange
-    const parser = Bytes(4);
+    const parser = b.bytes(4);
     const obj = new Uint8Array([1, 2, 3, 4]);
     const expectedBytes = new Uint8Array([1, 2, 3, 4]);
 
@@ -390,7 +381,7 @@ describe('Construct Build and Symmetry Tests', () => {
   it('Const should build and parse symmetrically', () => {
     // Arrange
     const constantBytes = new Uint8Array([0xde, 0xad, 0xbe, 0xef]);
-    const parser = Const(constantBytes);
+    const parser = b.literal(constantBytes);
     const obj = constantBytes; // The object to build is the constant itself
 
     // Act: Build
@@ -410,9 +401,9 @@ describe('Construct Build and Symmetry Tests', () => {
 
   it('Struct should build and parse symmetrically', () => {
     // Arrange
-    const parser = Struct({
-      magic: Int16ub,
-      value: Int32ub,
+    const parser = b.object({
+      magic: b.uint16(),
+      value: b.uint32(),
     });
     const obj = { magic: 0xcafe, value: 42 };
     const expectedBytes = new Uint8Array([0xca, 0xfe, 0x00, 0x00, 0x00, 0x2a]);
@@ -430,7 +421,7 @@ describe('Construct Build and Symmetry Tests', () => {
 
   it('List should build and parse symmetrically', () => {
     // Arrange
-    const parser = List(3, Int16ub);
+    const parser = b.array(b.uint16(), 3);
     const obj = [10, 20, 30];
     const expectedBytes = new Uint8Array([0x00, 0x0a, 0x00, 0x14, 0x00, 0x1e]);
 
@@ -450,7 +441,7 @@ describe('Construct Build and Symmetry Tests', () => {
 
   it('GreedyRange should build and parse symmetrically', () => {
     // Arrange
-    const parser = GreedyRange(Int16ub);
+    const parser = b.greedyRange(b.uint16());
     const obj = [10, 20, 30];
     const expectedBytes = new Uint8Array([0x00, 0x0a, 0x00, 0x14, 0x00, 0x1e]);
 
@@ -467,9 +458,9 @@ describe('Construct Build and Symmetry Tests', () => {
 
   it('Prefixed should build and parse symmetrically', () => {
     // Arrange
-    const innerStruct = Struct({ a: Int16ub, b: Int16ub });
+    const innerStruct = b.object({ a: b.uint16(), b: b.uint16() });
     // The length function is only used for parsing.
-    const parser = Prefixed((ctx) => 4, innerStruct);
+    const parser = b.prefixed((ctx) => 4, innerStruct);
     const obj = { a: 1, b: 2 };
     // The build method for our Prefixed just builds the inner content.
     const expectedBytes = new Uint8Array([0x00, 0x01, 0x00, 0x02]);
@@ -487,10 +478,10 @@ describe('Construct Build and Symmetry Tests', () => {
 
   it('Sized should build and parse symmetrically', () => {
     // Arrange
-    const parser = Sized(
-      Struct({
-        total_length: Int32ub,
-        data: Int32ub,
+    const parser = b.sized(
+      b.object({
+        total_length: b.uint32(),
+        data: b.uint32(),
       }),
       (item) => item.total_length,
     );
@@ -523,11 +514,11 @@ describe('Construct Build and Symmetry Tests', () => {
 
   it('Switch should build and parse symmetrically', () => {
     // Arrange
-    const parser = Struct({
-      type: Int16ub,
-      data: Switch((ctx) => ctx.type, {
-        1: Int32ub,
-        2: Bytes(4),
+    const parser = b.object({
+      type: b.uint16(),
+      data: b.switch((ctx) => ctx.type, {
+        1: b.uint32(),
+        2: b.bytes(4),
       }),
     });
 
@@ -556,15 +547,15 @@ describe('Construct Build and Symmetry Tests', () => {
 describe('GreedyRange with Transactional Failure', () => {
   // Define a sub-construct that can fail partway through.
   // It reads 2 bytes of data, then expects a 2-byte signature.
-  const FailableItem = Struct({
-    data: Int16ub,
-    signature: Const(new Uint8Array([0xaa, 0xbb])),
+  const FailableItem = b.object({
+    data: b.uint16(),
+    signature: b.literal(new Uint8Array([0xaa, 0xbb])),
   });
 
   it('should parse a simple list of valid items correctly', () => {
     // HAPPY PATH TEST
     // Arrange
-    const parser = GreedyRange(FailableItem);
+    const parser = b.greedyRange(FailableItem);
     const binaryData = new Uint8Array([
       // Item 1
       0x00, 0x01, 0xaa, 0xbb,
@@ -585,9 +576,9 @@ describe('GreedyRange with Transactional Failure', () => {
   it('should roll back the stream offset on a partial sub-parse failure', () => {
     // SAD PATH TEST (Bug Reproduction)
     // Arrange
-    const parser = Struct({
-      items: GreedyRange(FailableItem),
-      trailer: Int16ub, // A field to parse *after* the range
+    const parser = b.object({
+      items: b.greedyRange(FailableItem),
+      trailer: b.uint16(), // A field to parse *after* the range
     });
 
     const binaryData = new Uint8Array([
