@@ -311,7 +311,7 @@ export class Certificate {
       attribute: feature,
     };
 
-    const signingKeyPublicBytes = params.signingKey.publicb.bytes();
+    const signingKeyPublicBytes = params.signingKey.publicBytes();
 
     const certKeySign = {
       type: BCertKeyType.ECC256,
@@ -322,7 +322,7 @@ export class Certificate {
       usages: [BCertKeyUsage.SIGN],
     };
 
-    const encryptionKeyPublicBytes = params.encryptionKey.publicb.bytes();
+    const encryptionKeyPublicBytes = params.encryptionKey.publicBytes();
 
     const certKeyEncrypt = {
       type: BCertKeyType.ECC256,
@@ -350,7 +350,7 @@ export class Certificate {
       .getAttribute(BCertObjType.MANUFACTURER);
     if (!manufacturerInfo) throw new Error('Manufacturer info not found');
 
-    const newBCertContainer = {
+    const newBCertContainer: any = {
       signature: Buffer.from('CERT'),
       version: 1,
       // total_length: 0, // filled at a later time
@@ -364,7 +364,7 @@ export class Certificate {
       ],
     };
 
-    const payload = BCertBody.build(newBCertContainer); // !valid
+    const payload = BCertBody.build(newBCertContainer);
     const payloadLength = payload.length;
 
     newBCertContainer.certificate_length = payloadLength;
@@ -377,12 +377,12 @@ export class Certificate {
 
     const signature = await ecc256Sign(params.groupKey.privateKey, signPayload);
 
-    const groupKeyPublicBytes = params.groupKey.publicb.bytes();
+    const groupKeyPublicBytes = params.groupKey.publicBytes();
 
     const signatureInfo = {
       signature_type: BCertSignatureType.P256,
-      signature_size: signature.toCompactRawb.bytes().length,
-      signature: signature.toCompactRawb.bytes(),
+      signature_size: signature.toCompactRawBytes().length,
+      signature: signature.toCompactRawBytes(),
       signature_key_size: groupKeyPublicBytes.length * 8,
       signature_key: groupKeyPublicBytes,
     };
@@ -445,13 +445,19 @@ export class Certificate {
   ): Promise<Uint8Array | undefined> {
     const signatureObject = this.getAttribute(BCertObjType.SIGNATURE);
 
-    if (!signatureObject || !('signature_key' in signatureObject.attribute))
+    if (
+      !signatureObject ||
+      !('signature_key' in signatureObject.attribute) ||
+      !('signature' in signatureObject.attribute)
+    )
       throw new InvalidCertificate(
         `No signature object in certificate ${index}`,
       );
 
-    const signatureAttribute = signatureObject.attribute;
-    if (Buffer.compare(publicKey, signatureAttribute.signature_key) !== 0)
+    const signatureKey = signatureObject.attribute.signature_key as Uint8Array;
+    const signature = signatureObject.attribute.signature as Uint8Array;
+
+    if (Buffer.compare(publicKey, signatureKey) !== 0)
       throw new InvalidCertificate(
         `Signature keys of certificate ${index} do not match`,
       );
@@ -464,12 +470,12 @@ export class Certificate {
 
     const uncompressedPublicKey = new Uint8Array(65);
     uncompressedPublicKey[0] = 0x04; // Uncompressed key prefix
-    uncompressedPublicKey.set(signatureAttribute.signature_key, 1);
+    uncompressedPublicKey.set(signatureKey, 1);
 
     const isValid = await ecc256Verify(
       uncompressedPublicKey,
       signPayload,
-      signatureAttribute.signature,
+      signature,
     );
 
     if (!isValid) {
@@ -519,12 +525,12 @@ export class CertificateChain {
   }
 
   async verify() {
-    let issuerKey = this.ECC256MSBCertRootIssuerPubKey;
+    let issuerKey: Uint8Array | undefined = this.ECC256MSBCertRootIssuerPubKey;
 
     try {
       for (let i = this.count() - 1; i >= 0; i--) {
         const certificate = this.get(i);
-        issuerKey = await certificate.verify(issuerKey, i);
+        issuerKey = await certificate.verify(issuerKey!, i);
 
         if (!issuerKey && i !== 0) {
           throw new InvalidCertificate(`Certificate ${i} is not valid`);
