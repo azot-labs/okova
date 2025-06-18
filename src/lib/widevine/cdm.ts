@@ -27,6 +27,7 @@ export class Widevine implements Cdm {
   ) {
     const session = this.sessions.get(sessionId);
     if (!session) throw new Error('Session not found');
+    if (!initData.length) throw new Error('Init data is empty');
     const licenseRequest = await session.generateRequest(
       initDataType ?? 'cenc',
       initData,
