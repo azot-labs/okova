@@ -1,7 +1,16 @@
-import { appStorage } from '@/utils/storage';
-import { fromBase64, fromBuffer } from '@okova/lib';
+import { appStorage, Client } from '@/utils/storage';
+import {
+  Cdm,
+  fromBase64,
+  fromBuffer,
+  PlayReady,
+  requestMediaKeySystemAccess,
+  Widevine,
+} from '@okova/lib';
 import { getMessageType } from '@okova/lib/widevine/message';
 import { WidevineClient } from '@okova/lib/widevine/client';
+import { PlayReadyClient } from '@okova/lib/playready/client';
+import { Key, Session } from '@okova/lib/api';
 
 export default defineBackground({
   type: 'module',
@@ -11,23 +20,39 @@ export default defineBackground({
     });
 
     const state: {
-      client: WidevineClient | null;
-      sessions: Map<string, MediaKeySession>;
+      cdm: Cdm | null;
+      client: Client | null;
+      sessions: Map<string, MediaKeySession & Session>;
+      events: Map<string, MediaKeyMessageEvent[]>;
     } = {
+      cdm: null,
       client: null,
       sessions: new Map(),
+      events: new Map<string, MediaKeyMessageEvent[]>(),
     };
-    const events = new Map<string, MediaKeyMessageEvent[]>();
 
     const loadClient = async () => {
       if (state.client) return state.client;
-      console.log('[okova] Loading Widevine client...');
+      console.log('[okova] Loading DRM client...');
       state.client = await appStorage.clients.active.getValue();
       if (state.client) {
-        console.log('[okova] Widevine client loaded');
+        console.log('[okova] DRM client loaded');
         return state.client;
       } else {
-        return console.log('[okova] Unable to load client');
+        console.log('[okova] Unable to load client');
+        return null;
+      }
+    };
+
+    const loadCdm = async () => {
+      const client = await loadClient();
+      if (!client) return null;
+      if (client instanceof WidevineClient) {
+        return new Widevine({ client });
+      } else if (client instanceof PlayReadyClient) {
+        return new PlayReady({ client });
+      } else {
+        return null;
       }
     };
 
@@ -78,33 +103,35 @@ export default defineBackground({
           return;
         }
 
-        const client = await loadClient();
-        if (!client) {
+        const cdm = await loadCdm();
+        if (!cdm) {
           sendResponse();
           return;
         }
 
-        const keySystem = client.requestMediaKeySystemAccess(
-          'com.widevine.alpha',
-          [],
-        );
-        const mediaKeys = await keySystem.createMediaKeys();
+        const keySystemAccess = requestMediaKeySystemAccess(cdm.keySystem, [
+          { cdm },
+        ]);
+        const mediaKeys = await keySystemAccess.createMediaKeys();
 
         if (message.action === 'generateRequest') {
           const { initDataType, initData } = message;
           const keySession = mediaKeys.createSession();
           state.sessions.set(initData, keySession);
-          if (!events.has(keySession.sessionId))
-            events.set(keySession.sessionId, []);
+          if (!state.events.has(keySession.sessionId))
+            state.events.set(keySession.sessionId, []);
           keySession.addEventListener(
             'message',
             (event: MediaKeyMessageEvent) => {
               console.log(event);
-              events.get(keySession.sessionId)?.push(event);
+              state.events.get(keySession.sessionId)?.push(event);
             },
             false,
           );
-          await keySession.generateRequest(initDataType, initData);
+          await keySession.generateRequest(
+            initDataType,
+            fromBase64(initData).toBuffer(),
+          );
           sendResponse();
         } else if (message.action === 'individualization-request') {
           // TODO: Handle individualization request
@@ -114,62 +141,68 @@ export default defineBackground({
           const session = state.sessions.get(initData);
           console.log('[okova] Received message license-request', session);
           if (!session) return;
-          const event = events
+          const event = state.events
             .get(session.sessionId)
             ?.find((e) => e.messageType === 'license-request');
           if (!event?.message) return console.log(`[okova] No message`);
           const messageBase64 = fromBuffer(
             new Uint8Array(event.message),
           ).toBase64();
-          console.log(events.get(session.sessionId));
+          console.log(state.events.get(session.sessionId));
           console.log(`[okova] Sending challenge`, messageBase64, event);
           sendResponse(messageBase64);
         } else if (message.action === 'update') {
           const { initData } = message;
-          const type = getMessageType(parseBinary(message.message));
-          const serviceCertificateMessageType = 5;
-          const isServiceCertificate = type === serviceCertificateMessageType;
-          // if (type === serviceCertificateMessageType) {
-          //   console.log('[okova] Service certificate. Skipping');
-          //   sendResponse();
-          // }
+
+          let isServiceCertificate = false;
+          if (cdm instanceof Widevine) {
+            console.log(`[okova] Checking for service certificate`);
+            const type = getMessageType(parseBinary(message.message));
+            const serviceCertificateMessageType = 5;
+            isServiceCertificate = type === serviceCertificateMessageType;
+            console.log({ isServiceCertificate });
+            // if (type === serviceCertificateMessageType) {
+            //   console.log('[okova] Service certificate. Skipping');
+            //   sendResponse();
+            // }
+          }
+
           const session = state.sessions.get(initData);
           if (!session) {
             console.log('[okova] Unable to find session');
             sendResponse();
           }
+
           if (isServiceCertificate) {
+            console.log(
+              `[okova] Updating session with service certificate`,
+              message.messageBase64,
+            );
             session?.update(parseBinary(message.message));
             sendResponse();
           } else {
-            session?.addEventListener(
-              'keystatuseschange',
-              (event) => {
-                const keySession = event.target as MediaKeySession;
-                const keys = Array.from(
-                  keySession.keyStatuses.keys(),
-                ) as unknown as Uint8Array[];
-                const toKey = (key: Uint8Array) => {
-                  const keyPair = fromBuffer(key).toText();
-                  const [id, value] = keyPair.split(':');
-                  return {
-                    id,
-                    value,
-                    url: message.url,
-                    mpd: message.mpd,
-                    pssh: message.initData,
-                    createdAt: new Date().getTime(),
-                  };
-                };
-                const results = keys.map((key) => toKey(key));
-                console.log('[okova] Received keys', results);
-                appStorage.recentKeys.setValue(results);
-                appStorage.allKeys.add(...results);
-                sendResponse({ keys: results });
-              },
-              false,
-            );
-            await session?.update(parseBinary(message.message));
+            console.log(`[okova] Updating session`, message.messageBase64);
+            session?.update(parseBinary(message.message));
+            console.log(`[okova] Waiting for keys`);
+            const keys = await session?.waitForKeyStatusesChange();
+            console.log(keys);
+
+            const toKey = (key: Key) => {
+              return {
+                id: key.keyId,
+                value: key.key,
+                url: message.url,
+                mpd: message.mpd,
+                pssh: message.initData,
+                createdAt: new Date().getTime(),
+              };
+            };
+
+            const results = keys?.map((key) => toKey(key)) ?? [];
+            console.log('[okova] Received keys', results);
+            appStorage.recentKeys.setValue(results);
+            appStorage.allKeys.add(...results);
+            sendResponse({ keys: results });
           }
         }
       })();

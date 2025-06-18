@@ -38,7 +38,7 @@ export class MessageEvent extends Event implements MediaKeyMessageEvent {
   }
 }
 
-class Session extends EventTarget implements MediaKeySession {
+export class Session extends EventTarget implements MediaKeySession {
   sessionId: string;
   readonly keyStatuses: Map<BufferSource, MediaKeyStatus>;
   readonly expiration: number;
@@ -119,9 +119,8 @@ class Session extends EventTarget implements MediaKeySession {
         const id = fromHex(key.keyId).toBuffer();
         this.keyStatuses.set(id, 'usable');
       }
+      this.dispatchEvent(new Event('keystatuseschange'));
     }
-
-    this.dispatchEvent(new Event('keystatuseschange'));
   }
 
   async close(): Promise<void> {

@@ -1,11 +1,10 @@
-import { appStorage, KeyInfo, Settings } from '@/utils/storage';
-import { WidevineClient } from '@okova/lib/widevine/client';
+import { appStorage, Client, KeyInfo, Settings } from '@/utils/storage';
 import { createSignal } from 'solid-js';
 
-const clientsSignal = createSignal<WidevineClient[]>([]);
+const clientsSignal = createSignal<Client[]>([]);
 export const useClients = () => clientsSignal;
 
-const activeClientSignal = createSignal<WidevineClient | null>(null);
+const activeClientSignal = createSignal<Client | null>(null);
 export const useActiveClient = () => activeClientSignal;
 
 const recentKeysSignal = createSignal<KeyInfo[]>([]);

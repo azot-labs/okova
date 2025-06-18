@@ -104,6 +104,14 @@ export class WidevineClient {
     return `${this.info.get('company_name')}_${this.info.get('model_name')}`;
   }
 
+  get filename() {
+    return this.getName();
+  }
+
+  get label() {
+    return `${this.info.get('company_name')} ${this.info.get('model_name')}`;
+  }
+
   async unpack() {
     const id = ClientIdentification.encode(this.id).finish();
     const key = await this.exportKey();

@@ -1,7 +1,6 @@
 import { BsCheckLg } from 'solid-icons/bs';
 import { TbTrash } from 'solid-icons/tb';
-import { WidevineClient } from '@okova/lib/widevine/client';
-import { appStorage } from '@/utils/storage';
+import { appStorage, Client } from '@/utils/storage';
 import { useActiveClient, useClients } from '../utils/state';
 import { Layout } from '../components/layout';
 import { Header } from '../components/header';
@@ -14,18 +13,16 @@ export const Clients = () => {
   const [activeClient, setActiveClient] = useActiveClient();
   const [clients, setClients] = useClients();
 
-  const setActive = async (client: WidevineClient) => {
+  const setActive = async (client: Client) => {
     setActiveClient(client);
     await appStorage.clients.active.setValue(client);
   };
 
-  const isActive = (client: WidevineClient) =>
-    activeClient()?.info.get('model_name') === client.info.get('model_name');
+  const isActive = (client: Client) =>
+    activeClient()?.filename === client.filename;
 
-  const removeClient = async (client: WidevineClient) => {
-    const newClients = clients().filter(
-      (c) => c.info.get('model_name') !== client.info.get('model_name'),
-    );
+  const removeClient = async (client: Client) => {
+    const newClients = clients().filter((c) => c.filename !== client.filename);
     setClients(newClients);
     await appStorage.clients.remove(client);
     if (newClients.length === 0) setActiveClient(null);
@@ -52,7 +49,6 @@ export const Clients = () => {
             {clients().map((client) => (
               <Cell
                 class="capitalize group"
-                subtitle={client.info.get('company_name')}
                 after={
                   <div class="relative min-w-5 min-h-5">
                     <TbTrash
@@ -66,7 +62,7 @@ export const Clients = () => {
                 }
                 onClick={() => setActive(client)}
               >
-                {client.info.get('model_name')}
+                {client.label}
               </Cell>
             ))}
           </Section>

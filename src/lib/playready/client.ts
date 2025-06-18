@@ -96,6 +96,14 @@ export class PlayReadyClient {
       .replaceAll(' ', '_');
   }
 
+  get filename() {
+    return this.getName();
+  }
+
+  get label() {
+    return `${this.groupCertificate.getName()} SL${this.securityLevel}`;
+  }
+
   pack() {
     return PRD3.build({
       signature: PRD_MAGIC,
