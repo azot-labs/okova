@@ -1,4 +1,4 @@
-import { Schema, b } from '../construct';
+import { b } from 'barsic';
 import { ecc256Sign, ecc256Verify } from '../crypto/common';
 import { EccKey } from '../crypto/ecc-key';
 import { fromHex } from '../utils';
@@ -191,7 +191,7 @@ export const Attribute = b.sized(
     length: b.uint32(),
     attribute: b.prefixed(
       (ctx) => ctx.length - 8,
-      b.switch(
+      b.variant(
         (ctx) => ctx.tag,
         {
           [BCertObjType.BASIC]: BasicInfo,
@@ -229,7 +229,7 @@ export const BCertBody = b.object({
 
 export const BCert = b.sized(BCertBody, (ctx) => ctx.total_length);
 
-type BCertType = ReturnType<typeof BCert.parse>;
+type BCertType = b.infer<typeof BCert>;
 
 export const BCertChain = b.object({
   signature: b.literal('CHAI'),
@@ -244,13 +244,13 @@ export const BCertChain = b.object({
   ),
 });
 
-type BCertChainType = ReturnType<typeof BCertChain.parse>;
+type BCertChainType = b.infer<typeof BCertChain>;
 
 export class Certificate {
   parsed: BCertType;
-  _BCERT: Schema<BCertType>;
+  _BCERT: typeof BCert;
 
-  constructor(parsedBCert: BCertType, bcertObj: Schema<BCertType> = BCert) {
+  constructor(parsedBCert: BCertType, bcertObj: typeof BCert = BCert) {
     this.parsed = parsedBCert;
     this._BCERT = bcertObj;
   }
@@ -496,11 +496,11 @@ export class CertificateChain {
   ).toBuffer();
 
   parsed: BCertChainType;
-  _BCERT_CHAIN: Schema<BCertChainType>;
+  _BCERT_CHAIN: typeof BCertChain;
 
   constructor(
     parsedBCertChain: BCertChainType,
-    bcertChainObj: Schema<BCertChainType> = BCertChain,
+    bcertChainObj: typeof BCertChain = BCertChain,
   ) {
     this.parsed = parsedBCertChain;
     this._BCERT_CHAIN = bcertChainObj;

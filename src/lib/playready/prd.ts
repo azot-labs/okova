@@ -1,4 +1,4 @@
-import { b } from '../construct';
+import { b } from 'barsic';
 import { fromText } from '../utils';
 
 export const PRD_MAGIC = fromText('PRD').toBuffer();
@@ -25,7 +25,7 @@ export const PRD3 = b.object({
 export const PRD = b.object({
   signature: b.literal('PRD'),
   version: b.uint8(),
-  data: b.switch((ctx) => ctx.version, {
+  data: b.variant((ctx) => ctx.version, {
     2: PRD2,
     3: PRD3,
   }),
