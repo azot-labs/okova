@@ -1,5 +1,5 @@
-import { concatUint8Arrays } from './buffer';
-import { aesCmac } from './cmac';
+import { concatUint8Arrays } from '../buffer';
+import { aesCmac } from '../crypto/cmac';
 
 export const deriveContext = (message: Uint8Array) => {
   const textEncoder = new TextEncoder();

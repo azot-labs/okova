@@ -28,7 +28,11 @@ examples/**/package-lock.json
 *.sln
 *.sw?
 
+.env
 device_client_id_blob
 device_private_key
 /*.wvd
-/inspectine.config.json
+/*.pem
+/*.dat
+/*.prd
+/*.config.json

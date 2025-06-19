@@ -64,9 +64,90 @@ export const fromHex = (data: string) => ({
     return btoa(String.fromCharCode(...parseHex(data)));
   },
   toBuffer: () => {
-    return new Uint8Array(parseHex(data));
+    return new Uint8Array(parseHex(data)) as unknown as Uint8Array;
   },
   toText: () => {
     return decode(new Uint8Array(parseHex(data)));
   },
 });
+
+export const parseBufferSource = (data: BufferSource) => {
+  if (data instanceof Uint8Array) return data;
+  return data instanceof ArrayBuffer
+    ? new Uint8Array(data)
+    : new Uint8Array(data.buffer);
+};
+
+export type Logger = Pick<typeof console, 'debug' | 'error' | 'info' | 'warn'>;
+
+export class BinaryReader {
+  offset: number;
+  length: number;
+  rawBytes: Uint8Array;
+  dataView: DataView;
+
+  constructor(data: Uint8Array) {
+    this.offset = 0;
+    this.length = data.length;
+    this.rawBytes = new Uint8Array(data);
+    this.dataView = new DataView(data.buffer, data.byteOffset, data.byteLength);
+  }
+
+  readUint8() {
+    return this.dataView.getUint8(this.offset++);
+  }
+
+  readUint16(little?: boolean) {
+    const result = this.dataView.getUint16(this.offset, little);
+    this.offset += 2;
+    return result;
+  }
+
+  readUint32(little?: boolean) {
+    const result = this.dataView.getUint32(this.offset, little);
+    this.offset += 4;
+    return result;
+  }
+
+  readBytes(size: number) {
+    const result = this.rawBytes.subarray(this.offset, this.offset + size);
+    this.offset += size;
+    return result;
+  }
+
+  reset() {
+    this.dataView = new DataView(this.rawBytes.buffer);
+    this.offset = 0;
+  }
+}
+
+export const compareArrays = (arr1: Uint8Array, arr2: Uint8Array) => {
+  if (arr1.length !== arr2.length) return false;
+  return Array.from(arr1).every((value, index) => value === arr2[index]);
+};
+
+export const bytesToString = (bytes: Uint8Array) => {
+  return String.fromCharCode.apply(null, Array.from(bytes));
+};
+
+export const bytesToBase64 = (uint8array: Uint8Array) => {
+  return btoa(String.fromCharCode.apply(null, Array.from(uint8array)));
+};
+
+export const stringToBytes = (string: string) => {
+  return Uint8Array.from(string.split('').map((x) => x.charCodeAt(0)));
+};
+
+export const base64ToBytes = (base64_string: string) => {
+  return Uint8Array.from(atob(base64_string), (c) => c.charCodeAt(0));
+};
+
+export const xorArrays = (arr1: Uint8Array, arr2: Uint8Array) => {
+  return new Uint8Array(arr1.map((byte, i) => byte ^ arr2[i]));
+};
+
+export const getRandomBytes = (size: number) => {
+  const randomBytes = new Uint8Array(size);
+  crypto.getRandomValues(randomBytes);
+  return randomBytes;
+};

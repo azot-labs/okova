@@ -1,5 +1,5 @@
 import { readFile } from 'node:fs/promises';
-import { Client, Session, fromBase64 } from 'inspectine';
+import { fromBase64, Widevine, requestMediaKeySystemAccess } from 'okova';
 
 async function main() {
   // Prepare pssh
@@ -9,27 +9,36 @@ async function main() {
   ).toBuffer();
 
   // Load device/client
-  const wvd = await readFile('client.wvd');
-  const client = await Client.fromPacked(wvd, 'wvd');
+  const clientData = await readFile('client.wvd');
+  const client = await Widevine.Client.from({ wvd: clientData });
+
+  const cdm = new Widevine({ client });
 
   // Create session
-  const session = new Session('temporary', client);
+  const keySystemAccess = requestMediaKeySystemAccess(cdm.keySystem, [{ cdm }]);
+  const mediaKeys = await keySystemAccess.createMediaKeys();
+  const session = mediaKeys.createSession();
 
   // Get license challenge
-  const challenge = await session.generateRequest(initDataType, initData);
+  session.generateRequest(initDataType, initData);
+  const challenge = await session.waitForLicenseRequest();
 
   // Send license request
   const licenseUrl = 'https://cwip-shaka-proxy.appspot.com/no_auth';
-  const response = await fetch(licenseUrl, { body: challenge, method: 'POST' });
-  const license = await response.arrayBuffer().then((ab) => new Uint8Array(ab));
+  const response = await fetch(licenseUrl, {
+    body: challenge,
+    method: 'POST',
+  })
+    .then((r) => r.arrayBuffer())
+    .then((buffer) => new Uint8Array(buffer));
 
-  // Update session with license
-  await session.update(license);
+  // Update session with license response
+  await session.update(response);
 
   // Print keys
-  const keys = await session.getKeys();
+  const keys = await session.waitForKeyStatusesChange();
   for (const key of keys) {
-    console.log(`[${key.type}] ${key.id}:${key.value}`);
+    console.log(`${key.keyId}:${key.key}`);
   }
 
   // Close session to delete of any license(s) and key(s) that have not been explicitly stored.

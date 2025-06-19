@@ -7,13 +7,10 @@ export const pack = async (
   format?: string,
   output?: string,
 ) => {
-  const client = await importClient(input);
-  const ext = format || (output ? extname(output) : 'inspectine');
-  const data = await client.pack(ext as 'wvd' | 'inspectine' | undefined);
-  const filename =
-    `${client.info.get('company_name')}-${client.info.get('model_name')}`
-      .replaceAll(' ', '-')
-      .toLowerCase();
+  const client = await importClient(input, output);
+  const ext = format || (output ? extname(output) : '');
+  const data = await client.pack();
+  const filename = `${client.getName()}`.replaceAll(' ', '-').toLowerCase();
   const outputPath = output || join(process.cwd(), `${filename}.${ext}`);
   await writeFile(outputPath, data);
   console.log(`Client packed: ${outputPath}`);

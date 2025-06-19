@@ -86,3 +86,22 @@ const bufferToArrayBuffer = (buffer: Uint8Array) => {
 };
 
 export { bufferReplaceAll, bitShiftLeftBuffer, xorBuffer, bufferToArrayBuffer };
+
+export const tryGetUtf16Le = (bytes: Uint8Array) => {
+  if (bytes.length % 2 !== 0) {
+    return null;
+  }
+
+  for (let i = 1; i < bytes.length; i += 2) {
+    if (bytes[i] !== 0) {
+      return null;
+    }
+  }
+
+  try {
+    const decoder = new TextDecoder('utf-16le', { fatal: true });
+    return decoder.decode(bytes);
+  } catch (e) {
+    return null;
+  }
+};

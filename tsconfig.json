@@ -12,8 +12,8 @@
       "@@/*": ["./*"],
       "~~": ["."],
       "~~/*": ["./*"],
-      "@inspectine/lib": ["./src/lib"],
-      "@inspectine/lib/*": ["./src/lib/*"]
+      "@okova/lib": ["./src/lib"],
+      "@okova/lib/*": ["./src/lib/*"]
     }
   }
 }

@@ -1,7 +1,6 @@
 import { BsCheckLg } from 'solid-icons/bs';
 import { TbTrash } from 'solid-icons/tb';
-import { Client } from '@@/src/lib';
-import { appStorage } from '@/utils/storage';
+import { appStorage, Client } from '@/utils/storage';
 import { useActiveClient, useClients } from '../utils/state';
 import { Layout } from '../components/layout';
 import { Header } from '../components/header';
@@ -9,6 +8,8 @@ import { Cell } from '../components/cell';
 import { List } from '../components/list';
 import { Section, SectionFooter } from '../components/section';
 import { CellImportClient } from '../components/cell-import-client';
+import { WidevineClient } from '../../../../lib/widevine/client';
+import { PlayReadyClient } from '../../../../lib/playready/client';
 
 export const Clients = () => {
   const [activeClient, setActiveClient] = useActiveClient();
@@ -20,17 +21,23 @@ export const Clients = () => {
   };
 
   const isActive = (client: Client) =>
-    activeClient()?.info.get('model_name') === client.info.get('model_name');
+    activeClient()?.filename === client.filename;
 
   const removeClient = async (client: Client) => {
-    const newClients = clients().filter(
-      (c) => c.info.get('model_name') !== client.info.get('model_name'),
-    );
+    const newClients = clients().filter((c) => c.filename !== client.filename);
     setClients(newClients);
     await appStorage.clients.remove(client);
     if (newClients.length === 0) setActiveClient(null);
     if (isActive(client)) setActiveClient(newClients[0]);
     await appStorage.clients.active.setValue(activeClient());
+  };
+
+  const getClientLevel = (client: Client) => {
+    if (client instanceof WidevineClient)
+      return `Widevine L${client.securityLevel}`;
+    if (client instanceof PlayReadyClient)
+      return `PlayReady SL${client.securityLevel}`;
+    return 'Unknown';
   };
 
   return (
@@ -52,7 +59,7 @@ export const Clients = () => {
             {clients().map((client) => (
               <Cell
                 class="capitalize group"
-                subtitle={client.info.get('company_name')}
+                subtitle={getClientLevel(client)}
                 after={
                   <div class="relative min-w-5 min-h-5">
                     <TbTrash
@@ -66,7 +73,7 @@ export const Clients = () => {
                 }
                 onClick={() => setActive(client)}
               >
-                {client.info.get('model_name')}
+                {client.label}
               </Cell>
             ))}
           </Section>

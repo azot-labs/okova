@@ -1,9 +1,10 @@
 import { readdir } from 'node:fs/promises';
 import { basename, extname } from 'node:path';
-import fastify from 'fastify';
-import RateLimit from '@fastify/rate-limit';
-import Helmet from '@fastify/helmet';
-import Sensible from '@fastify/sensible';
+import { Hono } from 'hono';
+import { logger } from 'hono/logger';
+import { secureHeaders } from 'hono/secure-headers';
+import { showRoutes } from 'hono/dev';
+import { serve as nodeServe } from '@hono/node-server';
 import { help } from './help';
 import { config, loadConfig } from './state';
 import session from './api/session';
@@ -17,9 +18,7 @@ type ServeOptions = {
 };
 
 export const serve = async (options: ServeOptions = {}) => {
-  const server = fastify({ logger: true });
-
-  const configPath = options.config || 'inspectine.config.json';
+  const configPath = options.config || 'okova.config.json';
   await loadConfig(configPath);
   if (options.client) config.clients.push(options.client);
   if (!config.clients.length) {
@@ -36,18 +35,35 @@ export const serve = async (options: ServeOptions = {}) => {
     config.users[options.secret] = user;
   }
 
-  server.register(RateLimit, { max: 100, timeWindow: '1 minute' });
-  server.register(Helmet, { global: true });
-  server.register(Sensible);
+  const app = new Hono();
 
-  session(server, {});
+  app.use(logger());
+  app.use(secureHeaders());
 
-  server
-    .listen({ port: options.port || 4000, host: options.host || '0.0.0.0' })
-    .catch((err) => {
-      server.log.error(err);
-      process.exit(1);
+  app.route('/session', session);
+
+  showRoutes(app);
+
+  const server = nodeServe({
+    fetch: app.fetch,
+    port: config.port || 4000,
+    hostname: config.host || '0.0.0.0',
+  });
+
+  process.on('SIGINT', () => {
+    server.close();
+    process.exit(0);
+  });
+
+  process.on('SIGTERM', () => {
+    server.close((err) => {
+      if (err) {
+        console.error(err);
+        process.exit(1);
+      }
+      process.exit(0);
     });
+  });
 };
 
 serve.help = help;

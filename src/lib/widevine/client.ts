@@ -6,7 +6,7 @@ import {
   getRandomBytes,
   toPKCS1,
   toPKCS8,
-} from './crypto';
+} from '../crypto/common';
 import {
   ClientIdentification,
   DrmCertificate,
@@ -17,7 +17,7 @@ import {
 import { buildWvd, parseWvd, WVD_DEVICE_TYPES } from './wvd';
 import { importCertificateKey } from './certificate';
 import { Session, SessionType } from './session';
-import { fromBase64, fromBuffer, fromText } from './utils';
+import { fromBase64, fromBuffer, fromText } from '../utils';
 
 export const CLIENT_TYPE = { android: 'android', chrome: 'chrome' } as const;
 
@@ -29,7 +29,7 @@ const types = new Map<number, ClientType>([
   [WVD_DEVICE_TYPES.chrome, CLIENT_TYPE.chrome],
 ]);
 
-export class Client {
+export class WidevineClient {
   id: ClientIdentification;
   type: ClientType;
   securityLevel: SecurityLevel;
@@ -41,10 +41,17 @@ export class Client {
 
   #key?: { forDecrypt: CryptoKey; forSign: CryptoKey };
 
-  static async fromPacked(
-    data: Uint8Array,
-    format: 'wvd' | 'inspectine' = 'inspectine',
+  static async from(
+    payload: { wvd: Uint8Array } | { id: Uint8Array; key: Uint8Array },
   ) {
+    if ('wvd' in payload) {
+      return await WidevineClient.fromPacked(payload.wvd);
+    } else {
+      return await WidevineClient.fromUnpacked(payload.id, payload.key);
+    }
+  }
+
+  static async fromPacked(data: Uint8Array, format: 'wvd' = 'wvd') {
     const isWvd = fromBuffer(data.slice(0, 3)).toText() == 'WVD';
     if (format === 'wvd' || isWvd) {
       const parsed = parseWvd(data);
@@ -52,20 +59,8 @@ export class Client {
       const key = fromText(pcks1).toBuffer();
       const type = types.get(parsed.deviceType);
       const securityLevel = parsed.securityLevel as SecurityLevel;
-      const client = new Client(parsed.clientId, type, securityLevel);
+      const client = new WidevineClient(parsed.clientId, type, securityLevel);
       await client.importKey(key);
-      return client;
-    } else if (format === 'inspectine') {
-      const parsed = JSON.parse(fromBuffer(data).toText());
-      const clientId = ClientIdentification.fromObject(
-        parsed.data.clientIdentification,
-      );
-      const client = new Client(
-        clientId,
-        parsed.data.type,
-        parsed.data.securityLevel,
-      );
-      await client.importKey(parsed.data.privateKey);
       return client;
     } else {
       throw new Error('Unsupported format');
@@ -73,7 +68,7 @@ export class Client {
   }
 
   static async fromUnpacked(id: Uint8Array, key: Uint8Array, vmp?: Uint8Array) {
-    const client = new Client(id);
+    const client = new WidevineClient(id);
     if (vmp) {
       client.vmp = FileHashes.decode(vmp);
       client.id.vmpData = vmp;
@@ -105,13 +100,28 @@ export class Client {
     this.info = new Map(clientInfo.map((item) => [item.name!, item.value!]));
   }
 
-  async unpack(): Promise<[id: Uint8Array, key: Uint8Array]> {
-    const id = ClientIdentification.encode(this.id).finish();
-    const key = await this.exportKey();
-    return [id, key];
+  getName() {
+    return `${this.info.get('company_name')}_${this.info.get('model_name')}`;
   }
 
-  async pack(format: 'wvd' | 'inspectine' = 'inspectine') {
+  get filename() {
+    return this.getName();
+  }
+
+  get label() {
+    return `${this.info.get('company_name')} ${this.info.get('model_name')}`;
+  }
+
+  async unpack() {
+    const id = ClientIdentification.encode(this.id).finish();
+    const key = await this.exportKey();
+    return {
+      device_client_id_blob: id,
+      device_private_key: key,
+    };
+  }
+
+  async pack(format: 'wvd' = 'wvd') {
     if (format === 'wvd') {
       const id = ClientIdentification.encode(this.id).finish();
       const key = await this.exportKey();
@@ -130,19 +140,6 @@ export class Client {
         privateKey: keyDerBinary,
       });
       return wvd;
-    } else if (format === 'inspectine') {
-      const clientIdentification = this.id.toJSON();
-      const privateKey = await this.exportKey();
-      const payload = {
-        version: 1,
-        type: 'widevine-client',
-        data: {
-          clientIdentification,
-          privateKey: fromBuffer(privateKey).toText(),
-        },
-      };
-      const data = JSON.stringify(payload, null, 2);
-      return fromText(data).toBuffer();
     } else {
       throw new Error('Unsupported format');
     }

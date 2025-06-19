@@ -1,14 +1,17 @@
 import { KEYUTIL } from 'jsrsasign';
-import { fromBase64, fromBuffer } from './utils';
+import { p256 } from '@noble/curves/nist';
+import * as utils from '@noble/curves/utils';
+import { fromBase64, fromBuffer } from '../utils';
+import { ElGamal } from './elgamal';
 
-export const toPKCS8 = (pem: string) => {
-  const keyobj = KEYUTIL.getKey(pem);
+export const toPKCS8 = (pkcs1pem: string) => {
+  const keyobj = KEYUTIL.getKey(pkcs1pem);
   const pkcs8pem = KEYUTIL.getPEM(keyobj, 'PKCS8PRV');
   return pkcs8pem;
 };
 
-export const toPKCS1 = (pem: string) => {
-  const keyobj = KEYUTIL.getKey(pem);
+export const toPKCS1 = (pkcs8pem: string) => {
+  const keyobj = KEYUTIL.getKey(pkcs8pem);
   const pkcs1pem = KEYUTIL.getPEM(keyobj, 'PKCS1PRV');
   return pkcs1pem;
 };
@@ -165,4 +168,58 @@ export const createHmacSha256 = async (
   );
   const signature = await crypto.subtle.sign('HMAC', hmacKey, data);
   return new Uint8Array(signature);
+};
+
+export const createSha256 = async (data: Uint8Array) => {
+  const hashBuffer = await crypto.subtle.digest('SHA-256', data);
+  const hashArray = new Uint8Array(hashBuffer);
+  return hashArray;
+};
+
+export const ecc256Verify = async (
+  publicKey: Uint8Array,
+  data: Uint8Array,
+  signature: Uint8Array,
+) => {
+  return p256.verify(signature, await createSha256(data), publicKey);
+};
+
+export const ecc256Sign = async (
+  private_key: bigint | string | Uint8Array,
+  data: Uint8Array,
+) => {
+  return p256.sign(await createSha256(data), private_key);
+};
+
+export const ecc256decrypt = (private_key: bigint, ciphertext: Uint8Array) => {
+  const decrypted = ElGamal.decrypt(
+    {
+      point1: {
+        x: utils.bytesToNumberBE(ciphertext.subarray(0, 32)),
+        y: utils.bytesToNumberBE(ciphertext.subarray(32, 64)),
+      },
+      point2: {
+        x: utils.bytesToNumberBE(ciphertext.subarray(64, 96)),
+        y: utils.bytesToNumberBE(ciphertext.subarray(96, 128)),
+      },
+    },
+    private_key,
+  );
+
+  return utils.numberToBytesBE(decrypted.x, 32);
+};
+
+export const aesEcbEncrypt = async (key: Uint8Array, data: Uint8Array) => {
+  const cryptoKey = await crypto.subtle.importKey('raw', key, 'AES-ECB', true, [
+    'encrypt',
+    'decrypt',
+  ]);
+
+  const encryptedBuffer = await crypto.subtle.encrypt(
+    { name: 'AES-ECB' },
+    cryptoKey,
+    data,
+  );
+
+  return new Uint8Array(encryptedBuffer);
 };

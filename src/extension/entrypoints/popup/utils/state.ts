@@ -1,5 +1,4 @@
-import { appStorage, KeyInfo, Settings } from '@/utils/storage';
-import { Client } from '@@/src/lib';
+import { appStorage, Client, KeyInfo, Settings } from '@/utils/storage';
 import { createSignal } from 'solid-js';
 
 const clientsSignal = createSignal<Client[]>([]);

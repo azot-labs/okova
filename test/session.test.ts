@@ -1,6 +1,8 @@
 import { readFile } from 'node:fs/promises';
-import { Client, Session, fromBase64 } from '../src/lib';
+import { fromBase64 } from '../src/lib';
 import { expect, test } from 'vitest';
+import { WidevineClient } from '../src/lib/widevine/client';
+import { Session } from '../src/lib/widevine/session';
 
 test('session', async () => {
   // Prepare pssh
@@ -11,7 +13,7 @@ test('session', async () => {
 
   // Load device/client
   const wvd = await readFile('client.wvd');
-  const client = await Client.fromPacked(wvd, 'wvd');
+  const client = await WidevineClient.from({ wvd });
 
   // Create session
   const session = new Session('temporary', client);

@@ -1,37 +1,75 @@
 import { readdir, readFile, stat } from 'node:fs/promises';
-import { extname, join } from 'node:path';
-import { Client } from '../lib';
+import { join } from 'node:path';
+import { WidevineClient } from '../lib/widevine/client';
+import { PlayReadyClient } from '../lib/playready/client';
 
-export const importClient = async (input: string) => {
+export const importClient = async (input: string, output?: string) => {
   const inputStat = await stat(input);
   const isDir = inputStat.isDirectory();
+
+  const outputInfo = output ? await stat(output).catch(() => null) : null;
+  const importForUnpack =
+    !outputInfo ||
+    outputInfo?.isDirectory() ||
+    input.endsWith('.wvd') ||
+    input.endsWith('.prd');
   if (isDir) {
     const entries = isDir ? await readdir(input) : [];
-    const idFilename = entries.find((entry) => entry.includes('client_id'));
-    const keyFilename = entries.find((entry) => entry.includes('private_key'));
-    const packedFilename = entries.find(
-      (entry) => entry.endsWith('wvd') || entry.endsWith('inspectine'),
-    );
-    const isUnpacked = !!(idFilename && keyFilename);
-    const isPacked = !!packedFilename;
-    if (isUnpacked) {
-      const idPath = join(input, idFilename);
-      const keyPath = join(input, keyFilename);
-      const id = await readFile(idPath);
-      const key = await readFile(keyPath);
-      return Client.fromUnpacked(id, key);
-    } else if (isPacked) {
-      const packedPath = join(input, packedFilename);
-      const packed = await readFile(packedPath);
-      const ext = extname(packedPath) as 'wvd' | 'inspectine';
-      return await Client.fromPacked(packed, ext);
+
+    const find = (query: string) =>
+      entries.find((entry) => entry.includes(query));
+    const endsWith = (query: string) =>
+      entries.find((entry) => entry.endsWith(query));
+
+    const widevineIdFile = find('client_id');
+    const widevineKeyFile = find('private_key');
+    const wvdFile = endsWith('.wvd');
+
+    const isWidevine =
+      (!!(widevineIdFile && widevineKeyFile) || !!wvdFile) &&
+      !output?.endsWith('.prd');
+
+    const playreadyCertificateFile = find('bgroupcert');
+    const playreadyKeyFile = find('zgpriv');
+    const prdFile = endsWith('.prd');
+
+    const isPlayReady =
+      (!!(playreadyCertificateFile && playreadyKeyFile) || !!prdFile) &&
+      !output?.endsWith('.wvd');
+
+    if (isWidevine) {
+      if (importForUnpack && wvdFile) {
+        const wvd = await readFile(join(input, wvdFile));
+        return await WidevineClient.from({ wvd });
+      } else {
+        const id = await readFile(join(input, widevineIdFile!));
+        const key = await readFile(join(input, widevineKeyFile!));
+        return WidevineClient.from({ id, key });
+      }
+    } else if (isPlayReady) {
+      if (importForUnpack && prdFile) {
+        const prd = await readFile(join(input, prdFile));
+        return await PlayReadyClient.from({ prd });
+      } else {
+        const certificate = await readFile(
+          join(input, playreadyCertificateFile!),
+        );
+        const key = await readFile(join(input, playreadyKeyFile!));
+        return PlayReadyClient.from({
+          groupCertificate: certificate,
+          groupKey: key,
+        });
+      }
     } else {
       console.log(`Unable to find client files in ${input}`);
       process.exit(1);
     }
   } else if (input.endsWith('.wvd')) {
     const wvd = await readFile(input);
-    return Client.fromPacked(wvd);
+    return WidevineClient.from({ wvd });
+  } else if (input.endsWith('.prd')) {
+    const prd = await readFile(input);
+    return PlayReadyClient.from({ prd });
   } else {
     console.log(`Unable to find client files in ${input}`);
     process.exit(1);

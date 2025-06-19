@@ -1,9 +1,9 @@
 import { readFile } from 'node:fs/promises';
-import { Session } from '../../../lib/session';
-import { Client } from '../../../lib/client';
+import { Session } from '../../../lib/widevine/session';
+import { WidevineClient } from '../../../lib/widevine/client';
 
 export const sessions = new Map<string, Session>();
-export const clients = new Map<string, Client>();
+export const clients = new Map<string, WidevineClient>();
 
 type Config = {
   host: string;

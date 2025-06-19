@@ -1,8 +1,8 @@
 import { col } from '../../utils';
 
 export const help = () => {
-  console.log(`inspectine license: Make license request\n`);
-  console.log(`Usage: inspectine license <url> [...flags]\n`);
+  console.log(`okova license: Make license request\n`);
+  console.log(`Usage: okova license <url> [...flags]\n`);
   console.log(`Commands:`);
   console.log(
     col(`<url>`) +

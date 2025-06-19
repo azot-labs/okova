@@ -12,7 +12,7 @@ test('remote session', async () => {
   const client = 'pixel6';
 
   // Connect to remote instance
-  const baseUrl = ''; // Set your API base URL here
+  const baseUrl = 'http://localhost:4000'; // Set your API base URL here
   const secret: string = '...'; // Set your API secret here
   if (secret === '...')
     return console.warn('Add your API endpoint & secret to test connection');
