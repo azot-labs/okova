@@ -43,7 +43,7 @@ export const Dashboard = () => {
         <div>
           <Show when={activeClient()}>
             <Cell class="capitalize" component="label" subtitle="Active">
-              {`${activeClient()?.info.get('company_name')} ${activeClient()?.info.get('model_name')}`}
+              {`${activeClient()?.filename}`}
             </Cell>
           </Show>
         </div>
