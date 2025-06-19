@@ -31,6 +31,7 @@ examples/**/package-lock.json
 .env
 device_client_id_blob
 device_private_key
+/clients
 /*.wvd
 /*.pem
 /*.dat
