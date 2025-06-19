@@ -1,7 +1,7 @@
 import { b } from 'barsic';
 import { ecc256Sign, ecc256Verify } from '../crypto/common';
 import { EccKey } from '../crypto/ecc-key';
-import { fromHex } from '../utils';
+import { fromBuffer, fromHex, fromText } from '../utils';
 import { InvalidCertificate, InvalidCertificateChain } from './exceptions';
 
 export const BCertCertType = {
@@ -351,7 +351,7 @@ export class Certificate {
     if (!manufacturerInfo) throw new Error('Manufacturer info not found');
 
     const newBCertContainer: any = {
-      signature: Buffer.from('CERT'),
+      signature: fromText('CERT').toBuffer(),
       version: 1,
       // total_length: 0, // filled at a later time
       // certificate_length: 0, // filled at a later time
@@ -416,8 +416,8 @@ export class Certificate {
   }
 
   private static _unpad(name: Uint8Array) {
-    return Buffer.from(name)
-      .toString('utf-8')
+    return fromBuffer(name)
+      .toText()
       .replace(/\x00+$/, '');
   }
 
@@ -457,7 +457,7 @@ export class Certificate {
     const signatureKey = signatureObject.attribute.signature_key as Uint8Array;
     const signature = signatureObject.attribute.signature as Uint8Array;
 
-    if (Buffer.compare(publicKey, signatureKey) !== 0)
+    if (!publicKey.every((byte, i) => byte === signatureKey[i]))
       throw new InvalidCertificate(
         `Signature keys of certificate ${index} do not match`,
       );
