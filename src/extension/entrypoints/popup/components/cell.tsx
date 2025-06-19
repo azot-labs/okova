@@ -48,7 +48,7 @@ export const Cell: Component<CellProps> = (props) => {
         <div class="[&>svg]:w-[18px] [&>svg]:h-[18px] mr-3">{props.before}</div>
       )}
       <div class="flex flex-col truncate select-none">
-        {props.children}
+        <span class="truncate">{props.children}</span>
         <span
           class={cn(
             'text-[11px] text-neutral-500 select-none',
