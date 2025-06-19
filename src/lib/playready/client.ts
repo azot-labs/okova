@@ -101,7 +101,7 @@ export class PlayReadyClient {
   }
 
   get label() {
-    return `${this.groupCertificate.getName()} SL${this.securityLevel}`;
+    return `${this.groupCertificate.getName()}`;
   }
 
   pack() {

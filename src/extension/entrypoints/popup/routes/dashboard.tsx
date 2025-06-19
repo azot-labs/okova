@@ -43,7 +43,7 @@ export const Dashboard = () => {
         <div>
           <Show when={activeClient()}>
             <Cell class="capitalize" component="label" subtitle="Active">
-              {`${activeClient()?.filename}`}
+              {`${activeClient()?.label}`}
             </Cell>
           </Show>
         </div>
