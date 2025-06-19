@@ -8,6 +8,8 @@ import { Cell } from '../components/cell';
 import { List } from '../components/list';
 import { Section, SectionFooter } from '../components/section';
 import { CellImportClient } from '../components/cell-import-client';
+import { WidevineClient } from '../../../../lib/widevine/client';
+import { PlayReadyClient } from '../../../../lib/playready/client';
 
 export const Clients = () => {
   const [activeClient, setActiveClient] = useActiveClient();
@@ -30,6 +32,14 @@ export const Clients = () => {
     await appStorage.clients.active.setValue(activeClient());
   };
 
+  const getClientLevel = (client: Client) => {
+    if (client instanceof WidevineClient)
+      return `Widevine L${client.securityLevel}`;
+    if (client instanceof PlayReadyClient)
+      return `PlayReady SL${client.securityLevel}`;
+    return 'Unknown';
+  };
+
   return (
     <Layout>
       <Header backHref="/">Clients</Header>
@@ -49,6 +59,7 @@ export const Clients = () => {
             {clients().map((client) => (
               <Cell
                 class="capitalize group"
+                subtitle={getClientLevel(client)}
                 after={
                   <div class="relative min-w-5 min-h-5">
                     <TbTrash
