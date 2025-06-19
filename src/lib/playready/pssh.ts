@@ -4,29 +4,29 @@ import { BinaryReader, compareArrays, fromBase64 } from '../utils';
 class PlayreadyObject {
   type: number;
   length: number;
-  wrm_header: string | null;
+  wrmHeader: string | null;
 
   constructor(reader: BinaryReader) {
     this.type = reader.readUint16(true);
     this.length = reader.readUint16(true);
-    this.wrm_header = null;
+    this.wrmHeader = null;
     if (this.type === 1) {
-      this.wrm_header = tryGetUtf16Le(reader.readBytes(this.length));
+      this.wrmHeader = tryGetUtf16Le(reader.readBytes(this.length));
     }
   }
 }
 
 class PlayreadyHeader {
   length: number;
-  record_count: number;
+  recordCount: number;
   records: PlayreadyObject[];
 
   constructor(reader: BinaryReader) {
     this.length = reader.readUint32(true);
-    this.record_count = reader.readUint16(true);
+    this.recordCount = reader.readUint16(true);
 
     this.records = [];
-    for (let i = 0; i < this.record_count; i++) {
+    for (let i = 0; i < this.recordCount; i++) {
       this.records.push(new PlayreadyObject(reader));
     }
   }
@@ -38,21 +38,21 @@ export class Pssh {
     0xe0, 0x88, 0x5f, 0x95,
   ]);
 
-  wrm_headers: string[];
+  wrmHeaders: string[];
 
   constructor(data: Uint8Array | string) {
     const bytes = typeof data === 'string' ? fromBase64(data).toBuffer() : data;
-    this.wrm_headers = this._readWrmHeaders(bytes).filter(Boolean) as string[];
+    this.wrmHeaders = this.#readWrmHeaders(bytes).filter(Boolean) as string[];
   }
 
-  _readWrmHeaders(bytes: Uint8Array) {
+  #readWrmHeaders(bytes: Uint8Array) {
     const string = tryGetUtf16Le(bytes);
     if (string !== null) {
       console.log(1);
       return [string];
     }
 
-    if (this._isPsshBox(bytes)) {
+    if (this.#isPsshBox(bytes)) {
       const boxData = bytes.subarray(32);
       const wrmHeader = tryGetUtf16Le(boxData);
       if (wrmHeader) {
@@ -60,7 +60,7 @@ export class Pssh {
       } else {
         const reader = new BinaryReader(boxData);
         return new PlayreadyHeader(reader).records.map(
-          (record) => record.wrm_header,
+          (record) => record.wrmHeader,
         );
       }
     } else {
@@ -70,15 +70,15 @@ export class Pssh {
 
       if (isPlayreadyHeader) {
         return new PlayreadyHeader(reader).records.map(
-          (record) => record.wrm_header,
+          (record) => record.wrmHeader,
         );
       } else {
-        return [new PlayreadyObject(reader).wrm_header];
+        return [new PlayreadyObject(reader).wrmHeader];
       }
     }
   }
 
-  _isPsshBox(bytes: Uint8Array) {
+  #isPsshBox(bytes: Uint8Array) {
     return (
       bytes[0] === 0 &&
       bytes[1] === 0 &&

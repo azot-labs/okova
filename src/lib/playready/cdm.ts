@@ -40,7 +40,7 @@ export class PlayReady implements Cdm {
   clientVersion: string;
 
   rgbMagicConstantZero: Uint8Array;
-  _wmrmServerKey: { x: bigint; y: bigint };
+  #wmrmServerKey: { x: bigint; y: bigint };
 
   parser: DOMParser;
 
@@ -74,7 +74,7 @@ export class PlayReady implements Cdm {
       0x7e, 0xe9, 0xed, 0x4a, 0xf7, 0x73, 0x22, 0x4f, 0x00, 0xb8, 0xea, 0x7e,
       0xfb, 0x02, 0x7c, 0xbb,
     ]);
-    this._wmrmServerKey = {
+    this.#wmrmServerKey = {
       x: 90785344306297710604867503975059265028223978614363440949957868233137570135451n,
       y: 68827801477692731286297993103001909218341737652466656881935707825713852622178n,
     };
@@ -83,8 +83,8 @@ export class PlayReady implements Cdm {
     this.keys = [];
   }
 
-  _getKeyCipher(xmlKey: XmlKey) {
-    const encrypted = ElGamal.encrypt(xmlKey.get_point(), this._wmrmServerKey);
+  #getKeyCipher(xmlKey: XmlKey) {
+    const encrypted = ElGamal.encrypt(xmlKey.point, this.#wmrmServerKey);
     return new Uint8Array([
       ...utils.numberToBytesBE(encrypted.point1.x, 32),
       ...utils.numberToBytesBE(encrypted.point1.y, 32),
@@ -93,51 +93,51 @@ export class PlayReady implements Cdm {
     ]);
   }
 
-  async _getDataCipher(xmlKey: XmlKey) {
+  async #getDataCipher(xmlKey: XmlKey) {
     const b64CertificateChain = bytesToBase64(this.certificateChain);
     const body = `<Data><CertificateChains><CertificateChain>${b64CertificateChain}</CertificateChain></CertificateChains><Features><Feature Name="AESCBC">""</Feature><REE><AESCBCS></AESCBCS></REE></Features></Data>`;
 
-    const key = await importAesCbcKeyForEncrypt(xmlKey.aes_key);
+    const key = await importAesCbcKeyForEncrypt(xmlKey.aesKey);
     const cipherText = await encryptWithAesCbc(
       stringToBytes(body),
       key,
-      xmlKey.aes_iv,
+      xmlKey.aesIv,
     );
 
-    return new Uint8Array([...xmlKey.aes_iv, ...cipherText]);
+    return new Uint8Array([...xmlKey.aesIv, ...cipherText]);
   }
 
-  _buildDigestInfo(digest_value: string | number) {
+  #buildDigestInfo(digestValue: string | number) {
     return (
       `<SignedInfo xmlns="http://www.w3.org/2000/09/xmldsig#">` +
       `<CanonicalizationMethod Algorithm="http://www.w3.org/TR/2001/REC-xml-c14n-20010315"></CanonicalizationMethod>` +
       `<SignatureMethod Algorithm="http://schemas.microsoft.com/DRM/2007/03/protocols#ecdsa-sha256"></SignatureMethod>` +
       `<Reference URI="#SignedData">` +
       `<DigestMethod Algorithm="http://schemas.microsoft.com/DRM/2007/03/protocols#sha256"></DigestMethod>` +
-      `<DigestValue>${digest_value}</DigestValue>` +
+      `<DigestValue>${digestValue}</DigestValue>` +
       `</Reference>` +
       `</SignedInfo>`
     );
   }
 
-  _buildDigestContent(
-    content_header: string,
+  #buildDigestContent(
+    contentHeader: string,
     nonce: string,
-    key_cipher: string,
-    data_cipher: string,
-    protocol_version: string | number,
-    rev_lists?: string,
+    keyCipher: string,
+    dataCipher: string,
+    protocolVersion: string | number,
+    revLists?: string,
   ) {
     const clientTime = Math.floor(Date.now() / 1000);
 
     return (
       `<LA xmlns="http://schemas.microsoft.com/DRM/2007/03/protocols" Id="SignedData" xml:space="preserve">` +
-      `<Version>${protocol_version}</Version>` +
-      `<ContentHeader>${content_header}</ContentHeader>` +
+      `<Version>${protocolVersion}</Version>` +
+      `<ContentHeader>${contentHeader}</ContentHeader>` +
       `<CLIENTINFO>` +
       `<CLIENTVERSION>${this.clientVersion}</CLIENTVERSION>` +
       `</CLIENTINFO>` +
-      rev_lists +
+      revLists +
       `<LicenseNonce>${nonce}</LicenseNonce>` +
       `<ClientTime>${clientTime}</ClientTime>` +
       `<EncryptedData xmlns="http://www.w3.org/2001/04/xmlenc#" Type="http://www.w3.org/2001/04/xmlenc#Element">` +
@@ -149,23 +149,23 @@ export class PlayReady implements Cdm {
       `<KeyName>WMRMServer</KeyName>` +
       `</KeyInfo>` +
       `<CipherData>` +
-      `<CipherValue>${key_cipher}</CipherValue>` +
+      `<CipherValue>${keyCipher}</CipherValue>` +
       `</CipherData>` +
       `</EncryptedKey>` +
       `</KeyInfo>` +
       `<CipherData>` +
-      `<CipherValue>${data_cipher}</CipherValue>` +
+      `<CipherValue>${dataCipher}</CipherValue>` +
       `</CipherData>` +
       `</EncryptedData>` +
       `</LA>`
     );
   }
 
-  _buildMainBody(
-    la_content: string | number,
-    signed_info: string | number,
-    signature_value: string | number,
-    public_key: string | number,
+  #buildMainBody(
+    laContent: string | number,
+    signedInfo: string | number,
+    signatureValue: string | number,
+    publicKey: string | number,
   ) {
     return (
       '<?xml version="1.0" encoding="utf-8"?>' +
@@ -174,14 +174,14 @@ export class PlayReady implements Cdm {
       '<AcquireLicense xmlns="http://schemas.microsoft.com/DRM/2007/03/protocols">' +
       '<challenge>' +
       '<Challenge xmlns="http://schemas.microsoft.com/DRM/2007/03/protocols/messages">' +
-      la_content +
+      laContent +
       '<Signature xmlns="http://www.w3.org/2000/09/xmldsig#">' +
-      signed_info +
-      `<SignatureValue>${signature_value}</SignatureValue>` +
+      signedInfo +
+      `<SignatureValue>${signatureValue}</SignatureValue>` +
       '<KeyInfo xmlns="http://www.w3.org/2000/09/xmldsig#">' +
       '<KeyValue>' +
       '<ECCKeyValue>' +
-      `<PublicKey>${public_key}</PublicKey>` +
+      `<PublicKey>${publicKey}</PublicKey>` +
       '</ECCKeyValue>' +
       '</KeyValue>' +
       '</KeyInfo>' +
@@ -204,7 +204,7 @@ export class PlayReady implements Cdm {
     initDataType?: string,
   ) {
     const pssh = new Pssh(initData);
-    const wrmHeader = pssh.wrm_headers[0];
+    const wrmHeader = pssh.wrmHeaders[0];
     const challenge = await this.getLicenseChallenge(wrmHeader);
     return fromText(challenge).toBuffer();
   }
@@ -238,18 +238,18 @@ export class PlayReady implements Cdm {
         break;
     }
 
-    const laContent = this._buildDigestContent(
+    const laContent = this.#buildDigestContent(
       wrm_header,
       bytesToBase64(getRandomBytes(16)),
-      bytesToBase64(this._getKeyCipher(xml_key)),
-      bytesToBase64(await this._getDataCipher(xml_key)),
+      bytesToBase64(this.#getKeyCipher(xml_key)),
+      bytesToBase64(await this.#getDataCipher(xml_key)),
       protocol_version,
       rev_lists,
     );
 
     const contentHash = await createSha256(fromText(laContent).toBuffer());
 
-    const signedInfo = this._buildDigestInfo(bytesToBase64(contentHash));
+    const signedInfo = this.#buildDigestInfo(bytesToBase64(contentHash));
 
     const signature = await ecc256Sign(
       this.signingKey.privateKey,
@@ -263,7 +263,7 @@ export class PlayReady implements Cdm {
 
     const singing_key = this.signingKey.publicBytes();
 
-    return this._buildMainBody(
+    return this.#buildMainBody(
       laContent,
       signedInfo,
       bytesToBase64(rawSignature),
@@ -287,13 +287,13 @@ export class PlayReady implements Cdm {
       for (const obj of license.getObjects(10)) {
         const contentKeyObject = obj.data as _ContentKeyObject;
 
-        if (![3, 4, 6].includes(contentKeyObject.cipher_type)) {
+        if (![3, 4, 6].includes(contentKeyObject.cipherType)) {
           return;
         }
 
-        const viaSymmetric = contentKeyObject.cipher_type === 6;
+        const viaSymmetric = contentKeyObject.cipherType === 6;
 
-        const encryptedKey = contentKeyObject.encrypted_key;
+        const encryptedKey = contentKeyObject.encryptedKey;
         const decrypted = ecc256decrypt(
           this.encryptionKey.privateKey,
           encryptedKey,
@@ -315,7 +315,7 @@ export class PlayReady implements Cdm {
 
             const auxKey = (
               license.getObjects(81)[0].data as _AuxiliaryKeysObject
-            ).auxiliary_keys[0].key;
+            ).auxiliaryKeys[0].key;
 
             const uplinkXKey = await aesEcbEncrypt(contentKeyPrime, auxKey);
             const secondaryKey = await aesEcbEncrypt(
@@ -343,9 +343,9 @@ export class PlayReady implements Cdm {
 
         keys.push(
           new Key(
-            contentKeyObject.key_id,
-            contentKeyObject.key_type,
-            contentKeyObject.cipher_type,
+            contentKeyObject.keyId,
+            contentKeyObject.keyType,
+            contentKeyObject.cipherType,
             ck,
           ),
         );
@@ -358,7 +358,7 @@ export class PlayReady implements Cdm {
   getKeys(sessionId: string) {
     return this.keys.map((key) => ({
       key: fromBuffer(key.key).toHex(),
-      keyId: fromBuffer(key.key_id).toHex(),
+      keyId: fromBuffer(key.keyId).toHex(),
     }));
   }
 }

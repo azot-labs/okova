@@ -1,18 +1,18 @@
 export class Key {
-  key_id: Uint8Array;
-  key_type: number;
-  cipher_type: number;
+  keyId: Uint8Array;
+  keyType: number;
+  cipherType: number;
   key: Uint8Array;
 
   constructor(
-    key_id: Uint8Array,
-    key_type: number,
-    cipher_type: number,
+    keyId: Uint8Array,
+    keyType: number,
+    cipherType: number,
     key: Uint8Array,
   ) {
-    this.key_id = this._swapEndianess(key_id);
-    this.key_type = key_type;
-    this.cipher_type = cipher_type;
+    this.keyId = this._swapEndianess(keyId);
+    this.keyType = keyType;
+    this.cipherType = cipherType;
     this.key = key;
   }
 

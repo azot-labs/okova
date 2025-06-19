@@ -83,44 +83,40 @@ export type Logger = Pick<typeof console, 'debug' | 'error' | 'info' | 'warn'>;
 export class BinaryReader {
   offset: number;
   length: number;
-  _raw_bytes: Uint8Array;
-  _data_view: DataView;
+  rawBytes: Uint8Array;
+  dataView: DataView;
 
   constructor(data: Uint8Array) {
     this.offset = 0;
     this.length = data.length;
-    this._raw_bytes = new Uint8Array(data);
-    this._data_view = new DataView(
-      data.buffer,
-      data.byteOffset,
-      data.byteLength,
-    );
+    this.rawBytes = new Uint8Array(data);
+    this.dataView = new DataView(data.buffer, data.byteOffset, data.byteLength);
   }
 
   readUint8() {
-    return this._data_view.getUint8(this.offset++);
+    return this.dataView.getUint8(this.offset++);
   }
 
   readUint16(little?: boolean) {
-    const result = this._data_view.getUint16(this.offset, little);
+    const result = this.dataView.getUint16(this.offset, little);
     this.offset += 2;
     return result;
   }
 
   readUint32(little?: boolean) {
-    const result = this._data_view.getUint32(this.offset, little);
+    const result = this.dataView.getUint32(this.offset, little);
     this.offset += 4;
     return result;
   }
 
   readBytes(size: number) {
-    const result = this._raw_bytes.subarray(this.offset, this.offset + size);
+    const result = this.rawBytes.subarray(this.offset, this.offset + size);
     this.offset += size;
     return result;
   }
 
   reset() {
-    this._data_view = new DataView(this._raw_bytes.buffer);
+    this.dataView = new DataView(this.rawBytes.buffer);
     this.offset = 0;
   }
 }
