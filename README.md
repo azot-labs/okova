@@ -62,3 +62,13 @@ See [examples](https://github.com/azot-labs/okova/blob/main/examples).
 ### Command-line tool
 
 See help: `okova --help`
+
+## Disclaimer
+
+1. This project does not condone piracy or any action against the terms of the DRM systems.
+2. All efforts in this project have been the result of Reverse-Engineering, Publicly available research, and Trial & Error.
+3. Do not use this program to decrypt or access any content for which you do not have the legal rights or explicit permission.
+4. Unauthorized decryption or distribution of copyrighted materials is a violation of applicable laws and intellectual property rights.
+5. This tool must not be used for any illegal activities, including but not limited to piracy, circumventing digital rights management (DRM), or unauthorized access to protected content.
+6. The developers, contributors, and maintainers of this program are not responsible for any misuse or illegal activities performed using this software.
+7. By using this program, you agree to comply with all applicable laws and regulations governing digital rights and copyright protections.
