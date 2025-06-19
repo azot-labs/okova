@@ -1,6 +1,5 @@
 import { DOMParser } from '@xmldom/xmldom';
 import * as utils from '@noble/curves/utils';
-import type { Cdm } from '../api';
 import {
   base64ToBytes,
   bytesToBase64,
