@@ -40,7 +40,7 @@ export const serve = async (options: ServeOptions = {}) => {
   app.use(logger());
   app.use(secureHeaders());
 
-  app.route('/session', session);
+  app.route('/sessions', session);
 
   showRoutes(app);
 

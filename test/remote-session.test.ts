@@ -10,11 +10,16 @@ test('remote session', async () => {
 
   const client = 'pixel6';
   const baseUrl = 'http://localhost:4000'; // Set your API base URL here
-  const secret: string = '...'; // Set your API secret here
-  if (secret === '...')
+  const secret: string = ''; // Set your API secret here
+  if (secret === '')
     return console.warn('Add your API endpoint & secret to test connection');
 
-  const cdm = new RemoteCdm({ secret, baseUrl, client });
+  const cdm = new RemoteCdm({
+    keySystem: 'com.widevine.alpha',
+    secret,
+    baseUrl,
+    client,
+  });
 
   const keySystemAccess = requestMediaKeySystemAccess(cdm.keySystem, []);
   const mediaKeys = await keySystemAccess.createMediaKeys({ cdm });

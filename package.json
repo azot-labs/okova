@@ -77,7 +77,7 @@
     "@hono/zod-validator": "^0.7.0",
     "@noble/curves": "^1.9.2",
     "@xmldom/xmldom": "^0.9.8",
-    "barsic": "^0.1.5",
+    "barsic": "^0.1.7",
     "hono": "^4.7.11",
     "jsrsasign": "^11.1.0",
     "protobufjs": "^7.5.3",

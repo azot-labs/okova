@@ -44,8 +44,10 @@ const fetchDecryptionKeys = async (params: FetchDecryptionKeysParams) => {
 };
 
 export { fetchDecryptionKeys };
-export * from './remote/cdm';
 export * from './utils';
 export * from './api';
 export * from './widevine/cdm';
+export * from './widevine/client';
 export * from './playready/cdm';
+export * from './playready/client';
+export * from './remote/cdm';

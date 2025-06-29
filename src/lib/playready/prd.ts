@@ -25,7 +25,7 @@ export const PRD3 = b.object({
 export const PRD = b.object({
   signature: b.literal('PRD'),
   version: b.uint8(),
-  data: b.variant((ctx) => ctx.version, {
+  data: b.discriminatedUnion((ctx) => ctx.version, {
     2: PRD2,
     3: PRD3,
   }),

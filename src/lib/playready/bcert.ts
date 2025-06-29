@@ -191,7 +191,7 @@ export const Attribute = b.sized(
     length: b.uint32(),
     attribute: b.prefixed(
       (ctx) => ctx.length - 8,
-      b.variant(
+      b.discriminatedUnion(
         (ctx) => ctx.tag,
         {
           [BCertObjType.BASIC]: BasicInfo,

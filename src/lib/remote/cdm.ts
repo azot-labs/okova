@@ -2,16 +2,17 @@ import { Cdm } from '../api';
 import { fromBase64, fromBuffer } from '../utils';
 
 type RemoteParams = {
+  keySystem: string;
   baseUrl: string;
-  secret: string;
+  secret?: string;
   client?: string;
 };
 
 const createHttpClient = ({ baseUrl, secret }: RemoteParams) => {
-  const headers = {
-    'x-secret-key': secret,
+  const headers: Record<string, string> = {
     'content-type': 'application/json',
   };
+  if (secret) headers['x-secret-key'] = secret;
 
   const json = (data: any) => JSON.stringify(data);
 
@@ -47,13 +48,14 @@ export class RemoteCdm implements Cdm {
   #http: ReturnType<typeof createHttpClient>;
   #client?: string;
 
-  constructor({ secret, baseUrl, client }: RemoteParams) {
-    this.#http = createHttpClient({ secret, baseUrl });
-    this.#client = client;
+  constructor(params: RemoteParams) {
+    this.keySystem = params.keySystem;
+    this.#http = createHttpClient(params);
+    this.#client = params.client;
   }
 
   async createSession(sessionType?: MediaKeySessionType) {
-    const data = await this.#http.post(`/session`, {
+    const data = await this.#http.post(`/sessions`, {
       sessionType,
       client: this.#client,
     });
@@ -66,7 +68,7 @@ export class RemoteCdm implements Cdm {
     initDataType?: string,
   ) {
     const data = await this.#http.post(
-      `/session/${sessionId}/generate-request`,
+      `/sessions/${sessionId}/generate-request`,
       {
         initDataType,
         initData: fromBuffer(initData).toBase64(),
@@ -76,21 +78,21 @@ export class RemoteCdm implements Cdm {
   }
 
   async updateSession(sessionId: string, response: Uint8Array) {
-    await this.#http.post(`/session/${sessionId}/update`, {
+    await this.#http.post(`/sessions/${sessionId}/update`, {
       response: fromBuffer(response).toBase64(),
     });
   }
 
   async closeSession(sessionId: string) {
-    await this.#http.post(`/session/${sessionId}/close`);
+    await this.#http.post(`/sessions/${sessionId}/close`);
   }
 
   async removeSession(sessionId: string) {
-    await this.#http.delete(`/session/${sessionId}`);
+    await this.#http.delete(`/sessions/${sessionId}`);
   }
 
   async getKeys(sessionId: string) {
-    const data = await this.#http.get(`/session/${sessionId}/keys`);
+    const data = await this.#http.get(`/sessions/${sessionId}/keys`);
     return data.keys;
   }
 }

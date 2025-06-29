@@ -1,15 +1,16 @@
 import { readFile } from 'node:fs/promises';
-import { Session } from '../../../lib/widevine/session';
 import { WidevineClient } from '../../../lib/widevine/client';
+import { PlayReadyClient } from '../../../lib/playready/client';
+import { Session } from '../../../lib';
 
-export const sessions = new Map<string, Session>();
-export const clients = new Map<string, WidevineClient>();
+export const sessions = new Map<string, MediaKeySession & Session>();
+export const clients = new Map<string, WidevineClient | PlayReadyClient>();
 
 type Config = {
   host: string;
   port: number;
   clients: string[];
-  users: { [key: string]: { name: string; clients: string[] } };
+  users: { [secretKey: string]: { name: string; clients: string[] } };
   forcePrivacyMode: boolean;
 };
 
