@@ -2,7 +2,7 @@ import { Cdm } from '../api';
 import { WidevineClient } from './client';
 import { Session } from './session';
 
-export class Widevine implements Cdm {
+export class WidevineCdm implements Cdm {
   keySystem = 'com.widevine.alpha';
   sessions: Map<string, Session>;
   client: WidevineClient;
@@ -55,7 +55,7 @@ export class Widevine implements Cdm {
     this.sessions.delete(sessionId);
   }
 
-  getKeys(sessionId: string) {
+  async getKeys(sessionId: string) {
     const session = this.sessions.get(sessionId);
     if (!session) throw new Error('Session not found');
     const keys = Array.from(session.keys.values());

@@ -2,7 +2,7 @@ import { readFile } from 'node:fs/promises';
 import { expect, test } from 'vitest';
 import { fromBase64 } from '../src/lib';
 import { requestMediaKeySystemAccess } from '../src/lib/api';
-import { PlayReady } from '../src/lib/playready/cdm';
+import { PlayReadyCdm } from '../src/lib/playready/cdm';
 
 test('playready cdm', async () => {
   const url =
@@ -16,11 +16,11 @@ test('playready cdm', async () => {
   if (!clientPath)
     return console.warn('PlayReady client not found. Skipping test');
   const clientData = await readFile(clientPath);
-  const client = await PlayReady.Client.from({ prd: clientData });
-  const cdm = new PlayReady({ client });
+  const client = await PlayReadyCdm.Client.from({ prd: clientData });
+  const cdm = new PlayReadyCdm({ client });
 
-  const keySystemAccess = requestMediaKeySystemAccess(cdm.keySystem, [{ cdm }]);
-  const mediaKeys = await keySystemAccess.createMediaKeys();
+  const keySystemAccess = requestMediaKeySystemAccess(cdm.keySystem, []);
+  const mediaKeys = await keySystemAccess.createMediaKeys({ cdm });
   const session = mediaKeys.createSession();
   session.generateRequest(initDataType, initData);
   const licenseRequest = await session.waitForLicenseRequest();

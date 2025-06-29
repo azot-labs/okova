@@ -21,7 +21,7 @@ export interface Cdm {
   updateSession(sessionId: string, response: Uint8Array): Promise<void>;
   closeSession(sessionId: string): Promise<void>;
   removeSession?(sessionId: string): Promise<void>;
-  getKeys?(sessionId: string): Key[];
+  getKeys?(sessionId: string): Promise<Key[]>;
 }
 
 /**
@@ -164,21 +164,22 @@ export class Session extends EventTarget implements MediaKeySession {
  */
 export const requestMediaKeySystemAccess = (
   keySystem: string,
-  supportedConfigurations: (MediaKeySystemConfiguration & { cdm: Cdm })[],
+  supportedConfigurations: MediaKeySystemConfiguration[],
 ) => {
   const supportedKeySystems = new Set([
     'com.widevine.alpha',
     'com.microsoft.playready.recommendation',
+    'remote',
   ]);
   if (!supportedKeySystems.has(keySystem))
     throw new Error('Unsupported media key system');
+
   return {
     keySystem,
-    createMediaKeys: async () => {
+    createMediaKeys: async ({ cdm }: { cdm: Cdm }) => {
       const state = { serverCertificate: null as BufferSource | null };
       return {
         createSession: (sessionType?: MediaKeySessionType) => {
-          const cdm = supportedConfigurations[0].cdm;
           const session = new Session(sessionType, cdm);
           return session as MediaKeySession & Session;
         },

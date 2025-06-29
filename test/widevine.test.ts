@@ -2,7 +2,7 @@ import { readFile } from 'node:fs/promises';
 import { expect, test } from 'vitest';
 import { fromBase64 } from '../src/lib';
 import { requestMediaKeySystemAccess } from '../src/lib/api';
-import { Widevine } from '../src/lib/widevine/cdm';
+import { WidevineCdm } from '../src/lib/widevine/cdm';
 
 test('widevine cdm', async () => {
   const url = 'https://cwip-shaka-proxy.appspot.com/no_auth';
@@ -15,11 +15,11 @@ test('widevine cdm', async () => {
   if (!clientPath)
     return console.warn('Widevine client not found. Skipping test');
   const clientData = await readFile(clientPath);
-  const client = await Widevine.Client.from({ wvd: clientData });
-  const cdm = new Widevine({ client });
+  const client = await WidevineCdm.Client.from({ wvd: clientData });
+  const cdm = new WidevineCdm({ client });
 
-  const keySystemAccess = requestMediaKeySystemAccess(cdm.keySystem, [{ cdm }]);
-  const mediaKeys = await keySystemAccess.createMediaKeys();
+  const keySystemAccess = requestMediaKeySystemAccess(cdm.keySystem, []);
+  const mediaKeys = await keySystemAccess.createMediaKeys({ cdm });
   const session = mediaKeys.createSession();
   session.generateRequest(initDataType, initData);
   const licenseRequest = await session.waitForLicenseRequest();

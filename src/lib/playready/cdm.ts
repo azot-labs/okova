@@ -4,7 +4,7 @@ import { PlayReadyClient } from './client';
 import { Pssh } from './pssh';
 import { Session } from './session';
 
-export class PlayReady implements Cdm {
+export class PlayReadyCdm implements Cdm {
   keySystem = 'com.microsoft.playready.recommendation';
   sessions: Map<string, Session>;
   client: PlayReadyClient;
@@ -47,7 +47,7 @@ export class PlayReady implements Cdm {
     this.sessions.delete(sessionId);
   }
 
-  getKeys(sessionId: string) {
+  async getKeys(sessionId: string) {
     const session = this.sessions.get(sessionId);
     if (!session) throw new Error('Session not found');
     return session.keys.map((key) => ({

@@ -1,9 +1,9 @@
 import { test, expect } from 'vitest';
-import { fetchDecryptionKeys, Widevine } from '../src/lib';
+import { fetchDecryptionKeys, WidevineCdm } from '../src/lib';
 import { PSSH, LICENSE_URL, loadWidevineClient } from './utils';
 
 test('fetch decryption keys', async () => {
-  const cdm = new Widevine({ client: await loadWidevineClient() });
+  const cdm = new WidevineCdm({ client: await loadWidevineClient() });
   const keys = await fetchDecryptionKeys({
     cdm,
     server: LICENSE_URL,
@@ -17,7 +17,7 @@ test('fetch decryption keys', async () => {
 });
 
 test('fetch decryption keys with privacy mode', async () => {
-  const cdm = new Widevine({ client: await loadWidevineClient() });
+  const cdm = new WidevineCdm({ client: await loadWidevineClient() });
   const keys = await fetchDecryptionKeys({
     cdm,
     server: LICENSE_URL,

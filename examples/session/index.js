@@ -15,8 +15,8 @@ async function main() {
   const cdm = new Widevine({ client });
 
   // Create session
-  const keySystemAccess = requestMediaKeySystemAccess(cdm.keySystem, [{ cdm }]);
-  const mediaKeys = await keySystemAccess.createMediaKeys();
+  const keySystemAccess = requestMediaKeySystemAccess(cdm.keySystem, []);
+  const mediaKeys = await keySystemAccess.createMediaKeys({ cdm });
   const session = mediaKeys.createSession();
 
   // Get license challenge

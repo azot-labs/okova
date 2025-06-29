@@ -1,6 +1,6 @@
 import { join } from 'node:path';
 import { readFile } from 'node:fs/promises';
-import { Widevine, fetchDecryptionKeys } from '../src/lib';
+import { WidevineCdm, fetchDecryptionKeys } from '../src/lib';
 import { WidevineClient } from '../src/lib/widevine/client';
 
 export const WORKDIR = join(process.cwd(), '');
@@ -23,14 +23,14 @@ export const loadWidevineClient = async () => {
   const clientPath = process.env.VITEST_WIDEVINE_CLIENT_PATH;
   if (!clientPath) throw new Error('Widevine client not found. Skipping test');
   const clientData = await readFile(clientPath);
-  const client = await Widevine.Client.from({ wvd: clientData });
+  const client = await WidevineCdm.Client.from({ wvd: clientData });
   return client;
 };
 
 export const fetchDecryptionKeysWithDefaults = async (
   client?: WidevineClient,
 ) => {
-  const cdm = new Widevine({ client: client || (await createClient()) });
+  const cdm = new WidevineCdm({ client: client || (await createClient()) });
   return fetchDecryptionKeys({
     cdm,
     server: LICENSE_URL,

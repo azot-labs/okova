@@ -3,9 +3,9 @@ import {
   Cdm,
   fromBase64,
   fromBuffer,
-  PlayReady,
+  PlayReadyCdm,
   requestMediaKeySystemAccess,
-  Widevine,
+  WidevineCdm,
 } from '@okova/lib';
 import { getMessageType } from '@okova/lib/widevine/message';
 import { WidevineClient } from '@okova/lib/widevine/client';
@@ -48,9 +48,9 @@ export default defineBackground({
       const client = await loadClient();
       if (!client) return null;
       if (client instanceof WidevineClient) {
-        return new Widevine({ client });
+        return new WidevineCdm({ client });
       } else if (client instanceof PlayReadyClient) {
-        return new PlayReady({ client });
+        return new PlayReadyCdm({ client });
       } else {
         return null;
       }
@@ -109,10 +109,8 @@ export default defineBackground({
           return;
         }
 
-        const keySystemAccess = requestMediaKeySystemAccess(cdm.keySystem, [
-          { cdm },
-        ]);
-        const mediaKeys = await keySystemAccess.createMediaKeys();
+        const keySystemAccess = requestMediaKeySystemAccess(cdm.keySystem, []);
+        const mediaKeys = await keySystemAccess.createMediaKeys({ cdm });
 
         if (message.action === 'generateRequest') {
           const { initDataType, initData } = message;
@@ -155,7 +153,7 @@ export default defineBackground({
           const { initData } = message;
 
           let isServiceCertificate = false;
-          if (cdm instanceof Widevine) {
+          if (cdm instanceof WidevineCdm) {
             console.log(`[okova] Checking for service certificate`);
             const type = getMessageType(parseBinary(message.message));
             const serviceCertificateMessageType = 5;

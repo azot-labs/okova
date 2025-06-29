@@ -1,6 +1,6 @@
 import { help } from './help';
 import { importClient } from '../../utils';
-import { fetchDecryptionKeys, PlayReady, Widevine } from '../../../lib';
+import { fetchDecryptionKeys, PlayReadyCdm, WidevineCdm } from '../../../lib';
 import { WidevineClient } from '../../../lib/widevine/client';
 
 type LicenseCommandParams = {
@@ -19,8 +19,8 @@ export const license = async (params: LicenseCommandParams) => {
   const client = await importClient(params.clientPath || process.cwd());
   const cdm =
     client instanceof WidevineClient
-      ? new Widevine({ client })
-      : new PlayReady({ client });
+      ? new WidevineCdm({ client })
+      : new PlayReadyCdm({ client });
   const keys = await fetchDecryptionKeys({
     cdm,
     pssh: params.pssh,

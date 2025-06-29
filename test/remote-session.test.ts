@@ -1,47 +1,42 @@
 import { expect, test } from 'vitest';
-import { connect, fromBase64 } from '../src/lib';
+import { fromBase64, RemoteCdm, requestMediaKeySystemAccess } from '../src/lib';
 
 test('remote session', async () => {
-  // Prepare pssh
+  const url = 'https://cwip-shaka-proxy.appspot.com/no_auth';
+  const pssh =
+    'AAAAW3Bzc2gAAAAA7e+LqXnWSs6jyCfc1R0h7QAAADsIARIQ62dqu8s0Xpa7z2FmMPGj2hoNd2lkZXZpbmVfdGVzdCIQZmtqM2xqYVNkZmFsa3IzaioCSEQyAA==';
+  const initData = fromBase64(pssh).toBuffer();
   const initDataType = 'cenc';
-  const initData = fromBase64(
-    'AAAAW3Bzc2gAAAAA7e+LqXnWSs6jyCfc1R0h7QAAADsIARIQ62dqu8s0Xpa7z2FmMPGj2hoNd2lkZXZpbmVfdGVzdCIQZmtqM2xqYVNkZmFsa3IzaioCSEQyAA==',
-  ).toBuffer();
 
-  // Define device/client name
   const client = 'pixel6';
-
-  // Connect to remote instance
   const baseUrl = 'http://localhost:4000'; // Set your API base URL here
   const secret: string = '...'; // Set your API secret here
   if (secret === '...')
     return console.warn('Add your API endpoint & secret to test connection');
-  const { createSession } = connect({ baseUrl, secret });
 
-  // Create session
-  const session = await createSession('temporary', client);
+  const cdm = new RemoteCdm({ secret, baseUrl, client });
 
-  // Get license challenge
-  const challenge = await session.generateRequest(initDataType, initData);
+  const keySystemAccess = requestMediaKeySystemAccess(cdm.keySystem, []);
+  const mediaKeys = await keySystemAccess.createMediaKeys({ cdm });
+  const session = mediaKeys.createSession();
+  session.generateRequest(initDataType, initData);
+  const licenseRequest = await session.waitForLicenseRequest();
 
-  // Send license request
-  const licenseUrl = 'https://cwip-shaka-proxy.appspot.com/no_auth';
-  const response = await fetch(licenseUrl, { body: challenge, method: 'POST' });
-  const license = await response.arrayBuffer().then((ab) => new Uint8Array(ab));
+  const response = await fetch(url, {
+    body: licenseRequest,
+    method: 'POST',
+  })
+    .then((r) => r.arrayBuffer())
+    .then((buffer) => new Uint8Array(buffer));
 
-  // Update session with license
-  await session.update(license);
+  session.update(response);
+  const keys = await session.waitForKeyStatusesChange();
 
-  // Get and print keys
-  const keys = await session.getKeys();
-  for (const { type, kid, key } of keys) {
-    console.log(`[${type}] ${kid}:${key}`);
-  }
   expect(keys.length).toBe(5);
+  expect(keys[0]).toBeDefined();
+  expect(keys[0].keyId).toBe('ccbf5fb4c2965be7aa130ffb3ba9fd73');
+  expect(keys[0].key).toBe('9cc0c92044cb1d69433f5f5839a159df');
 
-  // Close session to delete of any license(s) and key(s) that have not been explicitly stored.
   await session.close();
-
-  // Destroy the license(s) and/or key(s) associated with the session whether they are in memory, persistent store or both.
   await session.remove();
 });

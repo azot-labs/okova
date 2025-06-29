@@ -21,8 +21,8 @@ const fetchDecryptionKeys = async (params: FetchDecryptionKeysParams) => {
   const initDataType = 'cenc';
   const initData = fromBase64(pssh).toBuffer();
 
-  const keySystemAccess = requestMediaKeySystemAccess(cdm.keySystem, [{ cdm }]);
-  const mediaKeys = await keySystemAccess.createMediaKeys();
+  const keySystemAccess = requestMediaKeySystemAccess(cdm.keySystem, []);
+  const mediaKeys = await keySystemAccess.createMediaKeys({ cdm });
   const session = mediaKeys.createSession();
   session.generateRequest(initDataType, initData);
   const licenseRequest = await session.waitForLicenseRequest();
@@ -44,7 +44,7 @@ const fetchDecryptionKeys = async (params: FetchDecryptionKeysParams) => {
 };
 
 export { fetchDecryptionKeys };
-export * from './connect';
+export * from './remote/cdm';
 export * from './utils';
 export * from './api';
 export * from './widevine/cdm';
