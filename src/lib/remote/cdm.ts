@@ -6,11 +6,13 @@ type RemoteParams = {
   baseUrl: string;
   secret?: string;
   client?: string;
+  headers?: Record<string, string>;
 };
 
-const createHttpClient = ({ baseUrl, secret }: RemoteParams) => {
+const createHttpClient = ({ baseUrl, secret, ...params }: RemoteParams) => {
   const headers: Record<string, string> = {
     'content-type': 'application/json',
+    ...(params.headers || {}),
   };
   if (secret) headers['x-secret-key'] = secret;
 
