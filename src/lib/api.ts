@@ -112,7 +112,7 @@ export class Session extends EventTarget implements MediaKeySession {
       parseBufferSource(response),
     );
 
-    const keys = this.keySystem.getKeys?.(this.sessionId);
+    const keys = await this.keySystem.getKeys?.(this.sessionId);
     if (keys) {
       this.keys = keys;
       for (const key of keys) {
