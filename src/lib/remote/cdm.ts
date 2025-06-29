@@ -16,6 +16,16 @@ const createHttpClient = ({ baseUrl, secret }: RemoteParams) => {
 
   const json = (data: any) => JSON.stringify(data);
 
+  const handleError = (data: any, response: Response) => {
+    if (data.error) {
+      const error =
+        typeof data.error === 'string'
+          ? data.error
+          : JSON.stringify(data.error);
+      throw new Error(error, { cause: response });
+    }
+  };
+
   const http = {
     post: async (route: string, body?: object) => {
       const response = await fetch(`${baseUrl}${route}`, {
@@ -25,17 +35,27 @@ const createHttpClient = ({ baseUrl, secret }: RemoteParams) => {
       });
       const contentLength = response.headers.get('content-length');
       if (contentLength === '0') return;
-      return response.json();
+      const data = await response.json();
+      handleError(data, response);
+      return data;
     },
     get: async (route: string) => {
       const response = await fetch(`${baseUrl}${route}`, {
         method: 'GET',
         headers,
       });
-      return response.json();
+      const data = await response.json();
+      handleError(data, response);
+      return data;
     },
     delete: async (route: string) => {
-      await fetch(`${baseUrl}${route}`, { method: 'DELETE', headers });
+      const response = await fetch(`${baseUrl}${route}`, {
+        method: 'DELETE',
+        headers,
+      });
+      const data = await response.json();
+      handleError(data, response);
+      return data;
     },
   };
 
@@ -56,6 +76,7 @@ export class RemoteCdm implements Cdm {
 
   async createSession(sessionType?: MediaKeySessionType) {
     const data = await this.#http.post(`/sessions`, {
+      keySystem: this.keySystem,
       sessionType,
       client: this.#client,
     });
@@ -92,7 +113,7 @@ export class RemoteCdm implements Cdm {
   }
 
   async getKeys(sessionId: string) {
-    const data = await this.#http.get(`/sessions/${sessionId}/keys`);
-    return data.keys;
+    const keys = await this.#http.get(`/sessions/${sessionId}/keys`);
+    return keys;
   }
 }
