@@ -21,10 +21,12 @@ export const KeysList: Component<KeysListProps> = (props) => {
           {props.keys().map(({ id, value, url, mpd, createdAt }) => (
             <Cell class="group" onClick={() => copyKey({ id, value })}>
               <code
-                title="Key ID (click to copy)"
-                class="text-[13px] truncate w-full"
+                title="Click to copy"
+                class="text-[13px] truncate flex w-full"
               >
-                {id}
+                <span class="w-1/2 truncate">{id}</span>:
+                {/* value may be a status if Spoofing disabled */}
+                <span class="w-1/2 truncate">{value}</span>
               </code>
               <div class="text-[10px] text-gray-500 flex justify-between">
                 <a
