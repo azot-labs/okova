@@ -30,7 +30,9 @@ const prepare = (data: Uint8Array | string): string => {
   );
 
   if (isWidevineSystemIdDetected) {
-    return typeof data === 'string' ? data : fromBuffer(data).toBase64();
+    const parsed =
+      typeof data === 'string' ? data : fromBuffer(data).toBase64();
+    return parsed;
   }
 
   const header = new Uint8Array([0, 0, 0, 32 + dataBuffer.length]);
@@ -52,12 +54,34 @@ const prepare = (data: Uint8Array | string): string => {
 
 const parse = (initData: Uint8Array | string) => {
   try {
-    const initDataBuffer =
-      typeof initData === 'string'
-        ? fromBase64(initData).toBuffer().subarray(32)
-        : initData.subarray(32);
-    return WidevinePsshData.decode(initDataBuffer);
+    let buffer =
+      typeof initData === 'string' ? fromBase64(initData).toBuffer() : initData;
+
+    // Find Widevine PSSH by searching for its system ID
+    let offset = 0;
+    while (offset < buffer.length) {
+      const size =
+        (buffer[offset] << 24) |
+        (buffer[offset + 1] << 16) |
+        (buffer[offset + 2] << 8) |
+        buffer[offset + 3];
+      const systemId = buffer.subarray(offset + 12, offset + 28);
+
+      if (areUint8ArraysEqual(systemId, WV_SYSTEM_ID)) {
+        const dataSize =
+          (buffer[offset + 28] << 24) |
+          (buffer[offset + 29] << 16) |
+          (buffer[offset + 30] << 8) |
+          buffer[offset + 31];
+        const psshData = buffer.subarray(offset + 32, offset + 32 + dataSize);
+        return WidevinePsshData.decode(psshData);
+      }
+
+      offset += size + 4;
+    }
+    throw new Error('Widevine PSSH not found');
   } catch (e) {
+    console.log(e);
     throw new Error('Unable to parse, unsupported init data format');
   }
 };
