@@ -55,6 +55,10 @@ export class Session extends EventTarget implements MediaKeySession {
 
   sessionType?: MediaKeySessionType;
   keySystem: Cdm;
+
+  // @ts-ignore
+  initData?: BufferSource | undefined;
+  initDataType?: string | undefined;
   keys: Key[];
 
   #closed: boolean;
@@ -100,6 +104,8 @@ export class Session extends EventTarget implements MediaKeySession {
     initData: BufferSource,
   ): Promise<void> {
     await this.#validate();
+    this.initDataType = initDataType;
+    this.initData = initData;
     const request = await this.keySystem.generateRequest(
       this.sessionId,
       parseBufferSource(initData),
