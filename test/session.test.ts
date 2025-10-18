@@ -12,7 +12,7 @@ test('session', async () => {
   ).toBuffer();
 
   // Load device/client
-  const wvd = await readFile('client.wvd');
+  const wvd = await readFile('./clients/client.wvd');
   const client = await WidevineClient.from({ wvd });
 
   // Create session

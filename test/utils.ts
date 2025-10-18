@@ -11,7 +11,7 @@ export const PSSH =
 export const LICENSE_URL = 'https://cwip-shaka-proxy.appspot.com/no_auth';
 
 export const read = async (filename: string) =>
-  readFile(join(WORKDIR, filename));
+  readFile(join(WORKDIR, 'clients', filename));
 
 export const createClient = async () => {
   const id = await read('device_client_id_blob');

@@ -61,4 +61,16 @@ export class WidevineCdm implements Cdm {
     const keys = Array.from(session.keys.values());
     return keys.map((key) => ({ key: key.value, keyId: key.id }));
   }
+
+  stringifySession(sessionId: string) {
+    const session = this.sessions.get(sessionId);
+    if (!session) throw new Error('Session not found');
+    return session.toString();
+  }
+
+  parseSession(data: string) {
+    const session = Session.from(data, this.client);
+    this.sessions.set(session.sessionId, session);
+    return { sessionId: session.sessionId, sessionType: session.sessionType };
+  }
 }

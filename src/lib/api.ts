@@ -22,6 +22,11 @@ export interface Cdm {
   closeSession(sessionId: string): Promise<void>;
   removeSession?(sessionId: string): Promise<void>;
   getKeys?(sessionId: string): Promise<Key[]>;
+  stringifySession(sessionId: string): string;
+  parseSession(data: string): {
+    sessionId: string;
+    sessionType: MediaKeySessionType;
+  };
 }
 
 /**
@@ -156,6 +161,17 @@ export class Session extends EventTarget implements MediaKeySession {
         false,
       );
     });
+  }
+
+  toString() {
+    return this.keySystem.stringifySession(this.sessionId);
+  }
+
+  static from(data: string, keySystem: Cdm) {
+    const { sessionId, sessionType } = keySystem.parseSession(data);
+    const session = new Session(sessionType, keySystem);
+    session.sessionId = sessionId;
+    return session as MediaKeySession & Session;
   }
 }
 

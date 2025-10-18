@@ -3,6 +3,7 @@ import * as utils from '@noble/curves/utils';
 import {
   base64ToBytes,
   bytesToBase64,
+  fromBase64,
   fromBuffer,
   fromText,
   stringToBytes,
@@ -40,7 +41,7 @@ export class Session {
   clientVersion: string;
 
   rgbMagicConstantZero: Uint8Array;
-  #wmrmServerKey: { x: bigint; y: bigint };
+  wmrmServerKey: { x: bigint; y: bigint };
 
   parser: DOMParser;
 
@@ -77,7 +78,7 @@ export class Session {
       0x7e, 0xe9, 0xed, 0x4a, 0xf7, 0x73, 0x22, 0x4f, 0x00, 0xb8, 0xea, 0x7e,
       0xfb, 0x02, 0x7c, 0xbb,
     ]);
-    this.#wmrmServerKey = {
+    this.wmrmServerKey = {
       x: 90785344306297710604867503975059265028223978614363440949957868233137570135451n,
       y: 68827801477692731286297993103001909218341737652466656881935707825713852622178n,
     };
@@ -87,7 +88,7 @@ export class Session {
   }
 
   #getKeyCipher(xmlKey: XmlKey) {
-    const encrypted = ElGamal.encrypt(xmlKey.point, this.#wmrmServerKey);
+    const encrypted = ElGamal.encrypt(xmlKey.point, this.wmrmServerKey);
     return new Uint8Array([
       ...utils.numberToBytesBE(encrypted.point1.x, 32),
       ...utils.numberToBytesBE(encrypted.point1.y, 32),
@@ -348,5 +349,41 @@ export class Session {
     }
     this.keys = keys;
     return keys;
+  }
+
+  toString() {
+    return JSON.stringify({
+      sessionId: this.sessionId,
+      sessionType: this.type,
+      certificateChain: fromBuffer(this.certificateChain).toBase64(),
+      encryptionKey: fromBuffer(this.encryptionKey.publicBytes()).toBase64(),
+      signingKey: fromBuffer(this.signingKey.publicBytes()).toBase64(),
+      clientVersion: this.clientVersion,
+      rgbMagicConstantZero: fromBuffer(this.rgbMagicConstantZero).toBase64(),
+      wmrmServerKey: {
+        x: this.wmrmServerKey.x.toString(),
+        y: this.wmrmServerKey.y.toString(),
+      },
+    });
+  }
+
+  static from(data: string, client: PlayReadyClient) {
+    const values = JSON.parse(data);
+    const session = new Session(values.sessionType, client);
+    session.sessionId = values.sessionId;
+    session.certificateChain = fromBase64(values.certificateChain).toBuffer();
+    session.encryptionKey = EccKey.from(
+      fromBase64(values.encryptionKey).toBuffer(),
+    );
+    session.signingKey = EccKey.from(fromBase64(values.signingKey).toBuffer());
+    session.rgbMagicConstantZero = fromBase64(
+      values.rgbMagicConstantZero,
+    ).toBuffer();
+    session.wmrmServerKey = {
+      x: BigInt(values.wmrmServerKey.x),
+      y: BigInt(values.wmrmServerKey.y),
+    };
+    session.clientVersion = values.clientVersion;
+    return session as MediaKeySession & Session;
   }
 }

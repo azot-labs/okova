@@ -18,7 +18,7 @@ import { deriveContext, deriveKeys } from './context';
 import { getMessageType } from './message';
 import { parseCertificate, verifyCertificate } from './certificate';
 import { concatUint8Arrays } from '../buffer';
-import { fromBuffer, fromText, Logger } from '../utils';
+import { fromBase64, fromBuffer, fromText, Logger } from '../utils';
 import { MessageEvent } from '../api';
 
 export const SESSION_TYPES = {
@@ -51,7 +51,7 @@ export const INDIVIDUALIZATION_MESSAGE = new Uint8Array([0x08, 0x04]);
  */
 
 export class Session extends EventTarget {
-  readonly sessionId: string;
+  sessionId: string;
   readonly keyStatuses: MediaKeyStatusMap;
   readonly keys: Map<string, Key>;
   readonly expiration: number;
@@ -64,14 +64,14 @@ export class Session extends EventTarget {
   sessionType: SessionType;
   privacyMode?: boolean = false;
 
-  #client: WidevineClient;
-  #log: Logger;
+  client: WidevineClient;
+  log: Logger;
 
-  #initData?: BufferSource;
-  #initDataType?: string;
-  #individualizationSent: boolean = false;
-  #serviceCertificate?: SignedDrmCertificate;
-  #contexts: Map<string, { enc: Uint8Array; auth: Uint8Array }>;
+  initData?: BufferSource;
+  initDataType?: string;
+  individualizationSent: boolean = false;
+  serviceCertificate?: SignedDrmCertificate;
+  contexts: Map<string, { enc: Uint8Array; auth: Uint8Array }>;
 
   constructor(sessionType: SessionType = 'temporary', client: WidevineClient) {
     super();
@@ -88,26 +88,26 @@ export class Session extends EventTarget {
     this.onkeystatuseschange = null;
 
     this.sessionType = sessionType;
-    this.#client = client;
-    this.#contexts = new Map();
-    this.#log = console;
+    this.client = client;
+    this.contexts = new Map();
+    this.log = console;
   }
 
   setLogger(logger: Logger) {
-    this.#log = logger;
+    this.log = logger;
   }
 
   async generateRequest(initDataType: string, initData: BufferSource) {
-    if (this.privacyMode && !this.#individualizationSent) {
+    if (this.privacyMode && !this.individualizationSent) {
       this.dispatchEvent(
         new MessageEvent(
           'individualization-request',
           INDIVIDUALIZATION_MESSAGE as unknown as ArrayBuffer,
         ),
       );
-      this.#individualizationSent = true;
-      this.#initData = initData;
-      this.#initDataType = initDataType;
+      this.individualizationSent = true;
+      this.initData = initData;
+      this.initDataType = initDataType;
       return;
     }
     const pssh = createPssh(initData as Uint8Array);
@@ -116,7 +116,7 @@ export class Session extends EventTarget {
       licenseRequest.bytes,
       SignedMessage.MessageType.LICENSE_REQUEST,
     );
-    this.#contexts.set(
+    this.contexts.set(
       fromBuffer(licenseRequest.requestId).toText(),
       deriveContext(licenseRequest.bytes),
     );
@@ -148,9 +148,9 @@ export class Session extends EventTarget {
       ? (this.sessionId as unknown as Uint8Array)
       : fromText(this.sessionId).toBuffer();
     const entity = LicenseRequest.create({
-      clientId: this.#serviceCertificate ? undefined : this.#client.id,
-      encryptedClientId: this.#serviceCertificate
-        ? await this.#client.encryptId(this.#serviceCertificate)
+      clientId: this.serviceCertificate ? undefined : this.client.id,
+      encryptedClientId: this.serviceCertificate
+        ? await this.client.encryptId(this.serviceCertificate)
         : undefined,
       contentId: {
         widevinePsshData: {
@@ -174,13 +174,14 @@ export class Session extends EventTarget {
     const entity = SignedMessage.create({
       type: type,
       msg: message,
-      signature: await this.#client.signWithKey(message),
+      signature: await this.client.signWithKey(message),
     });
     const bytes = SignedMessage.encode(entity).finish();
     return { entity, bytes };
   }
 
-  load(): Promise<boolean> {
+  load(sessionId: string): Promise<boolean> {
+    this.sessionId = sessionId;
     return Promise.resolve(true);
   }
 
@@ -189,8 +190,8 @@ export class Session extends EventTarget {
     const typeText = type ? SignedMessage.MessageType[type] : '?';
     if (type === SignedMessage.MessageType.SERVICE_CERTIFICATE) {
       await this.#setServiceCertificate(response);
-      if (!this.#initData || !this.#initDataType) return;
-      this.generateRequest(this.#initDataType, this.#initData);
+      if (!this.initData || !this.initDataType) return;
+      this.generateRequest(this.initDataType, this.initData);
       return;
     }
 
@@ -198,20 +199,20 @@ export class Session extends EventTarget {
     try {
       signedLicense = SignedMessage.decode(response);
     } catch (e) {
-      this.#log.error('Unable to parse license - check protobufs');
-      this.#log.debug(fromBuffer(response).toText());
+      this.log.error('Unable to parse license - check protobufs');
+      this.log.debug(fromBuffer(response).toText());
       return;
     }
 
     const license = License.decode(signedLicense.msg);
     const requestId = fromBuffer(license.id!.requestId!).toText();
-    const context = this.#contexts.get(requestId);
+    const context = this.contexts.get(requestId);
     if (!context)
       throw new Error(
         `Failed to find context to decrypt keys, requestId: ${requestId}`,
       );
 
-    const sessionKey = await this.#client.decryptWithKey(
+    const sessionKey = await this.client.decryptWithKey(
       signedLicense.sessionKey,
     );
     const derivedKeys = await deriveKeys(context.enc, context.auth, sessionKey);
@@ -221,8 +222,8 @@ export class Session extends EventTarget {
       derivedKeys.macKeyServer,
     );
     if (!success) {
-      this.#log.debug(`Calculated signature: ${signature.calculated}`);
-      this.#log.debug(`Actual signature: ${signature.actual}`);
+      this.log.debug(`Calculated signature: ${signature.calculated}`);
+      this.log.debug(`Actual signature: ${signature.actual}`);
       throw new Error(
         'Signature mismatch on license message, rejecting license',
       );
@@ -238,7 +239,7 @@ export class Session extends EventTarget {
     this.dispatchEvent(new Event('keyschange'));
     this.dispatchEvent(new Event('keystatuseschange'));
 
-    this.#contexts.delete(requestId);
+    this.contexts.delete(requestId);
 
     if (this.keys.size) await this.close();
   }
@@ -248,7 +249,7 @@ export class Session extends EventTarget {
       await parseCertificate(certificate);
     const isValid = verifyCertificate(signedDrmCertificate);
     if (!isValid) throw new Error('Certificate invalid: signature mismatch');
-    this.#serviceCertificate = signedDrmCertificate;
+    this.serviceCertificate = signedDrmCertificate;
     return drmCertificate.providerId;
   }
 
@@ -258,7 +259,7 @@ export class Session extends EventTarget {
     if (message.oemcryptoCoreMessage?.length)
       data.unshift(message.oemcryptoCoreMessage);
     const calculatedSignature = await createHmacSha256(
-      key,
+      key as BufferSource,
       concatUint8Arrays(...data),
     );
     const calculatedSignatureHex = fromBuffer(calculatedSignature).toHex();
@@ -289,5 +290,57 @@ export class Session extends EventTarget {
 
   remove(): Promise<void> {
     return Promise.resolve();
+  }
+
+  toString() {
+    const values = {
+      sessionId: this.sessionId,
+      sessionType: this.sessionType,
+      initData: this.initData
+        ? fromBuffer(this.initData as Uint8Array).toBase64()
+        : undefined,
+      initDataType: this.initDataType,
+      individualizationSent: this.individualizationSent,
+      serviceCertificate: fromBuffer(
+        SignedDrmCertificate.encode(this.serviceCertificate).finish(),
+      ).toBase64(),
+      contexts: Object.fromEntries(
+        this.contexts.entries().map(([key, value]) => [
+          key,
+          {
+            enc: fromBuffer(value.enc).toBase64(),
+            auth: fromBuffer(value.auth).toBase64(),
+          },
+        ]),
+      ),
+    };
+    const data = JSON.stringify(values);
+    return data;
+  }
+
+  static from(data: string, client: WidevineClient) {
+    const values = JSON.parse(data);
+    const session = new Session(values.sessionType, client);
+    session.sessionId = values.sessionId;
+    session.initData = fromBase64(values.initData).toBuffer();
+    session.initDataType = values.initDataType;
+    session.individualizationSent = values.individualizationSent;
+    session.serviceCertificate = SignedDrmCertificate.decode(
+      fromBase64(values.serviceCertificate).toBuffer(),
+    );
+    session.contexts = new Map(
+      Object.entries(values.contexts).map(([key, value]) => [
+        key,
+        {
+          enc: fromBase64(
+            (value as { enc: string; auth: string }).enc,
+          ).toBuffer(),
+          auth: fromBase64(
+            (value as { enc: string; auth: string }).auth,
+          ).toBuffer(),
+        },
+      ]),
+    );
+    return session;
   }
 }
