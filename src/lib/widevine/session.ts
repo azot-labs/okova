@@ -301,9 +301,11 @@ export class Session extends EventTarget {
         : undefined,
       initDataType: this.initDataType,
       individualizationSent: this.individualizationSent,
-      serviceCertificate: fromBuffer(
-        SignedDrmCertificate.encode(this.serviceCertificate).finish(),
-      ).toBase64(),
+      serviceCertificate: this.serviceCertificate
+        ? fromBuffer(
+            SignedDrmCertificate.encode(this.serviceCertificate).finish(),
+          ).toBase64()
+        : undefined,
       contexts: Object.fromEntries(
         this.contexts.entries().map(([key, value]) => [
           key,
@@ -322,12 +324,16 @@ export class Session extends EventTarget {
     const values = JSON.parse(data);
     const session = new Session(values.sessionType, client);
     session.sessionId = values.sessionId;
-    session.initData = fromBase64(values.initData).toBuffer();
+    session.initData = values.initData
+      ? fromBase64(values.initData).toBuffer()
+      : undefined;
     session.initDataType = values.initDataType;
     session.individualizationSent = values.individualizationSent;
-    session.serviceCertificate = SignedDrmCertificate.decode(
-      fromBase64(values.serviceCertificate).toBuffer(),
-    );
+    session.serviceCertificate = values.serviceCertificate
+      ? SignedDrmCertificate.decode(
+          fromBase64(values.serviceCertificate).toBuffer(),
+        )
+      : undefined;
     session.contexts = new Map(
       Object.entries(values.contexts).map(([key, value]) => [
         key,
