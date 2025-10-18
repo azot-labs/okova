@@ -5,6 +5,7 @@ import {
   bytesToBase64,
   fromBase64,
   fromBuffer,
+  fromHex,
   fromText,
   stringToBytes,
   xorArrays,
@@ -364,6 +365,12 @@ export class Session {
         x: this.wmrmServerKey.x.toString(),
         y: this.wmrmServerKey.y.toString(),
       },
+      keys: this.keys.map((key) => ({
+        keyId: fromBuffer(key.keyId).toHex(),
+        key: fromBuffer(key.key).toHex(),
+        cipherType: key.cipherType,
+        keyType: key.keyType,
+      })),
     });
   }
 
@@ -384,6 +391,20 @@ export class Session {
       y: BigInt(values.wmrmServerKey.y),
     };
     session.clientVersion = values.clientVersion;
+    session.keys = values.keys.map(
+      (key: {
+        keyId: string;
+        key: string;
+        keyType: number;
+        cipherType: number;
+      }) =>
+        new Key(
+          fromHex(key.keyId).toBuffer(),
+          key.keyType,
+          key.cipherType,
+          fromHex(key.key).toBuffer(),
+        ),
+    );
     return session as MediaKeySession & Session;
   }
 }

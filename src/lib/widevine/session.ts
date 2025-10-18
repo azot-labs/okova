@@ -18,7 +18,7 @@ import { deriveContext, deriveKeys } from './context';
 import { getMessageType } from './message';
 import { parseCertificate, verifyCertificate } from './certificate';
 import { concatUint8Arrays } from '../buffer';
-import { fromBase64, fromBuffer, fromText, Logger } from '../utils';
+import { fromBase64, fromBuffer, fromHex, fromText, Logger } from '../utils';
 import { MessageEvent } from '../api';
 
 export const SESSION_TYPES = {
@@ -52,8 +52,8 @@ export const INDIVIDUALIZATION_MESSAGE = new Uint8Array([0x08, 0x04]);
 
 export class Session extends EventTarget {
   sessionId: string;
-  readonly keyStatuses: MediaKeyStatusMap;
-  readonly keys: Map<string, Key>;
+  keyStatuses: MediaKeyStatusMap;
+  keys: Map<string, Key>;
   readonly expiration: number;
   readonly closed: Promise<MediaKeySessionClosedReason>;
 
@@ -315,6 +315,19 @@ export class Session extends EventTarget {
           },
         ]),
       ),
+      keys: Object.fromEntries(
+        this.keys
+          .entries()
+          .map(([key, value]) => [key, { id: value.id, value: value.value }]),
+      ),
+      keyStatuses: Object.fromEntries(
+        this.keyStatuses
+          .entries()
+          .map(([key, value]) => [
+            fromBuffer(key as Uint8Array).toHex(),
+            value,
+          ]),
+      ),
     };
     const data = JSON.stringify(values);
     return data;
@@ -345,6 +358,18 @@ export class Session extends EventTarget {
             (value as { enc: string; auth: string }).auth,
           ).toBuffer(),
         },
+      ]),
+    );
+    session.keys = new Map(
+      Object.entries(values.keys).map(([key, value]) => [
+        key,
+        new Key((value as Key).id, (value as Key).value),
+      ]),
+    );
+    session.keyStatuses = new Map(
+      Object.entries(values.keyStatuses).map(([key, value]) => [
+        fromHex(key).toBuffer() as BufferSource,
+        value as MediaKeyStatus,
       ]),
     );
     return session;
