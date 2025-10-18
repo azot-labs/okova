@@ -1,6 +1,6 @@
 {
   "name": "okova",
-  "version": "0.10.0",
+  "version": "0.10.1",
   "description": "Advanced DRM inspection toolkit",
   "type": "module",
   "files": [
