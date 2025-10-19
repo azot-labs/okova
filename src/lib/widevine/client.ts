@@ -185,7 +185,7 @@ export class WidevineClient {
     const result = await crypto.subtle.decrypt(
       { name: 'RSA-OAEP' },
       this.key.forDecrypt,
-      data,
+      data as BufferSource,
     );
     return new Uint8Array(result);
   }
@@ -194,7 +194,7 @@ export class WidevineClient {
     const result = await crypto.subtle.sign(
       { name: 'RSA-PSS', saltLength: 20 },
       this.key.forSign,
-      data,
+      data as BufferSource,
     );
     return new Uint8Array(result);
   }
@@ -209,7 +209,7 @@ export class WidevineClient {
     const privacyKey = await generateAesCbcKey();
     const encryptedClientIdIv = getRandomBytes(16);
     const encryptedClientId = await encryptWithAesCbc(
-      id,
+      id as BufferSource,
       privacyKey,
       encryptedClientIdIv,
     );

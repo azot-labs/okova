@@ -41,11 +41,13 @@ export class Key {
     encKey: Uint8Array,
   ) {
     if (!container.key || !container.iv) throw new Error('Key not found');
-    const decryptionKey = await importAesCbcKeyForDecrypt(encKey);
+    const decryptionKey = await importAesCbcKeyForDecrypt(
+      encKey as BufferSource,
+    );
     const keyValue = await decryptWithAesCbc(
-      container.key,
+      container.key as BufferSource,
       decryptionKey,
-      container.iv,
+      container.iv as BufferSource,
     );
     const id = container.id ? fromBuffer(container.id).toHex() : 'UNKNOWN';
     const value = fromBuffer(keyValue).toHex();

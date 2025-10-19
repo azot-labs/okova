@@ -28,7 +28,7 @@ const fetchDecryptionKeys = async (params: FetchDecryptionKeysParams) => {
   const licenseRequest = await session.waitForLicenseRequest();
 
   const request = new Request(params.server, {
-    body: licenseRequest,
+    body: licenseRequest as BufferSource,
     method: 'POST',
     headers: params.headers,
   });
