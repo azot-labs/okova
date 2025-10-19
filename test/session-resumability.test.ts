@@ -7,8 +7,8 @@ import { Session as WidevineSession } from '../src/lib/widevine/session';
 import { PlayReadyCdm } from '../src/lib/playready/cdm';
 import { Session as PlayReadySession } from '../src/lib/playready/session';
 
-describe('Widevine Session Serialization', () => {
-  test('should serialize and deserialize widevine session via CDM methods', async () => {
+describe('Widevine Session Resumability', () => {
+  test('should pause and resume widevine session via CDM methods', async () => {
     const pssh =
       'AAAAW3Bzc2gAAAAA7e+LqXnWSs6jyCfc1R0h7QAAADsIARIQ62dqu8s0Xpa7z2FmMPGj2hoNd2lkZXZpbmVfdGVzdCIQZmtqM2xqYVNkZmFsa3IzaioCSEQyAA==';
     const initData = fromBase64(pssh).toBuffer();
@@ -33,26 +33,26 @@ describe('Widevine Session Serialization', () => {
     const originalSessionId = session.sessionId;
     const originalSessionType = session.sessionType;
 
-    // Serialize session
-    const serialized = session.toString();
-    expect(serialized).toBeDefined();
-    expect(typeof serialized).toBe('string');
-    expect(serialized.length).toBeGreaterThan(0);
+    // Pause session
+    const state = session.pause();
+    expect(state).toBeDefined();
+    expect(typeof state).toBe('string');
+    expect(state.length).toBeGreaterThan(0);
 
-    // Deserialize session using CDM methods
-    const parsed = cdm.parseSession(serialized);
-    expect(parsed).toBeDefined();
-    expect(parsed.sessionId).toBe(originalSessionId);
-    expect(parsed.sessionType).toBe(originalSessionType);
+    // Resume session using CDM methods
+    const resumed = cdm.resumeSession(state);
+    expect(resumed).toBeDefined();
+    expect(resumed.sessionId).toBe(originalSessionId);
+    expect(resumed.sessionType).toBe(originalSessionType);
 
     // Verify the session was added to CDM sessions map
-    const restoredSession = cdm.sessions.get(parsed.sessionId);
+    const restoredSession = cdm.sessions.get(resumed.sessionId);
     expect(restoredSession).toBeDefined();
     expect(restoredSession!.sessionId).toBe(originalSessionId);
     expect(restoredSession!.sessionType).toBe(originalSessionType);
   });
 
-  test('should serialize and deserialize widevine session via Session static methods', async () => {
+  test('should pause and resume widevine session via Session static methods', async () => {
     const clientPath = process.env.VITEST_WIDEVINE_CLIENT_PATH;
     if (!clientPath)
       return console.warn('Widevine client not found. Skipping test');
@@ -64,19 +64,19 @@ describe('Widevine Session Serialization', () => {
     const originalSession = new WidevineSession('temporary', client);
     const originalSessionId = originalSession.sessionId;
 
-    // Serialize
-    const serialized = originalSession.toString();
-    expect(serialized).toBeDefined();
-    expect(typeof serialized).toBe('string');
+    // Pause
+    const state = originalSession.pause();
+    expect(state).toBeDefined();
+    expect(typeof state).toBe('string');
 
-    // Deserialize using static method
-    const restoredSession = WidevineSession.from(serialized, client);
+    // Resume using static method
+    const restoredSession = WidevineSession.resume(state, client);
     expect(restoredSession).toBeDefined();
     expect(restoredSession.sessionId).toBe(originalSessionId);
     expect(restoredSession.sessionType).toBe('temporary');
   });
 
-  test('should preserve session state during serialization roundtrip', async () => {
+  test('should preserve session state during pause/resume roundtrip', async () => {
     const pssh =
       'AAAAW3Bzc2gAAAAA7e+LqXnWSs6jyCfc1R0h7QAAADsIARIQ62dqu8s0Xpa7z2FmMPGj2hoNd2lkZXZpbmVfdGVzdCIQZmtqM2xqYVNkZmFsa3IzaioCSEQyAA==';
     const initData = fromBase64(pssh).toBuffer();
@@ -96,9 +96,9 @@ describe('Widevine Session Serialization', () => {
     const originalSessionId = originalSession.sessionId;
     const originalSessionType = originalSession.sessionType;
 
-    // Serialize and deserialize
-    const serialized = originalSession.toString();
-    const restoredSession = WidevineSession.from(serialized, client);
+    // Pause and resume
+    const state = originalSession.pause();
+    const restoredSession = WidevineSession.resume(state, client);
 
     // Verify state preservation
     expect(restoredSession.sessionId).toBe(originalSessionId);
@@ -123,20 +123,20 @@ describe('Widevine Session Serialization', () => {
     const mediaKeys = await keySystemAccess.createMediaKeys({ cdm });
     const session = mediaKeys.createSession('persistent-license');
 
-    // Serialize
-    const serialized = session.toString();
+    // Pause
+    const state = session.pause();
 
-    // Deserialize
-    const parsed = cdm.parseSession(serialized);
-    expect(parsed.sessionType).toBe('persistent-license');
+    // Resume
+    const resumed = cdm.resumeSession(state);
+    expect(resumed.sessionType).toBe('persistent-license');
 
-    const restoredSession = cdm.sessions.get(parsed.sessionId);
+    const restoredSession = cdm.sessions.get(resumed.sessionId);
     expect(restoredSession!.sessionType).toBe('persistent-license');
   });
 });
 
-describe('PlayReady Session Serialization', () => {
-  test('should serialize and deserialize playready session via CDM methods', async () => {
+describe('PlayReady Session Resumability', () => {
+  test('should pause and resume playready session via CDM methods', async () => {
     const clientPath = process.env.VITEST_PLAYREADY_CLIENT_PATH;
     if (!clientPath)
       return console.warn('PlayReady client not found. Skipping test');
@@ -154,26 +154,26 @@ describe('PlayReady Session Serialization', () => {
     const originalSessionId = session.sessionId;
     const originalSessionType = session.sessionType;
 
-    // Serialize session
-    const serialized = session.toString();
-    expect(serialized).toBeDefined();
-    expect(typeof serialized).toBe('string');
-    expect(serialized.length).toBeGreaterThan(0);
+    // Pause session
+    const state = session.pause();
+    expect(state).toBeDefined();
+    expect(typeof state).toBe('string');
+    expect(state.length).toBeGreaterThan(0);
 
-    // Deserialize session using CDM methods
-    const parsed = cdm.parseSession(serialized);
-    expect(parsed).toBeDefined();
-    expect(parsed.sessionId).toBe(originalSessionId);
-    expect(parsed.sessionType).toBe(originalSessionType);
+    // Resume session using CDM methods
+    const resumed = cdm.resumeSession(state);
+    expect(resumed).toBeDefined();
+    expect(resumed.sessionId).toBe(originalSessionId);
+    expect(resumed.sessionType).toBe(originalSessionType);
 
     // Verify the session was added to CDM sessions map
-    const restoredSession = cdm.sessions.get(parsed.sessionId);
+    const restoredSession = cdm.sessions.get(resumed.sessionId);
     expect(restoredSession).toBeDefined();
     expect(restoredSession!.sessionId).toBe(originalSessionId);
-    expect(restoredSession!.type).toBe(originalSessionType);
+    expect(restoredSession!.sessionType).toBe(originalSessionType);
   });
 
-  test('should serialize and deserialize playready session via Session static methods', async () => {
+  test('should pause and resume playready session via Session static methods', async () => {
     const clientPath = process.env.VITEST_PLAYREADY_CLIENT_PATH;
     if (!clientPath)
       return console.warn('PlayReady client not found. Skipping test');
@@ -185,13 +185,13 @@ describe('PlayReady Session Serialization', () => {
     const originalSession = new PlayReadySession('temporary', client);
     const originalSessionId = originalSession.sessionId;
 
-    // Serialize
-    const serialized = originalSession.toString();
-    expect(serialized).toBeDefined();
-    expect(typeof serialized).toBe('string');
+    // Pause
+    const state = originalSession.pause();
+    expect(state).toBeDefined();
+    expect(typeof state).toBe('string');
 
-    // Parse the serialized data to verify structure
-    const parsed = JSON.parse(serialized);
+    // Parse the state to verify structure
+    const parsed = JSON.parse(state);
     expect(parsed.sessionId).toBe(originalSessionId);
     expect(parsed.sessionType).toBe('temporary');
     expect(parsed.certificateChain).toBeDefined();
@@ -199,14 +199,14 @@ describe('PlayReady Session Serialization', () => {
     expect(parsed.signingKey).toBeDefined();
     expect(parsed.clientVersion).toBeDefined();
 
-    // Deserialize using static method
-    const restoredSession = PlayReadySession.from(serialized, client);
+    // Resume using static method
+    const restoredSession = PlayReadySession.resume(state, client);
     expect(restoredSession).toBeDefined();
     expect(restoredSession.sessionId).toBe(originalSessionId);
-    expect(restoredSession.type).toBe('temporary');
+    expect(restoredSession.sessionType).toBe('temporary');
   });
 
-  test('should preserve session cryptographic state during serialization', async () => {
+  test('should preserve session cryptographic state during pause/resume', async () => {
     const clientPath = process.env.VITEST_PLAYREADY_CLIENT_PATH;
     if (!clientPath)
       return console.warn('PlayReady client not found. Skipping test');
@@ -217,9 +217,9 @@ describe('PlayReady Session Serialization', () => {
     // Create session
     const originalSession = new PlayReadySession('temporary', client);
 
-    // Serialize and deserialize
-    const serialized = originalSession.toString();
-    const restoredSession = PlayReadySession.from(serialized, client);
+    // Pause and resume
+    const state = originalSession.pause();
+    const restoredSession = PlayReadySession.resume(state, client);
 
     // Verify cryptographic properties are preserved
     expect(restoredSession.certificateChain).toBeDefined();
@@ -247,20 +247,20 @@ describe('PlayReady Session Serialization', () => {
     const mediaKeys = await keySystemAccess.createMediaKeys({ cdm });
     const session = mediaKeys.createSession('persistent-license');
 
-    // Serialize
-    const serialized = session.toString();
+    // Pause
+    const state = session.pause();
 
-    // Deserialize
-    const parsed = cdm.parseSession(serialized);
-    expect(parsed.sessionType).toBe('persistent-license');
+    // Resume
+    const resumed = cdm.resumeSession(state);
+    expect(resumed.sessionType).toBe('persistent-license');
 
-    const restoredSession = cdm.sessions.get(parsed.sessionId);
-    expect(restoredSession!.type).toBe('persistent-license');
+    const restoredSession = cdm.sessions.get(resumed.sessionId);
+    expect(restoredSession!.sessionType).toBe('persistent-license');
   });
 });
 
-describe('Cross-system Serialization', () => {
-  test('should properly distinguish between widevine and playready serialized data', async () => {
+describe('Cross-system Resumability', () => {
+  test('should properly distinguish between widevine and playready paused sessions', async () => {
     const widevinePath = process.env.VITEST_WIDEVINE_CLIENT_PATH;
     const playreadyPath = process.env.VITEST_PLAYREADY_CLIENT_PATH;
 
@@ -271,7 +271,7 @@ describe('Cross-system Serialization', () => {
     const widevineData = await readFile(widevinePath);
     const widevineClient = await WidevineCdm.Client.from({ wvd: widevineData });
     const widevineSession = new WidevineSession('temporary', widevineClient);
-    const widevineSerialized = widevineSession.toString();
+    const widevinePaused = widevineSession.pause();
 
     // Create PlayReady session
     const playreadyData = await readFile(playreadyPath);
@@ -279,18 +279,18 @@ describe('Cross-system Serialization', () => {
       prd: playreadyData,
     });
     const playreadySession = new PlayReadySession('temporary', playreadyClient);
-    const playreadySerialized = playreadySession.toString();
+    const playreadyPaused = playreadySession.pause();
 
     // Verify they are different
-    expect(widevineSerialized).not.toBe(playreadySerialized);
+    expect(widevinePaused).not.toBe(playreadyPaused);
 
-    // Verify each can only be deserialized by its own type
-    const widevineRestored = WidevineSession.from(
-      widevineSerialized,
+    // Verify each can only be resumed by its own type
+    const widevineRestored = WidevineSession.resume(
+      widevinePaused,
       widevineClient,
     );
-    const playreadyRestored = PlayReadySession.from(
-      playreadySerialized,
+    const playreadyRestored = PlayReadySession.resume(
+      playreadyPaused,
       playreadyClient,
     );
 

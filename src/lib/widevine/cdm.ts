@@ -65,7 +65,7 @@ export class WidevineCdm implements Cdm {
   pauseSession(sessionId: string) {
     const session = this.sessions.get(sessionId);
     if (!session) throw new Error('Session not found');
-    return session.toString();
+    return session.pause();
   }
 
   resumeSession(state: string) {
