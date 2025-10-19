@@ -33,36 +33,57 @@ import { Pssh } from './pssh';
 
 const DEFAULT_CLIENT_VERSION = '10.0.16384.10011';
 
-export class Session {
+type CdmClient =
+  | PlayReadyClient
+  | {
+      certificateChain: Uint8Array;
+      encryptionKey: Uint8Array;
+      signingKey: Uint8Array;
+      clientVersion?: string;
+    };
+
+export class Session extends EventTarget {
   sessionId: string;
-  type: MediaKeySessionType;
+  expiration: number;
+  closed: Promise<MediaKeySessionClosedReason>;
+  keyStatuses: Map<BufferSource, MediaKeyStatus>;
+
+  onmessage: ((this: MediaKeySession, ev: MediaKeyMessageEvent) => any) | null;
+  onkeyschange: ((this: MediaKeySession, ev: Event) => any) | null;
+  onkeystatuseschange: ((this: MediaKeySession, ev: Event) => any) | null;
+
+  sessionType: MediaKeySessionType;
+  client: CdmClient;
+  keys: Key[];
+  initData?: Uint8Array;
+  initDataType?: string;
   certificateChain: Uint8Array;
   encryptionKey: EccKey;
   signingKey: EccKey;
   clientVersion: string;
-
   rgbMagicConstantZero: Uint8Array;
   wmrmServerKey: { x: bigint; y: bigint };
 
   parser: DOMParser;
 
-  keys: Key[];
-
   static Client = PlayReadyClient;
 
   constructor(
     sessionType: MediaKeySessionType = 'temporary',
-    client:
-      | PlayReadyClient
-      | {
-          certificateChain: Uint8Array;
-          encryptionKey: Uint8Array;
-          signingKey: Uint8Array;
-          clientVersion?: string;
-        },
+    client: CdmClient,
   ) {
+    super();
     this.sessionId = fromBuffer(getRandomBytes()).toBase64();
-    this.type = sessionType;
+    this.keyStatuses = new Map();
+    this.expiration = NaN;
+    this.closed = new Promise<MediaKeySessionClosedReason>((resolve) => {
+      this.addEventListener('closed', () => resolve('closed-by-application'));
+    });
+    this.onmessage = null;
+    this.onkeyschange = null;
+    this.onkeystatuseschange = null;
+    this.sessionType = sessionType;
+    this.client = client;
     if (client instanceof PlayReadyClient) {
       this.certificateChain = client.groupCertificate.dumps();
       this.encryptionKey = client.encryptionKey;
@@ -102,11 +123,11 @@ export class Session {
     const b64CertificateChain = bytesToBase64(this.certificateChain);
     const body = `<Data><CertificateChains><CertificateChain>${b64CertificateChain}</CertificateChain></CertificateChains><Features><Feature Name="AESCBC">""</Feature><REE><AESCBCS></AESCBCS></REE></Features></Data>`;
 
-    const key = await importAesCbcKeyForEncrypt(xmlKey.aesKey);
+    const key = await importAesCbcKeyForEncrypt(xmlKey.aesKey as BufferSource);
     const cipherText = await encryptWithAesCbc(
       stringToBytes(body),
       key,
-      xmlKey.aesIv,
+      xmlKey.aesIv as BufferSource,
     );
 
     return new Uint8Array([...xmlKey.aesIv, ...cipherText]);
@@ -204,6 +225,8 @@ export class Session {
     initData: Uint8Array,
     initDataType?: string,
   ) {
+    this.initData = initData;
+    this.initDataType = initDataType;
     const pssh = new Pssh(initData);
     const wrmHeader = pssh.wrmHeaders[0];
     const challenge = await this.getLicenseChallenge(wrmHeader);
@@ -352,10 +375,10 @@ export class Session {
     return keys;
   }
 
-  toString() {
-    return JSON.stringify({
+  pause() {
+    const values = {
       sessionId: this.sessionId,
-      sessionType: this.type,
+      sessionType: this.sessionType,
       certificateChain: fromBuffer(this.certificateChain).toBase64(),
       encryptionKey: fromBuffer(this.encryptionKey.publicBytes()).toBase64(),
       signingKey: fromBuffer(this.signingKey.publicBytes()).toBase64(),
@@ -371,10 +394,16 @@ export class Session {
         cipherType: key.cipherType,
         keyType: key.keyType,
       })),
-    });
+    };
+    const state = JSON.stringify(values);
+    return state;
   }
 
-  static from(data: string, client: PlayReadyClient) {
+  resume(state: string) {
+    return Session.resume(state, this.client);
+  }
+
+  static resume(data: string, client: CdmClient) {
     const values = JSON.parse(data);
     const session = new Session(values.sessionType, client);
     session.sessionId = values.sessionId;

@@ -22,8 +22,8 @@ export interface Cdm {
   closeSession(sessionId: string): Promise<void>;
   removeSession?(sessionId: string): Promise<void>;
   getKeys?(sessionId: string): Promise<Key[]>;
-  stringifySession?(sessionId: string): string;
-  parseSession?(data: string): {
+  pauseSession?(sessionId: string): string;
+  resumeSession?(state: string): {
     sessionId: string;
     sessionType: MediaKeySessionType;
   };
@@ -45,9 +45,9 @@ export class MessageEvent extends Event implements MediaKeyMessageEvent {
 
 export class Session extends EventTarget implements MediaKeySession {
   sessionId: string;
-  readonly keyStatuses: Map<BufferSource, MediaKeyStatus>;
-  readonly expiration: number;
-  readonly closed: Promise<MediaKeySessionClosedReason>;
+  expiration: number;
+  closed: Promise<MediaKeySessionClosedReason>;
+  keyStatuses: Map<BufferSource, MediaKeyStatus>;
 
   onmessage: ((this: MediaKeySession, ev: MediaKeyMessageEvent) => any) | null;
   onkeyschange: ((this: MediaKeySession, ev: Event) => any) | null;
@@ -128,7 +128,7 @@ export class Session extends EventTarget implements MediaKeySession {
       this.keys = keys;
       for (const key of keys) {
         const id = fromHex(key.keyId).toBuffer();
-        this.keyStatuses.set(id, 'usable');
+        this.keyStatuses.set(id as BufferSource, 'usable');
       }
       this.dispatchEvent(new Event('keystatuseschange'));
     }
@@ -169,21 +169,25 @@ export class Session extends EventTarget implements MediaKeySession {
     });
   }
 
-  toString() {
-    if (!this.keySystem.stringifySession) {
+  pause() {
+    if (!this.keySystem.pauseSession) {
       throw new Error('Key system does not support session serialization');
     }
-    return this.keySystem.stringifySession(this.sessionId);
+    return this.keySystem.pauseSession(this.sessionId);
   }
 
-  static from(data: string, keySystem: Cdm) {
-    if (!keySystem.parseSession) {
+  resume(state: string) {
+    return Session.resume(state, this.keySystem);
+  }
+
+  static resume(state: string, keySystem: Cdm) {
+    if (!keySystem.resumeSession) {
       throw new Error('Key system does not support session serialization');
     }
-    const { sessionId, sessionType } = keySystem.parseSession(data);
+    const { sessionId, sessionType } = keySystem.resumeSession(state);
     const session = new Session(sessionType, keySystem);
     session.sessionId = sessionId;
-    return session as MediaKeySession & Session;
+    return session;
   }
 }
 
@@ -209,7 +213,7 @@ export const requestMediaKeySystemAccess = (
       return {
         createSession: (sessionType?: MediaKeySessionType) => {
           const session = new Session(sessionType, cdm);
-          return session as MediaKeySession & Session;
+          return session;
         },
         setServerCertificate: async (
           serverCertificate: BufferSource,

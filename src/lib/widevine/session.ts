@@ -52,43 +52,39 @@ export const INDIVIDUALIZATION_MESSAGE = new Uint8Array([0x08, 0x04]);
 
 export class Session extends EventTarget {
   sessionId: string;
+  expiration: number;
+  closed: Promise<MediaKeySessionClosedReason>;
   keyStatuses: MediaKeyStatusMap;
-  keys: Map<string, Key>;
-  readonly expiration: number;
-  readonly closed: Promise<MediaKeySessionClosedReason>;
 
+  onkeystatuseschange: ((this: MediaKeySession, ev: Event) => any) | null;
   onmessage: ((this: MediaKeySession, ev: MediaKeyMessageEvent) => any) | null;
   onkeyschange: ((this: MediaKeySession, ev: Event) => any) | null;
-  onkeystatuseschange: ((this: MediaKeySession, ev: Event) => any) | null;
 
   sessionType: SessionType;
-  privacyMode?: boolean = false;
-
   client: WidevineClient;
-  log: Logger;
-
+  keys: Map<string, Key>;
   initData?: BufferSource;
   initDataType?: string;
-  individualizationSent: boolean = false;
   serviceCertificate?: SignedDrmCertificate;
   contexts: Map<string, { enc: Uint8Array; auth: Uint8Array }>;
+  individualizationSent: boolean = false;
+  privacyMode?: boolean = false;
+  log: Logger;
 
   constructor(sessionType: SessionType = 'temporary', client: WidevineClient) {
     super();
     this.sessionId = generateSessionId('android');
     this.keyStatuses = new Map();
-    this.keys = new Map();
     this.expiration = NaN;
     this.closed = new Promise<MediaKeySessionClosedReason>((resolve) => {
       this.addEventListener('closed', () => resolve('closed-by-application'));
     });
-
     this.onmessage = null;
-    this.onkeyschange = null;
     this.onkeystatuseschange = null;
-
+    this.onkeyschange = null;
     this.sessionType = sessionType;
     this.client = client;
+    this.keys = new Map();
     this.contexts = new Map();
     this.log = console;
   }
@@ -292,7 +288,7 @@ export class Session extends EventTarget {
     return Promise.resolve();
   }
 
-  toString() {
+  pause() {
     const values = {
       sessionId: this.sessionId,
       sessionType: this.sessionType,
@@ -333,8 +329,12 @@ export class Session extends EventTarget {
     return data;
   }
 
-  static from(data: string, client: WidevineClient) {
-    const values = JSON.parse(data);
+  resume(state: string) {
+    return Session.resume(state, this.client);
+  }
+
+  static resume(state: string, client: WidevineClient) {
+    const values = JSON.parse(state);
     const session = new Session(values.sessionType, client);
     session.sessionId = values.sessionId;
     session.initData = values.initData

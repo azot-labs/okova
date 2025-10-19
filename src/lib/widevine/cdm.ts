@@ -30,7 +30,7 @@ export class WidevineCdm implements Cdm {
     if (!initData.length) throw new Error('Init data is empty');
     const licenseRequest = await session.generateRequest(
       initDataType ?? 'cenc',
-      initData,
+      initData as BufferSource,
     );
     return licenseRequest!;
   }
@@ -62,14 +62,14 @@ export class WidevineCdm implements Cdm {
     return keys.map((key) => ({ key: key.value, keyId: key.id }));
   }
 
-  stringifySession(sessionId: string) {
+  pauseSession(sessionId: string) {
     const session = this.sessions.get(sessionId);
     if (!session) throw new Error('Session not found');
     return session.toString();
   }
 
-  parseSession(data: string) {
-    const session = Session.from(data, this.client);
+  resumeSession(state: string) {
+    const session = Session.resume(state, this.client);
     this.sessions.set(session.sessionId, session);
     return { sessionId: session.sessionId, sessionType: session.sessionType };
   }

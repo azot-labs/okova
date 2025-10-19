@@ -56,15 +56,15 @@ export class PlayReadyCdm implements Cdm {
     }));
   }
 
-  stringifySession(sessionId: string) {
+  pauseSession(sessionId: string) {
     const session = this.sessions.get(sessionId);
     if (!session) throw new Error('Session not found');
     return session.toString();
   }
 
-  parseSession(data: string) {
-    const session = Session.from(data, this.client);
+  resumeSession(state: string) {
+    const session = Session.resume(state, this.client);
     this.sessions.set(session.sessionId, session);
-    return { sessionId: session.sessionId, sessionType: session.type };
+    return { sessionId: session.sessionId, sessionType: session.sessionType };
   }
 }
