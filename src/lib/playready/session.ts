@@ -434,6 +434,6 @@ export class Session extends EventTarget {
           fromHex(key.key).toBuffer(),
         ),
     );
-    return session as MediaKeySession & Session;
+    return session;
   }
 }

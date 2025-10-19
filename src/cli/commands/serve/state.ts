@@ -3,7 +3,7 @@ import { WidevineClient } from '../../../lib/widevine/client';
 import { PlayReadyClient } from '../../../lib/playready/client';
 import { Session } from '../../../lib';
 
-export const sessions = new Map<string, MediaKeySession & Session>();
+export const sessions = new Map<string, Session>();
 export const clients = new Map<string, WidevineClient | PlayReadyClient>();
 
 type Config = {

@@ -22,7 +22,7 @@ export default defineBackground({
     const state: {
       cdm: Cdm | null;
       client: Client | null;
-      sessions: Map<string, MediaKeySession & Session>;
+      sessions: Map<string, Session>;
       events: Map<string, MediaKeyMessageEvent[]>;
     } = {
       cdm: null,
