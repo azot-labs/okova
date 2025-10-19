@@ -64,6 +64,7 @@ export class Session extends EventTarget implements MediaKeySession {
   keys: Key[];
 
   #closed: boolean;
+  #created: Promise<string>;
 
   constructor(sessionType: MediaKeySessionType = 'temporary', keySystem: Cdm) {
     super();
@@ -83,16 +84,19 @@ export class Session extends EventTarget implements MediaKeySession {
     this.keys = [];
 
     const sessionId = this.keySystem.createSession(this.sessionType);
-    if (typeof sessionId === 'string') this.sessionId = sessionId;
+    if (typeof sessionId === 'string') {
+      this.sessionId = sessionId;
+      this.#created = Promise.resolve(sessionId);
+    } else {
+      this.#created = sessionId;
+    }
 
     this.#closed = false;
   }
 
   async #validate() {
     if (this.#closed) throw new Error('Session closed');
-    if (!this.sessionId) {
-      this.sessionId = await this.keySystem.createSession(this.sessionType);
-    }
+    if (!this.sessionId) this.sessionId = await this.#created;
   }
 
   async load(sessionId: string): Promise<boolean> {
@@ -138,10 +142,12 @@ export class Session extends EventTarget implements MediaKeySession {
 
   async close(): Promise<void> {
     this.#closed = true;
+    await this.keySystem.closeSession(this.sessionId);
     this.dispatchEvent(new Event('closed'));
   }
 
   async remove(): Promise<void> {
+    await this.keySystem.removeSession?.(this.sessionId);
     this.dispatchEvent(new Event('removed'));
   }
 

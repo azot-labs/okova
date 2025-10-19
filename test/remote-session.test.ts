@@ -28,13 +28,13 @@ test('remote session', async () => {
   const licenseRequest = await session.waitForLicenseRequest();
 
   const response = await fetch(url, {
-    body: licenseRequest,
+    body: licenseRequest as BufferSource,
     method: 'POST',
   })
     .then((r) => r.arrayBuffer())
     .then((buffer) => new Uint8Array(buffer));
 
-  session.update(response);
+  await session.update(response);
   const keys = await session.waitForKeyStatusesChange();
 
   expect(keys.length).toBe(5);
