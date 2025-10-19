@@ -71,6 +71,11 @@ export class WidevineCdm implements Cdm {
   resumeSession(state: string) {
     const session = Session.resume(state, this.client);
     this.sessions.set(session.sessionId, session);
-    return { sessionId: session.sessionId, sessionType: session.sessionType };
+    return {
+      sessionId: session.sessionId,
+      sessionType: session.sessionType,
+      initData: session.initData,
+      initDataType: session.initDataType,
+    };
   }
 }

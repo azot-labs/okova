@@ -379,6 +379,10 @@ export class Session extends EventTarget {
     const values = {
       sessionId: this.sessionId,
       sessionType: this.sessionType,
+      initData: this.initData
+        ? fromBuffer(this.initData).toBase64()
+        : undefined,
+      initDataType: this.initDataType,
       certificateChain: fromBuffer(this.certificateChain).toBase64(),
       encryptionKey: fromBuffer(this.encryptionKey.publicBytes()).toBase64(),
       signingKey: fromBuffer(this.signingKey.publicBytes()).toBase64(),
@@ -407,6 +411,10 @@ export class Session extends EventTarget {
     const values = JSON.parse(data);
     const session = new Session(values.sessionType, client);
     session.sessionId = values.sessionId;
+    session.initData = values.initData
+      ? fromBase64(values.initData).toBuffer()
+      : undefined;
+    session.initDataType = values.initDataType;
     session.certificateChain = fromBase64(values.certificateChain).toBuffer();
     session.encryptionKey = EccKey.from(
       fromBase64(values.encryptionKey).toBuffer(),
