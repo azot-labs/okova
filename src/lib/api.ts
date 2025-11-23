@@ -88,7 +88,9 @@ export class Session extends EventTarget implements MediaKeySession {
       this.sessionId = sessionId;
       this.#created = Promise.resolve(sessionId);
     } else {
-      this.#created = sessionId;
+      this.#created = sessionId.catch((error) => {
+        throw error;
+      });
     }
 
     this.#closed = false;
