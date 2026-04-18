@@ -13,14 +13,11 @@ type LicenseCommandParams = {
 
 export const license = async (params: LicenseCommandParams) => {
   const headers = Object.fromEntries(
-    params.headers?.map((header) => header.split(':').map((s) => s.trim())) ||
-      [],
+    params.headers?.map((header) => header.split(':').map((s) => s.trim())) || [],
   );
   const client = await importClient(params.clientPath || process.cwd());
   const cdm =
-    client instanceof WidevineClient
-      ? new WidevineCdm({ client })
-      : new PlayReadyCdm({ client });
+    client instanceof WidevineClient ? new WidevineCdm({ client }) : new PlayReadyCdm({ client });
   const keys = await fetchDecryptionKeys({
     cdm,
     pssh: params.pssh,

@@ -7,9 +7,7 @@ export default defineUnlistedScript(() => {
 
     const type = headers['content-type'];
     const isTypeOk =
-      type?.includes('xml') ||
-      type?.includes('dash') ||
-      type?.includes('octet-stream');
+      type?.includes('xml') || type?.includes('dash') || type?.includes('octet-stream');
     if (!isTypeOk) return false;
 
     return true;
@@ -20,11 +18,7 @@ export default defineUnlistedScript(() => {
     return isManifest;
   };
 
-  const postMessage = (
-    url: string,
-    headers: Record<string, string>,
-    text: string,
-  ) => {
+  const postMessage = (url: string, headers: Record<string, string>, text: string) => {
     const message = {
       jsonrpc: '2.0',
       method: 'response',
@@ -35,11 +29,7 @@ export default defineUnlistedScript(() => {
   };
 
   const isResponseMessage = (event: MessageEvent) => {
-    return (
-      event.data &&
-      event.data.jsonrpc === '2.0' &&
-      event.data.method === 'response'
-    );
+    return event.data && event.data.jsonrpc === '2.0' && event.data.method === 'response';
   };
 
   const originalWorker = window.Worker;
@@ -58,10 +48,7 @@ export default defineUnlistedScript(() => {
   const patchFetch = () => {
     if (typeof fetch === 'function') {
       const originalFetch = fetch;
-      const cachedFetch = async function fetch(
-        resource: URL | RequestInfo,
-        options?: RequestInit,
-      ) {
+      const cachedFetch = async function fetch(resource: URL | RequestInfo, options?: RequestInit) {
         const response = await originalFetch(resource, options);
 
         const clone = response.clone();
@@ -84,9 +71,7 @@ export default defineUnlistedScript(() => {
         try {
           globalThis.fetch = cachedFetch;
         } catch (error2) {
-          console.warn(
-            'Okova was unable to patch the fetch() function in this environment. ',
-          );
+          console.warn('Okova was unable to patch the fetch() function in this environment. ');
         }
       }
     }
@@ -138,9 +123,7 @@ export default defineUnlistedScript(() => {
         xhr.overrideMimeType('text/plain; charset=x-user-defined');
         xhr.open('GET', url, false);
         xhr.send();
-        const blobDataBuffer = Uint8Array.from(xhr.response as string, (c) =>
-          c.charCodeAt(0),
-        );
+        const blobDataBuffer = Uint8Array.from(xhr.response as string, (c) => c.charCodeAt(0));
         const sourceCode = new TextDecoder().decode(blobDataBuffer);
         const injectionCode = `
           const originalFetch = fetch;

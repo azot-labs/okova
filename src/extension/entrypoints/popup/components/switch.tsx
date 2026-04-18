@@ -16,11 +16,7 @@ export const Switch: Component<SwitchProps> = (props) => {
         props.disabled && styles['wrapper--disabled'],
       )}
     >
-      <input
-        type="checkbox"
-        class={cn(styles.input, styles.hidden)}
-        {...props}
-      />
+      <input type="checkbox" class={cn(styles.input, styles.hidden)} {...props} />
       <div aria-hidden class={styles.control} />
       {props.children}
     </label>

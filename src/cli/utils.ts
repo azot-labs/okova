@@ -9,33 +9,26 @@ export const importClient = async (input: string, output?: string) => {
 
   const outputInfo = output ? await stat(output).catch(() => null) : null;
   const importForUnpack =
-    !outputInfo ||
-    outputInfo?.isDirectory() ||
-    input.endsWith('.wvd') ||
-    input.endsWith('.prd');
+    !outputInfo || outputInfo?.isDirectory() || input.endsWith('.wvd') || input.endsWith('.prd');
   if (isDir) {
     const entries = isDir ? await readdir(input) : [];
 
-    const find = (query: string) =>
-      entries.find((entry) => entry.includes(query));
-    const endsWith = (query: string) =>
-      entries.find((entry) => entry.endsWith(query));
+    const find = (query: string) => entries.find((entry) => entry.includes(query));
+    const endsWith = (query: string) => entries.find((entry) => entry.endsWith(query));
 
     const widevineIdFile = find('client_id');
     const widevineKeyFile = find('private_key');
     const wvdFile = endsWith('.wvd');
 
     const isWidevine =
-      (!!(widevineIdFile && widevineKeyFile) || !!wvdFile) &&
-      !output?.endsWith('.prd');
+      (!!(widevineIdFile && widevineKeyFile) || !!wvdFile) && !output?.endsWith('.prd');
 
     const playreadyCertificateFile = find('bgroupcert');
     const playreadyKeyFile = find('zgpriv');
     const prdFile = endsWith('.prd');
 
     const isPlayReady =
-      (!!(playreadyCertificateFile && playreadyKeyFile) || !!prdFile) &&
-      !output?.endsWith('.wvd');
+      (!!(playreadyCertificateFile && playreadyKeyFile) || !!prdFile) && !output?.endsWith('.wvd');
 
     if (isWidevine) {
       if (importForUnpack && wvdFile) {
@@ -51,9 +44,7 @@ export const importClient = async (input: string, output?: string) => {
         const prd = await readFile(join(input, prdFile));
         return await PlayReadyClient.from({ prd });
       } else {
-        const certificate = await readFile(
-          join(input, playreadyCertificateFile!),
-        );
+        const certificate = await readFile(join(input, playreadyCertificateFile!));
         const key = await readFile(join(input, playreadyKeyFile!));
         return PlayReadyClient.from({
           groupCertificate: certificate,

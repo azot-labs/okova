@@ -64,9 +64,7 @@ export class OutdatedDevice extends PlayreadyException {
 }
 
 export class ServerException extends PlayreadyException {
-  constructor(
-    message = 'Recasted on the client if found in license response.',
-  ) {
+  constructor(message = 'Recasted on the client if found in license response.') {
     super(message);
   }
 }

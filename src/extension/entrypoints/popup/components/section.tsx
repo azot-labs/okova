@@ -1,11 +1,7 @@
 import { Component, JSX } from 'solid-js';
 
 export const SectionFooter: Component<{ children: JSX.Element }> = (props) => {
-  return (
-    <footer class="px-3 pt-1.5 pb-1 text-[10px] text-neutral-500">
-      {props.children}
-    </footer>
-  );
+  return <footer class="px-3 pt-1.5 pb-1 text-[10px] text-neutral-500">{props.children}</footer>;
 };
 
 type SectionProps = {
@@ -26,9 +22,7 @@ export const Section: Component<SectionProps> = (props) => {
             {(child, index) => (
               <>
                 {child}
-                <Show
-                  when={props.children && index() < props.children.length - 1}
-                >
+                <Show when={props.children && index() < props.children.length - 1}>
                   <div class="h-px bg-gray-100"></div>
                 </Show>
               </>

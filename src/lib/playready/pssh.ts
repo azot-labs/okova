@@ -34,8 +34,7 @@ class PlayreadyHeader {
 
 export class Pssh {
   PLAYREADY_SYSTEM_ID = new Uint8Array([
-    0x9a, 0x04, 0xf0, 0x79, 0x98, 0x40, 0x42, 0x86, 0xab, 0x92, 0xe6, 0x5b,
-    0xe0, 0x88, 0x5f, 0x95,
+    0x9a, 0x04, 0xf0, 0x79, 0x98, 0x40, 0x42, 0x86, 0xab, 0x92, 0xe6, 0x5b, 0xe0, 0x88, 0x5f, 0x95,
   ]);
 
   wrmHeaders: string[];
@@ -59,9 +58,7 @@ export class Pssh {
         return [wrmHeader];
       } else {
         const reader = new BinaryReader(boxData);
-        return new PlayreadyHeader(reader).records.map(
-          (record) => record.wrmHeader,
-        );
+        return new PlayreadyHeader(reader).records.map((record) => record.wrmHeader);
       }
     } else {
       const reader = new BinaryReader(bytes);
@@ -69,9 +66,7 @@ export class Pssh {
       reader.reset();
 
       if (isPlayreadyHeader) {
-        return new PlayreadyHeader(reader).records.map(
-          (record) => record.wrmHeader,
-        );
+        return new PlayreadyHeader(reader).records.map((record) => record.wrmHeader);
       } else {
         return [new PlayreadyObject(reader).wrmHeader];
       }

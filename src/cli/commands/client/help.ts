@@ -18,8 +18,6 @@ export const help = () => {
   );
   console.log('');
   console.log(`Flags:`);
-  console.log(
-    col(`-f, --format`) + 'Specify format for pack command (wvd/okova)',
-  );
+  console.log(col(`-f, --format`) + 'Specify format for pack command (wvd/okova)');
   console.log(col(`-h, --help`) + 'Display this menu and exit');
 };

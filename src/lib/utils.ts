@@ -16,11 +16,7 @@ export const toBytes = (data: BytesLike): Bytes => {
   }
 
   if (ArrayBuffer.isView(data)) {
-    const source = new Uint8Array(
-      data.buffer,
-      data.byteOffset,
-      data.byteLength,
-    );
+    const source = new Uint8Array(data.buffer, data.byteOffset, data.byteLength);
     const bytes = new Uint8Array(source.byteLength);
     bytes.set(source);
     return bytes;
@@ -33,9 +29,7 @@ export const toBufferSource = (data: BytesLike): BufferSource => toBytes(data);
 
 export const fromText = (data: string) => ({
   toBase64: () => {
-    return btoa(
-      encode(data).reduce((s, byte) => s + String.fromCharCode(byte), ''),
-    );
+    return btoa(encode(data).reduce((s, byte) => s + String.fromCharCode(byte), ''));
   },
   toHex: () => {
     return Array.from(encode(data))
@@ -54,8 +48,7 @@ export const fromBinary = (data: string) => ({
   },
 });
 
-const parseBase64 = (data: string) =>
-  Uint8Array.from(atob(data), (c) => c.charCodeAt(0));
+const parseBase64 = (data: string) => Uint8Array.from(atob(data), (c) => c.charCodeAt(0));
 
 export const fromBase64 = (data: string) => ({
   toBuffer: () => parseBase64(data),
@@ -65,9 +58,7 @@ export const fromBase64 = (data: string) => ({
 
 export const fromBuffer = (data: Uint8Array) => ({
   toBase64: () => {
-    const binString = Array.from(data, (byte) =>
-      String.fromCodePoint(byte),
-    ).join('');
+    const binString = Array.from(data, (byte) => String.fromCodePoint(byte)).join('');
     return btoa(binString);
   },
   toHex: () => {
@@ -84,8 +75,7 @@ export const fromBuffer = (data: Uint8Array) => ({
   },
 });
 
-const parseHex = (hex: string) =>
-  hex.match(/.{1,2}/g)!.map((byte) => parseInt(byte, 16));
+const parseHex = (hex: string) => hex.match(/.{1,2}/g)!.map((byte) => parseInt(byte, 16));
 
 export const fromHex = (data: string) => ({
   toBase64: () => {

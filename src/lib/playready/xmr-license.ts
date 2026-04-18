@@ -56,12 +56,7 @@ class _XmrObject {
   flags: number;
   type: number;
   length: number;
-  data:
-    | null
-    | _ContentKeyObject
-    | _SignatureObject
-    | _AuxiliaryKeysObject
-    | Uint8Array;
+  data: null | _ContentKeyObject | _SignatureObject | _AuxiliaryKeysObject | Uint8Array;
 
   constructor(reader: BinaryReader) {
     this.flags = reader.readUint16();

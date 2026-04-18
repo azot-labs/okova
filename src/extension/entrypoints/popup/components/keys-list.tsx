@@ -20,10 +20,7 @@ export const KeysList: Component<KeysListProps> = (props) => {
         <Section header={props.header} footer={props.footer}>
           {props.keys().map(({ id, value, url, mpd, createdAt }) => (
             <Cell class="group" onClick={() => copyKey({ id, value })}>
-              <code
-                title="Click to copy"
-                class="text-[13px] truncate flex w-full"
-              >
+              <code title="Click to copy" class="text-[13px] truncate flex w-full">
                 <span class="w-1/2 truncate">{id}</span>:
                 {/* value may be a status if Spoofing disabled */}
                 <span class="w-1/2 truncate">{value}</span>
@@ -38,12 +35,7 @@ export const KeysList: Component<KeysListProps> = (props) => {
                   {shorten(mpd || url)}
                 </a>
                 {/* Date without seconds */}
-                <div>
-                  {new Date(createdAt)
-                    .toLocaleString()
-                    .replace(',', '')
-                    .slice(0, -3)}
-                </div>
+                <div>{new Date(createdAt).toLocaleString().replace(',', '').slice(0, -3)}</div>
               </div>
             </Cell>
           ))}

@@ -34,9 +34,7 @@ const help = () => {
   console.log(`Commands:`);
   console.log(col(`serve`) + 'Run your API instance');
   console.log(col(`license <url>`) + 'Make a license request');
-  console.log(
-    col(`client <subcommand>`) + 'Additional Widevine client utilities',
-  );
+  console.log(col(`client <subcommand>`) + 'Additional Widevine client utilities');
   console.log('');
   console.log(`Flags:`);
   console.log(col(`-d, --debug`) + 'Enable debug level logging');
@@ -62,9 +60,7 @@ const help = () => {
       }
       serve({
         host: args.values.host as string | undefined,
-        port: args.values.port
-          ? parseInt(args.values.port as string)
-          : undefined,
+        port: args.values.port ? parseInt(args.values.port as string) : undefined,
         config: args.values.config as string | undefined,
         client: args.values.client as string | undefined,
         secret: args.values.secret as string | undefined,

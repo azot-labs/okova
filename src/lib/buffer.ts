@@ -9,20 +9,12 @@ export const concatUint8Arrays = (...arrays: Uint8Array[]) => {
   return result;
 };
 
-const bufferReplaceAll = (
-  buffer: Uint8Array,
-  original: string,
-  replacement: string,
-) => {
+const bufferReplaceAll = (buffer: Uint8Array, original: string, replacement: string) => {
   const textEncoder = new TextEncoder();
   const originalArray = textEncoder.encode(original);
   const replacementArray = textEncoder.encode(replacement);
 
-  const indexOf = (
-    haystack: Uint8Array,
-    needle: Uint8Array,
-    startIndex: number,
-  ) => {
+  const indexOf = (haystack: Uint8Array, needle: Uint8Array, startIndex: number) => {
     for (let i = startIndex; i <= haystack.length - needle.length; i++) {
       let found = true;
       for (let j = 0; j < needle.length; j++) {
@@ -36,11 +28,7 @@ const bufferReplaceAll = (
     return -1;
   };
 
-  const write = (
-    target: Uint8Array,
-    source: Uint8Array,
-    targetStart: number,
-  ) => {
+  const write = (target: Uint8Array, source: Uint8Array, targetStart: number) => {
     for (let i = 0; i < source.length; i++) {
       target[targetStart + i] = source[i];
     }
@@ -79,10 +67,7 @@ const xorBuffer = (bufferA: Uint8Array, bufferB: Uint8Array) => {
 };
 
 const bufferToArrayBuffer = (buffer: Uint8Array) => {
-  return buffer.buffer.slice(
-    buffer.byteOffset,
-    buffer.byteOffset + buffer.byteLength,
-  );
+  return buffer.buffer.slice(buffer.byteOffset, buffer.byteOffset + buffer.byteLength);
 };
 
 export { bufferReplaceAll, bitShiftLeftBuffer, xorBuffer, bufferToArrayBuffer };

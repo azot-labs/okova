@@ -52,10 +52,7 @@ app.post(
       const user = config.users[secretKey];
       const clientAllowed = user?.clients.includes(clientName);
       if (!clientAllowed) {
-        return c.json(
-          { error: 'Client is not found or you are not authorized to use it.' },
-          403,
-        );
+        return c.json({ error: 'Client is not found or you are not authorized to use it.' }, 403);
       }
     }
 
@@ -81,16 +78,12 @@ app.post(
     const client = clients.get(clientName)!;
 
     const cdm =
-      client instanceof WidevineClient
-        ? new WidevineCdm({ client })
-        : new PlayReadyCdm({ client });
+      client instanceof WidevineClient ? new WidevineCdm({ client }) : new PlayReadyCdm({ client });
 
     const keySystemAccess = requestMediaKeySystemAccess(cdm.keySystem, []);
     const mediaKeys = await keySystemAccess.createMediaKeys({ cdm });
 
-    const sessionType = c.req.valid('json').sessionType as
-      | MediaKeySessionType
-      | undefined;
+    const sessionType = c.req.valid('json').sessionType as MediaKeySessionType | undefined;
     const session = mediaKeys.createSession(sessionType);
 
     const sessionKey = `${secretKey ?? ''}:${session.sessionId}`;
@@ -115,10 +108,7 @@ app.post(
     const sessionKey = `${secretKey ?? ''}:${sessionId}`;
     const session = sessions.get(sessionKey);
     if (!session) {
-      return c.json(
-        { error: 'Session not found. Unable to generate request.' },
-        400,
-      );
+      return c.json({ error: 'Session not found. Unable to generate request.' }, 400);
     }
     const initDataType = c.req.valid('json').initDataType || 'cenc';
     const initData = Buffer.from(c.req.valid('json').initData, 'base64');
@@ -148,59 +138,41 @@ app.post(
   },
 );
 
-app.get(
-  '/:id/keys',
-  zValidator('param', z.object({ id: z.string() })),
-  async (c) => {
-    const secretKey = c.req.header('x-secret-key') as string;
-    const sessionId = c.req.valid('param').id;
-    const sessionKey = `${secretKey ?? ''}:${sessionId}`;
-    const session = sessions.get(sessionKey);
-    if (!session) {
-      return c.json({ error: 'Session not found. Unable to get keys.' }, 400);
-    }
-    const keys = await session.waitForKeyStatusesChange();
-    return c.json(keys);
-  },
-);
+app.get('/:id/keys', zValidator('param', z.object({ id: z.string() })), async (c) => {
+  const secretKey = c.req.header('x-secret-key') as string;
+  const sessionId = c.req.valid('param').id;
+  const sessionKey = `${secretKey ?? ''}:${sessionId}`;
+  const session = sessions.get(sessionKey);
+  if (!session) {
+    return c.json({ error: 'Session not found. Unable to get keys.' }, 400);
+  }
+  const keys = await session.waitForKeyStatusesChange();
+  return c.json(keys);
+});
 
-app.post(
-  '/:id/close',
-  zValidator('param', z.object({ id: z.string() })),
-  async (c) => {
-    const secretKey = c.req.header('x-secret-key') as string;
-    const sessionId = c.req.valid('param').id;
-    const sessionKey = `${secretKey ?? ''}:${sessionId}`;
-    const session = sessions.get(sessionKey);
-    if (!session) {
-      return c.json(
-        { error: 'No session has been opened yet. No session to close.' },
-        400,
-      );
-    }
-    await session.close();
-    return c.json({ success: true });
-  },
-);
+app.post('/:id/close', zValidator('param', z.object({ id: z.string() })), async (c) => {
+  const secretKey = c.req.header('x-secret-key') as string;
+  const sessionId = c.req.valid('param').id;
+  const sessionKey = `${secretKey ?? ''}:${sessionId}`;
+  const session = sessions.get(sessionKey);
+  if (!session) {
+    return c.json({ error: 'No session has been opened yet. No session to close.' }, 400);
+  }
+  await session.close();
+  return c.json({ success: true });
+});
 
-app.delete(
-  '/:id',
-  zValidator('param', z.object({ id: z.string() })),
-  async (c) => {
-    const secretKey = c.req.header('x-secret-key') as string;
-    const sessionId = c.req.valid('param').id;
-    const sessionKey = `${secretKey ?? ''}:${sessionId}`;
-    const session = sessions.get(sessionKey);
-    if (!session) {
-      return c.json(
-        { error: 'No session has been opened yet. No session to remove.' },
-        400,
-      );
-    }
-    await session.close();
-    sessions.delete(sessionKey);
-    return c.json({ success: true });
-  },
-);
+app.delete('/:id', zValidator('param', z.object({ id: z.string() })), async (c) => {
+  const secretKey = c.req.header('x-secret-key') as string;
+  const sessionId = c.req.valid('param').id;
+  const sessionKey = `${secretKey ?? ''}:${sessionId}`;
+  const session = sessions.get(sessionKey);
+  if (!session) {
+    return c.json({ error: 'No session has been opened yet. No session to remove.' }, 400);
+  }
+  await session.close();
+  sessions.delete(sessionKey);
+  return c.json({ success: true });
+});
 
 export default app;

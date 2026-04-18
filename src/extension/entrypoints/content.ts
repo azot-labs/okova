@@ -43,9 +43,7 @@ export default defineContentScript({
         const message = event.data.log;
         message.url = window.location.href;
         browser.runtime.sendMessage(message).then((response) => {
-          window.dispatchEvent(
-            new CustomEvent('drm-message-response', { detail: response }),
-          );
+          window.dispatchEvent(new CustomEvent('drm-message-response', { detail: response }));
         });
       },
       false,

@@ -3,15 +3,8 @@ import type { AffinePoint } from '@noble/curves/abstract/curve';
 import { EccKey } from './ecc-key';
 
 export class ElGamal {
-  static encrypt(
-    affineMessagePoint: AffinePoint<bigint>,
-    affinePublicKey: AffinePoint<bigint>,
-  ) {
-    const messagePoint = new p256.Point(
-      affineMessagePoint.x,
-      affineMessagePoint.y,
-      1n,
-    );
+  static encrypt(affineMessagePoint: AffinePoint<bigint>, affinePublicKey: AffinePoint<bigint>) {
+    const messagePoint = new p256.Point(affineMessagePoint.x, affineMessagePoint.y, 1n);
     const publicKey = new p256.Point(affinePublicKey.x, affinePublicKey.y, 1n);
     const ephemeralKey = EccKey.randomScalar();
 
@@ -26,10 +19,7 @@ export class ElGamal {
   }
 
   static decrypt(
-    {
-      point1,
-      point2,
-    }: { point1: AffinePoint<bigint>; point2: AffinePoint<bigint> },
+    { point1, point2 }: { point1: AffinePoint<bigint>; point2: AffinePoint<bigint> },
     privateKey: bigint,
   ) {
     const projectivePoint1 = new p256.Point(point1.x, point1.y, 1n);

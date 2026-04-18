@@ -2,11 +2,7 @@ import { writeFile } from 'node:fs/promises';
 import { extname, join } from 'node:path';
 import { importClient } from '../../utils';
 
-export const pack = async (
-  input = process.cwd(),
-  format?: string,
-  output?: string,
-) => {
+export const pack = async (input = process.cwd(), format?: string, output?: string) => {
   const client = await importClient(input, output);
   const ext = format || (output ? extname(output) : '');
   const data = await client.pack();

@@ -20,8 +20,7 @@ export const Clients = () => {
     await appStorage.clients.active.setValue(client);
   };
 
-  const isActive = (client: Client) =>
-    activeClient()?.filename === client.filename;
+  const isActive = (client: Client) => activeClient()?.filename === client.filename;
 
   const removeClient = async (client: Client) => {
     const newClients = clients().filter((c) => c.filename !== client.filename);
@@ -33,10 +32,8 @@ export const Clients = () => {
   };
 
   const getClientLevel = (client: Client) => {
-    if (client instanceof WidevineClient)
-      return `Widevine L${client.securityLevel}`;
-    if (client instanceof PlayReadyClient)
-      return `PlayReady SL${client.securityLevel}`;
+    if (client instanceof WidevineClient) return `Widevine L${client.securityLevel}`;
+    if (client instanceof PlayReadyClient) return `PlayReady SL${client.securityLevel}`;
     return 'Unknown';
   };
 
@@ -46,16 +43,12 @@ export const Clients = () => {
       <CellImportClient disabled={clients().length >= 10} />
       <Show when={clients().length === 0}>
         <SectionFooter>
-          WVD v2, device_client_id_blob / client_id.bin + device_private_key /
-          private_key.pem
+          WVD v2, device_client_id_blob / client_id.bin + device_private_key / private_key.pem
         </SectionFooter>
       </Show>
       <Show when={clients().length > 0}>
         <List class="mt-2">
-          <Section
-            header="Imported Clients"
-            footer="You can add a maximum of 10 clients."
-          >
+          <Section header="Imported Clients" footer="You can add a maximum of 10 clients.">
             {clients().map((client) => (
               <Cell
                 class="capitalize group"

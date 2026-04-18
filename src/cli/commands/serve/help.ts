@@ -6,9 +6,7 @@ export const help = () => {
   console.log(`Flags:`);
   console.log(col(`--host`) + 'server host (default: 0.0.0.0)');
   console.log(col(`--port`) + 'server port (default: 4000)');
-  console.log(
-    col(`--config`) + 'path to config file (default: okova.config.json)',
-  );
+  console.log(col(`--config`) + 'path to config file (default: okova.config.json)');
   console.log(
     col(`-c, --client`) +
       'path to client (directory with id and private key or path to *.wvd file)',

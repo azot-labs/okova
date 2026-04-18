@@ -15,8 +15,7 @@ describe('Widevine Session Resumability', () => {
     const initDataType = 'cenc';
 
     const clientPath = process.env.VITEST_WIDEVINE_CLIENT_PATH;
-    if (!clientPath)
-      return console.warn('Widevine client not found. Skipping test');
+    if (!clientPath) return console.warn('Widevine client not found. Skipping test');
 
     const clientData = await readFile(clientPath);
     const client = await WidevineCdm.Client.from({ wvd: clientData });
@@ -54,8 +53,7 @@ describe('Widevine Session Resumability', () => {
 
   test('should pause and resume widevine session via Session static methods', async () => {
     const clientPath = process.env.VITEST_WIDEVINE_CLIENT_PATH;
-    if (!clientPath)
-      return console.warn('Widevine client not found. Skipping test');
+    if (!clientPath) return console.warn('Widevine client not found. Skipping test');
 
     const clientData = await readFile(clientPath);
     const client = await WidevineCdm.Client.from({ wvd: clientData });
@@ -83,8 +81,7 @@ describe('Widevine Session Resumability', () => {
     const initDataType = 'cenc';
 
     const clientPath = process.env.VITEST_WIDEVINE_CLIENT_PATH;
-    if (!clientPath)
-      return console.warn('Widevine client not found. Skipping test');
+    if (!clientPath) return console.warn('Widevine client not found. Skipping test');
 
     const clientData = await readFile(clientPath);
     const client = await WidevineCdm.Client.from({ wvd: clientData });
@@ -111,8 +108,7 @@ describe('Widevine Session Resumability', () => {
 
   test('should handle persistent-license session type', async () => {
     const clientPath = process.env.VITEST_WIDEVINE_CLIENT_PATH;
-    if (!clientPath)
-      return console.warn('Widevine client not found. Skipping test');
+    if (!clientPath) return console.warn('Widevine client not found. Skipping test');
 
     const clientData = await readFile(clientPath);
     const client = await WidevineCdm.Client.from({ wvd: clientData });
@@ -138,8 +134,7 @@ describe('Widevine Session Resumability', () => {
 describe('PlayReady Session Resumability', () => {
   test('should pause and resume playready session via CDM methods', async () => {
     const clientPath = process.env.VITEST_PLAYREADY_CLIENT_PATH;
-    if (!clientPath)
-      return console.warn('PlayReady client not found. Skipping test');
+    if (!clientPath) return console.warn('PlayReady client not found. Skipping test');
 
     const clientData = await readFile(clientPath);
     const client = await PlayReadyCdm.Client.from({ prd: clientData });
@@ -175,8 +170,7 @@ describe('PlayReady Session Resumability', () => {
 
   test('should pause and resume playready session via Session static methods', async () => {
     const clientPath = process.env.VITEST_PLAYREADY_CLIENT_PATH;
-    if (!clientPath)
-      return console.warn('PlayReady client not found. Skipping test');
+    if (!clientPath) return console.warn('PlayReady client not found. Skipping test');
 
     const clientData = await readFile(clientPath);
     const client = await PlayReadyCdm.Client.from({ prd: clientData });
@@ -208,8 +202,7 @@ describe('PlayReady Session Resumability', () => {
 
   test('should preserve session cryptographic state during pause/resume', async () => {
     const clientPath = process.env.VITEST_PLAYREADY_CLIENT_PATH;
-    if (!clientPath)
-      return console.warn('PlayReady client not found. Skipping test');
+    if (!clientPath) return console.warn('PlayReady client not found. Skipping test');
 
     const clientData = await readFile(clientPath);
     const client = await PlayReadyCdm.Client.from({ prd: clientData });
@@ -235,8 +228,7 @@ describe('PlayReady Session Resumability', () => {
 
   test('should handle persistent-license session type for playready', async () => {
     const clientPath = process.env.VITEST_PLAYREADY_CLIENT_PATH;
-    if (!clientPath)
-      return console.warn('PlayReady client not found. Skipping test');
+    if (!clientPath) return console.warn('PlayReady client not found. Skipping test');
 
     const clientData = await readFile(clientPath);
     const client = await PlayReadyCdm.Client.from({ prd: clientData });
@@ -264,8 +256,7 @@ describe('Cross-system Resumability', () => {
     const widevinePath = process.env.VITEST_WIDEVINE_CLIENT_PATH;
     const playreadyPath = process.env.VITEST_PLAYREADY_CLIENT_PATH;
 
-    if (!widevinePath || !playreadyPath)
-      return console.warn('Client not found. Skipping test');
+    if (!widevinePath || !playreadyPath) return console.warn('Client not found. Skipping test');
 
     // Create Widevine session
     const widevineData = await readFile(widevinePath);
@@ -285,14 +276,8 @@ describe('Cross-system Resumability', () => {
     expect(widevinePaused).not.toBe(playreadyPaused);
 
     // Verify each can only be resumed by its own type
-    const widevineRestored = WidevineSession.resume(
-      widevinePaused,
-      widevineClient,
-    );
-    const playreadyRestored = PlayReadySession.resume(
-      playreadyPaused,
-      playreadyClient,
-    );
+    const widevineRestored = WidevineSession.resume(widevinePaused, widevineClient);
+    const playreadyRestored = PlayReadySession.resume(playreadyPaused, playreadyClient);
 
     expect(widevineRestored.sessionId).toBe(widevineSession.sessionId);
     expect(playreadyRestored.sessionId).toBe(playreadySession.sessionId);

@@ -6,11 +6,7 @@ import {
   SignedDrmCertificate,
   SignedMessage,
 } from './proto';
-import {
-  createHmacSha256,
-  getRandomBytes,
-  getRandomHex,
-} from '../crypto/common';
+import { createHmacSha256, getRandomBytes, getRandomHex } from '../crypto/common';
 import { Key } from './key';
 import { WidevineClient } from './client';
 import { PSSH, createPssh } from './pssh';
@@ -117,10 +113,7 @@ export class Session extends EventTarget {
       deriveContext(licenseRequest.bytes),
     );
     this.dispatchEvent(
-      new MessageEvent(
-        'license-request',
-        message.bytes as unknown as ArrayBuffer,
-      ),
+      new MessageEvent('license-request', message.bytes as unknown as ArrayBuffer),
     );
     return message.bytes;
   }
@@ -131,8 +124,7 @@ export class Session extends EventTarget {
         'message',
         (e) => {
           const event = e as MessageEvent;
-          if (event.messageType === 'license-request')
-            resolve(new Uint8Array(event.message));
+          if (event.messageType === 'license-request') resolve(new Uint8Array(event.message));
         },
         false,
       );
@@ -152,9 +144,7 @@ export class Session extends EventTarget {
         widevinePsshData: {
           psshData: [pssh.toBuffer()],
           licenseType:
-            this.sessionType === 'persistent-license'
-              ? LicenseType.OFFLINE
-              : LicenseType.STREAMING,
+            this.sessionType === 'persistent-license' ? LicenseType.OFFLINE : LicenseType.STREAMING,
           requestId: requestId,
         },
       },
@@ -204,13 +194,9 @@ export class Session extends EventTarget {
     const requestId = fromBuffer(license.id!.requestId!).toText();
     const context = this.contexts.get(requestId);
     if (!context)
-      throw new Error(
-        `Failed to find context to decrypt keys, requestId: ${requestId}`,
-      );
+      throw new Error(`Failed to find context to decrypt keys, requestId: ${requestId}`);
 
-    const sessionKey = await this.client.decryptWithKey(
-      signedLicense.sessionKey,
-    );
+    const sessionKey = await this.client.decryptWithKey(signedLicense.sessionKey);
     const derivedKeys = await deriveKeys(context.enc, context.auth, sessionKey);
 
     const { success, signature } = await this.#verifyMessage(
@@ -220,9 +206,7 @@ export class Session extends EventTarget {
     if (!success) {
       this.log.debug(`Calculated signature: ${signature.calculated}`);
       this.log.debug(`Actual signature: ${signature.actual}`);
-      throw new Error(
-        'Signature mismatch on license message, rejecting license',
-      );
+      throw new Error('Signature mismatch on license message, rejecting license');
     }
 
     for (const keyContainer of license.key) {
@@ -241,8 +225,7 @@ export class Session extends EventTarget {
   }
 
   async #setServiceCertificate(certificate: Uint8Array) {
-    const { signedDrmCertificate, drmCertificate } =
-      await parseCertificate(certificate);
+    const { signedDrmCertificate, drmCertificate } = await parseCertificate(certificate);
     const isValid = verifyCertificate(signedDrmCertificate);
     if (!isValid) throw new Error('Certificate invalid: signature mismatch');
     this.serviceCertificate = signedDrmCertificate;
@@ -252,8 +235,7 @@ export class Session extends EventTarget {
   async #verifyMessage(message: SignedMessage, key: Uint8Array) {
     const actualSignatureHex = fromBuffer(message.signature).toHex();
     const data = [message.msg];
-    if (message.oemcryptoCoreMessage?.length)
-      data.unshift(message.oemcryptoCoreMessage);
+    if (message.oemcryptoCoreMessage?.length) data.unshift(message.oemcryptoCoreMessage);
     const calculatedSignature = await createHmacSha256(
       key as BufferSource,
       concatUint8Arrays(...data),
@@ -292,15 +274,11 @@ export class Session extends EventTarget {
     const values = {
       sessionId: this.sessionId,
       sessionType: this.sessionType,
-      initData: this.initData
-        ? fromBuffer(this.initData as Uint8Array).toBase64()
-        : undefined,
+      initData: this.initData ? fromBuffer(this.initData as Uint8Array).toBase64() : undefined,
       initDataType: this.initDataType,
       individualizationSent: this.individualizationSent,
       serviceCertificate: this.serviceCertificate
-        ? fromBuffer(
-            SignedDrmCertificate.encode(this.serviceCertificate).finish(),
-          ).toBase64()
+        ? fromBuffer(SignedDrmCertificate.encode(this.serviceCertificate).finish()).toBase64()
         : undefined,
       contexts: Object.fromEntries(
         this.contexts.entries().map(([key, value]) => [
@@ -312,17 +290,12 @@ export class Session extends EventTarget {
         ]),
       ),
       keys: Object.fromEntries(
-        this.keys
-          .entries()
-          .map(([key, value]) => [key, { id: value.id, value: value.value }]),
+        this.keys.entries().map(([key, value]) => [key, { id: value.id, value: value.value }]),
       ),
       keyStatuses: Object.fromEntries(
         this.keyStatuses
           .entries()
-          .map(([key, value]) => [
-            fromBuffer(key as Uint8Array).toHex(),
-            value,
-          ]),
+          .map(([key, value]) => [fromBuffer(key as Uint8Array).toHex(), value]),
       ),
     };
     const data = JSON.stringify(values);
@@ -337,26 +310,18 @@ export class Session extends EventTarget {
     const values = JSON.parse(state);
     const session = new Session(values.sessionType, client);
     session.sessionId = values.sessionId;
-    session.initData = values.initData
-      ? fromBase64(values.initData).toBuffer()
-      : undefined;
+    session.initData = values.initData ? fromBase64(values.initData).toBuffer() : undefined;
     session.initDataType = values.initDataType;
     session.individualizationSent = values.individualizationSent;
     session.serviceCertificate = values.serviceCertificate
-      ? SignedDrmCertificate.decode(
-          fromBase64(values.serviceCertificate).toBuffer(),
-        )
+      ? SignedDrmCertificate.decode(fromBase64(values.serviceCertificate).toBuffer())
       : undefined;
     session.contexts = new Map(
       Object.entries(values.contexts).map(([key, value]) => [
         key,
         {
-          enc: fromBase64(
-            (value as { enc: string; auth: string }).enc,
-          ).toBuffer(),
-          auth: fromBase64(
-            (value as { enc: string; auth: string }).auth,
-          ).toBuffer(),
+          enc: fromBase64((value as { enc: string; auth: string }).enc).toBuffer(),
+          auth: fromBase64((value as { enc: string; auth: string }).auth).toBuffer(),
         },
       ]),
     );

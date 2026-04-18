@@ -123,9 +123,7 @@ const KeyInfo = b.object({
 const ManufacturerInfo = b.object({
   flags: b.uint32(),
   manufacturer_name_length: b.uint32(),
-  manufacturer_name: b.bytes(
-    (ctx) => (ctx.manufacturer_name_length + 3) & 0xfffffffc,
-  ),
+  manufacturer_name: b.bytes((ctx) => (ctx.manufacturer_name_length + 3) & 0xfffffffc),
   model_name_length: b.uint32(),
   model_name: b.bytes((ctx) => (ctx.model_name_length + 3) & 0xfffffffc),
   model_number_length: b.uint32(),
@@ -238,10 +236,7 @@ export const BCertChain = b.object({
   flags: b.uint32(),
   certificate_count: b.uint32(),
   // The header is 20 bytes (4*5). The certificates fill the rest of the 'total_length'.
-  certificates: b.prefixed(
-    (ctx) => ctx.total_length - 20,
-    b.greedyRange(BCert),
-  ),
+  certificates: b.prefixed((ctx) => ctx.total_length - 20, b.greedyRange(BCert)),
 });
 
 type BCertChainType = b.infer<typeof BCertChain>;
@@ -345,9 +340,7 @@ export class Certificate {
       attribute: keyInfo,
     };
 
-    const manufacturerInfo = params.parent
-      .get(0)
-      .getAttribute(BCertObjType.MANUFACTURER);
+    const manufacturerInfo = params.parent.get(0).getAttribute(BCertObjType.MANUFACTURER);
     if (!manufacturerInfo) throw new Error('Manufacturer info not found');
 
     const newBCertContainer: any = {
@@ -370,10 +363,7 @@ export class Certificate {
     newBCertContainer.certificate_length = payloadLength;
     newBCertContainer.total_length = payloadLength + 144; // signature length
 
-    const signPayload = BCert.build(newBCertContainer).subarray(
-      0,
-      payloadLength,
-    );
+    const signPayload = BCert.build(newBCertContainer).subarray(0, payloadLength);
 
     const signature = await ecc256Sign(params.groupKey.privateKey, signPayload);
 
@@ -432,17 +422,12 @@ export class Certificate {
   getIssuerKey(): Uint8Array | undefined {
     const keyInfo = this.getAttribute(BCertObjType.KEY)?.attribute;
     if (!keyInfo || !('cert_keys' in keyInfo)) return;
-    return keyInfo?.cert_keys.find((key) =>
-      key.usages.includes(BCertKeyUsage.ISSUER_DEVICE),
-    )?.key;
+    return keyInfo?.cert_keys.find((key) => key.usages.includes(BCertKeyUsage.ISSUER_DEVICE))?.key;
   }
 
   dumps = (): Uint8Array => BCert.build(this.parsed);
 
-  async verify(
-    publicKey: Uint8Array,
-    index: number,
-  ): Promise<Uint8Array | undefined> {
+  async verify(publicKey: Uint8Array, index: number): Promise<Uint8Array | undefined> {
     const signatureObject = this.getAttribute(BCertObjType.SIGNATURE);
 
     if (
@@ -450,38 +435,25 @@ export class Certificate {
       !('signature_key' in signatureObject.attribute) ||
       !('signature' in signatureObject.attribute)
     )
-      throw new InvalidCertificate(
-        `No signature object in certificate ${index}`,
-      );
+      throw new InvalidCertificate(`No signature object in certificate ${index}`);
 
     const signatureKey = signatureObject.attribute.signature_key as Uint8Array;
     const signature = signatureObject.attribute.signature as Uint8Array;
 
     if (!publicKey.every((byte, i) => byte === signatureKey[i]))
-      throw new InvalidCertificate(
-        `Signature keys of certificate ${index} do not match`,
-      );
+      throw new InvalidCertificate(`Signature keys of certificate ${index} do not match`);
 
     const fullCertData = this.dumps();
-    const signPayload = fullCertData.slice(
-      0,
-      fullCertData.length - signatureObject.length,
-    );
+    const signPayload = fullCertData.slice(0, fullCertData.length - signatureObject.length);
 
     const uncompressedPublicKey = new Uint8Array(65);
     uncompressedPublicKey[0] = 0x04; // Uncompressed key prefix
     uncompressedPublicKey.set(signatureKey, 1);
 
-    const isValid = await ecc256Verify(
-      uncompressedPublicKey,
-      signPayload,
-      signature,
-    );
+    const isValid = await ecc256Verify(uncompressedPublicKey, signPayload, signature);
 
     if (!isValid) {
-      throw new InvalidCertificate(
-        `Signature of certificate ${index} is not authentic`,
-      );
+      throw new InvalidCertificate(`Signature of certificate ${index} is not authentic`);
     }
 
     const issuerKey = this.getIssuerKey();
@@ -498,10 +470,7 @@ export class CertificateChain {
   parsed: BCertChainType;
   _BCERT_CHAIN: typeof BCertChain;
 
-  constructor(
-    parsedBCertChain: BCertChainType,
-    bcertChainObj: typeof BCertChain = BCertChain,
-  ) {
+  constructor(parsedBCertChain: BCertChainType, bcertChainObj: typeof BCertChain = BCertChain) {
     this.parsed = parsedBCertChain;
     this._BCERT_CHAIN = bcertChainObj;
   }
@@ -560,14 +529,10 @@ export class CertificateChain {
 
   remove(index: number) {
     if (this.count() <= 0) {
-      throw new InvalidCertificateChain(
-        `CertificateChain does not contain any Certificates`,
-      );
+      throw new InvalidCertificateChain(`CertificateChain does not contain any Certificates`);
     }
     if (index >= this.count()) {
-      throw new RangeError(
-        `No Certificate at index ${index}, ${this.count()} total`,
-      );
+      throw new RangeError(`No Certificate at index ${index}, ${this.count()} total`);
     }
     this.parsed.total_length -= this.get(index).dumps().length;
     this.parsed.certificates.splice(index, 1);
@@ -576,14 +541,10 @@ export class CertificateChain {
 
   get(index: number) {
     if (this.count() <= 0) {
-      throw new InvalidCertificateChain(
-        'CertificateChain does not contain any Certificates',
-      );
+      throw new InvalidCertificateChain('CertificateChain does not contain any Certificates');
     }
     if (index >= this.count()) {
-      throw new RangeError(
-        `No Certificate at index ${index}, ${this.count()} total`,
-      );
+      throw new RangeError(`No Certificate at index ${index}, ${this.count()} total`);
     }
     return new Certificate(this.parsed.certificates[index]);
   }

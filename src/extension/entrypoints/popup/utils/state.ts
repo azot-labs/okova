@@ -30,9 +30,7 @@ export const useSyncStateWithStorage = () => {
     else appStorage.settings.setValue(defaultSettings);
 
     appStorage.clients.getValue().then((clients) => setClients(clients));
-    appStorage.recentKeys
-      .getValue()
-      .then((recentKeys) => recentKeys && setRecentKeys(recentKeys));
+    appStorage.recentKeys.getValue().then((recentKeys) => recentKeys && setRecentKeys(recentKeys));
     appStorage.recentKeys.watch((newKeys) => setRecentKeys(newKeys || []));
     appStorage.clients.active
       .getValue()

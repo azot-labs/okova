@@ -10,8 +10,7 @@ export const PSSH =
   'AAAAW3Bzc2gAAAAA7e+LqXnWSs6jyCfc1R0h7QAAADsIARIQ62dqu8s0Xpa7z2FmMPGj2hoNd2lkZXZpbmVfdGVzdCIQZmtqM2xqYVNkZmFsa3IzaioCSEQyAA==';
 export const LICENSE_URL = 'https://cwip-shaka-proxy.appspot.com/no_auth';
 
-export const read = async (filename: string) =>
-  readFile(join(WORKDIR, 'clients', filename));
+export const read = async (filename: string) => readFile(join(WORKDIR, 'clients', filename));
 
 export const createClient = async () => {
   const id = await read('device_client_id_blob');
@@ -27,9 +26,7 @@ export const loadWidevineClient = async () => {
   return client;
 };
 
-export const fetchDecryptionKeysWithDefaults = async (
-  client?: WidevineClient,
-) => {
+export const fetchDecryptionKeysWithDefaults = async (client?: WidevineClient) => {
   const cdm = new WidevineCdm({ client: client || (await createClient()) });
   return fetchDecryptionKeys({
     cdm,

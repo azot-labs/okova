@@ -44,9 +44,7 @@ export const Cell: Component<CellProps> = (props) => {
       title={props.title}
       onClick={props.onClick}
     >
-      {props.before && (
-        <div class="[&>svg]:w-[18px] [&>svg]:h-[18px] mr-3">{props.before}</div>
-      )}
+      {props.before && <div class="[&>svg]:w-[18px] [&>svg]:h-[18px] mr-3">{props.before}</div>}
       <div class="flex flex-col truncate select-none">
         <span class="truncate">{props.children}</span>
         <span

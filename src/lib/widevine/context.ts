@@ -12,11 +12,7 @@ export const deriveContext = (message: Uint8Array) => {
   };
 
   const getContext = (label: string, msg: Uint8Array, keySize: number) =>
-    concatUint8Arrays(
-      textEncoder.encode(label + '\x00'),
-      msg,
-      toBytes(keySize),
-    );
+    concatUint8Arrays(textEncoder.encode(label + '\x00'), msg, toBytes(keySize));
 
   return {
     enc: getContext('ENCRYPTION', message, 16 * 8 /* 128-bit */),
@@ -29,11 +25,7 @@ export const deriveKeys = async (
   macContext: Uint8Array,
   key: Uint8Array,
 ) => {
-  const derive = async (
-    sessionKey: Uint8Array,
-    context: Uint8Array,
-    counter: number,
-  ) => {
+  const derive = async (sessionKey: Uint8Array, context: Uint8Array, counter: number) => {
     const message = concatUint8Arrays(new Uint8Array([counter]), context);
     return await aesCmac(sessionKey, message);
   };

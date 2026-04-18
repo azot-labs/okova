@@ -13,8 +13,7 @@ test('playready cdm', async () => {
   const initDataType = 'cenc';
 
   const clientPath = process.env.VITEST_PLAYREADY_CLIENT_PATH;
-  if (!clientPath)
-    return console.warn('PlayReady client not found. Skipping test');
+  if (!clientPath) return console.warn('PlayReady client not found. Skipping test');
   const clientData = await readFile(clientPath);
   const client = await PlayReadyCdm.Client.from({ prd: clientData });
   const cdm = new PlayReadyCdm({ client });

@@ -20,10 +20,7 @@ const createHttpClient = ({ baseUrl, secret, ...params }: RemoteParams) => {
 
   const handleError = (data: any, response: Response) => {
     if (data.error) {
-      const error =
-        typeof data.error === 'string'
-          ? data.error
-          : JSON.stringify(data.error);
+      const error = typeof data.error === 'string' ? data.error : JSON.stringify(data.error);
       throw new Error(error, { cause: response });
     }
   };
@@ -85,18 +82,11 @@ export class RemoteCdm implements Cdm {
     return data.id;
   }
 
-  async generateRequest(
-    sessionId: string,
-    initData: Uint8Array,
-    initDataType?: string,
-  ) {
-    const data = await this.#http.post(
-      `/sessions/${sessionId}/generate-request`,
-      {
-        initDataType,
-        initData: fromBuffer(initData).toBase64(),
-      },
-    );
+  async generateRequest(sessionId: string, initData: Uint8Array, initDataType?: string) {
+    const data = await this.#http.post(`/sessions/${sessionId}/generate-request`, {
+      initDataType,
+      initData: fromBuffer(initData).toBase64(),
+    });
     return fromBase64(data.licenseRequest).toBuffer();
   }
 

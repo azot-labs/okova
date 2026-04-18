@@ -54,16 +54,12 @@ export class PlayReadyClient {
       const encryptionKey = payload.encryptionKey
         ? EccKey.from(payload.encryptionKey)
         : EccKey.generate();
-      const signingKey = payload.signingKey
-        ? EccKey.from(payload.signingKey)
-        : EccKey.generate();
+      const signingKey = payload.signingKey ? EccKey.from(payload.signingKey) : EccKey.generate();
       const certificateChain = CertificateChain.from(payload.groupCertificate);
       const issuerKey = certificateChain.get(0).getIssuerKey();
       const groupKeyBytes = groupKey.publicBytes();
       if (issuerKey && !equalBytes(issuerKey, groupKeyBytes)) {
-        throw new InvalidCertificateChain(
-          'Group key does not match this certificate',
-        );
+        throw new InvalidCertificateChain('Group key does not match this certificate');
       }
       const newCertificate = await Certificate.newLeafCert({
         certId: getRandomBytes(16),

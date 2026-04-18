@@ -36,14 +36,9 @@ export class Key {
     return message;
   }
 
-  static async fromContainer(
-    container: License.IKeyContainer,
-    encKey: Uint8Array,
-  ) {
+  static async fromContainer(container: License.IKeyContainer, encKey: Uint8Array) {
     if (!container.key || !container.iv) throw new Error('Key not found');
-    const decryptionKey = await importAesCbcKeyForDecrypt(
-      encKey as BufferSource,
-    );
+    const decryptionKey = await importAesCbcKeyForDecrypt(encKey as BufferSource);
     const keyValue = await decryptWithAesCbc(
       container.key as BufferSource,
       decryptionKey,

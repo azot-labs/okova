@@ -10,9 +10,7 @@ export interface Key {
  */
 export interface Cdm {
   keySystem: string;
-  createSession: (
-    sessionType?: MediaKeySessionType,
-  ) => Promise<string> | string;
+  createSession: (sessionType?: MediaKeySessionType) => Promise<string> | string;
   generateRequest: (
     sessionId: string,
     initData: Uint8Array,
@@ -105,10 +103,7 @@ export class Session extends EventTarget implements MediaKeySession {
     return true;
   }
 
-  async generateRequest(
-    initDataType: string,
-    initData: BufferSource,
-  ): Promise<void> {
+  async generateRequest(initDataType: string, initData: BufferSource): Promise<void> {
     await this.#validate();
     this.initDataType = initDataType;
     this.initData = initData;
@@ -117,17 +112,12 @@ export class Session extends EventTarget implements MediaKeySession {
       parseBufferSource(initData),
       initDataType,
     );
-    this.dispatchEvent(
-      new MessageEvent('license-request', request as unknown as ArrayBuffer),
-    );
+    this.dispatchEvent(new MessageEvent('license-request', request as unknown as ArrayBuffer));
   }
 
   async update(response: BufferSource): Promise<void> {
     await this.#validate();
-    await this.keySystem.updateSession(
-      this.sessionId,
-      parseBufferSource(response),
-    );
+    await this.keySystem.updateSession(this.sessionId, parseBufferSource(response));
 
     const keys = await this.keySystem.getKeys?.(this.sessionId);
     if (keys) {
@@ -171,11 +161,7 @@ export class Session extends EventTarget implements MediaKeySession {
     const keys = await this.keySystem.getKeys?.(this.sessionId);
     if (keys?.length) return keys;
     return new Promise<Key[]>((resolve) => {
-      this.addEventListener(
-        'keystatuseschange',
-        () => resolve(this.keys),
-        false,
-      );
+      this.addEventListener('keystatuseschange', () => resolve(this.keys), false);
     });
   }
 
@@ -215,8 +201,7 @@ export const requestMediaKeySystemAccess = (
     'com.microsoft.playready.recommendation',
     'remote',
   ]);
-  if (!supportedKeySystems.has(keySystem))
-    throw new Error('Unsupported media key system');
+  if (!supportedKeySystems.has(keySystem)) throw new Error('Unsupported media key system');
 
   return {
     keySystem,
@@ -227,9 +212,7 @@ export const requestMediaKeySystemAccess = (
           const session = new Session(sessionType, cdm);
           return session;
         },
-        setServerCertificate: async (
-          serverCertificate: BufferSource,
-        ): Promise<boolean> => {
+        setServerCertificate: async (serverCertificate: BufferSource): Promise<boolean> => {
           state.serverCertificate = serverCertificate;
           return true;
         },

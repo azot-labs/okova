@@ -47,10 +47,7 @@ const getMessageBlock = (message: BytesLike, blockIndex: number): Bytes => {
   return new Uint8Array(bytes.slice(start, end));
 };
 
-const getPaddedMessageBlock = (
-  message: BytesLike,
-  blockIndex: number,
-): Bytes => {
+const getPaddedMessageBlock = (message: BytesLike, blockIndex: number): Bytes => {
   const bytes = toBytes(message);
   const block = new Uint8Array(const_blockSize);
   const start = blockIndex * const_blockSize;
@@ -67,10 +64,7 @@ const aes = async (key: CryptoKey, message: BytesLike): Promise<Bytes> => {
 
 type KeyLength = 16 | 24 | 32;
 
-const aesCmac = async (
-  keyData: BytesLike,
-  message: BytesLike,
-): Promise<Bytes> => {
+const aesCmac = async (keyData: BytesLike, message: BytesLike): Promise<Bytes> => {
   const keyBytes = toBytes(keyData);
   const messageBytes = toBytes(message);
   const keyLengthToCipher: { [key in KeyLength]: string } = {
@@ -99,15 +93,9 @@ const aesCmac = async (
   const lastBlockIndex = blockCount - 1;
 
   if (lastBlockCompleteFlag) {
-    lastBlock = xorBuffer(
-      getMessageBlock(messageBytes, lastBlockIndex),
-      subkeys.subkey1,
-    );
+    lastBlock = xorBuffer(getMessageBlock(messageBytes, lastBlockIndex), subkeys.subkey1);
   } else {
-    lastBlock = xorBuffer(
-      getPaddedMessageBlock(messageBytes, lastBlockIndex),
-      subkeys.subkey2,
-    );
+    lastBlock = xorBuffer(getPaddedMessageBlock(messageBytes, lastBlockIndex), subkeys.subkey2);
   }
 
   let x: Bytes = new Uint8Array(16);

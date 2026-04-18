@@ -5,8 +5,7 @@ export const help = () => {
   console.log(`Usage: okova license <url> [...flags]\n`);
   console.log(`Commands:`);
   console.log(
-    col(`<url>`) +
-      'URL of license server (e.g. https://cwip-shaka-proxy.appspot.com/no_auth)',
+    col(`<url>`) + 'URL of license server (e.g. https://cwip-shaka-proxy.appspot.com/no_auth)',
   );
   console.log('');
   console.log(`Flags:`);
@@ -20,8 +19,7 @@ export const help = () => {
       'path to client (directory with id and private key or path to *.wvd file)',
   );
   console.log(
-    col(`-e, --encrypt`) +
-      'enable client encryption with service certificate, disabled by default',
+    col(`-e, --encrypt`) + 'enable client encryption with service certificate, disabled by default',
   );
   console.log(col(`-h, --help`) + 'display this menu and exit');
 };

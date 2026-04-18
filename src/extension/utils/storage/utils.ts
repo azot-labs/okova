@@ -3,9 +3,7 @@ import { fromBase64, fromBuffer } from '../../../lib';
 
 type WatchCallback<T> = (newValue: T, oldValue: T) => void;
 
-export const asBytes = <T extends WxtStorageItem<Uint8Array | null, {}>>(
-  item: T,
-): T => ({
+export const asBytes = <T extends WxtStorageItem<Uint8Array | null, {}>>(item: T): T => ({
   ...item,
   getValue: async () => {
     const value = await item.getValue();
@@ -18,10 +16,7 @@ export const asBytes = <T extends WxtStorageItem<Uint8Array | null, {}>>(
   },
 });
 
-export const asJson = <
-  K,
-  T extends WxtStorageItem<K | null, {}> = WxtStorageItem<K | null, {}>,
->(
+export const asJson = <K, T extends WxtStorageItem<K | null, {}> = WxtStorageItem<K | null, {}>>(
   item: T,
 ): T => ({
   ...item,

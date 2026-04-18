@@ -1,10 +1,5 @@
 import { expect, test } from 'vitest';
-import {
-  fromBase64,
-  RemoteCdm,
-  requestMediaKeySystemAccess,
-  toBufferSource,
-} from '../src/lib';
+import { fromBase64, RemoteCdm, requestMediaKeySystemAccess, toBufferSource } from '../src/lib';
 
 test('remote session', async () => {
   const url = 'https://cwip-shaka-proxy.appspot.com/no_auth';

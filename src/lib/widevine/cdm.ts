@@ -20,11 +20,7 @@ export class WidevineCdm implements Cdm {
     return session.sessionId;
   }
 
-  async generateRequest(
-    sessionId: string,
-    initData: Uint8Array,
-    initDataType?: string,
-  ) {
+  async generateRequest(sessionId: string, initData: Uint8Array, initDataType?: string) {
     const session = this.sessions.get(sessionId);
     if (!session) throw new Error('Session not found');
     if (!initData.length) throw new Error('Init data is empty');

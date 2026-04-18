@@ -56,8 +56,7 @@ export default defineBackground({
       }
     };
 
-    const parseBinary = (data: Record<string, number>) =>
-      new Uint8Array(Object.values(data));
+    const parseBinary = (data: Record<string, number>) => new Uint8Array(Object.values(data));
 
     browser.runtime.onMessage.addListener((message, sender, sendResponse) => {
       (async () => {
@@ -67,9 +66,7 @@ export default defineBackground({
 
         const { initData } = message;
         const allKeys = await appStorage.allKeys.raw.getValue();
-        const keys = allKeys?.filter(
-          (keyInfo: any) => keyInfo.pssh === initData,
-        );
+        const keys = allKeys?.filter((keyInfo: any) => keyInfo.pssh === initData);
         const hasKey = !!keys?.length;
         if (hasKey) {
           await appStorage.recentKeys.setValue(keys);
@@ -77,20 +74,15 @@ export default defineBackground({
           return;
         }
 
-        if (
-          settings?.emeInterception &&
-          message.action === 'keystatuseschange'
-        ) {
-          const keys = Object.entries(message.keyStatuses).map(
-            ([id, status]: any) => ({
-              id: fromBase64(id).toHex(),
-              value: status,
-              url: message.url,
-              mpd: message.mpd,
-              pssh: message.initData,
-              createdAt: new Date().getTime(),
-            }),
-          );
+        if (settings?.emeInterception && message.action === 'keystatuseschange') {
+          const keys = Object.entries(message.keyStatuses).map(([id, status]: any) => ({
+            id: fromBase64(id).toHex(),
+            value: status,
+            url: message.url,
+            mpd: message.mpd,
+            pssh: message.initData,
+            createdAt: new Date().getTime(),
+          }));
           appStorage.recentKeys.setValue(keys);
           appStorage.allKeys.add(...keys);
           sendResponse();
@@ -116,8 +108,7 @@ export default defineBackground({
           const { initDataType, initData } = message;
           const keySession = mediaKeys.createSession();
           state.sessions.set(initData, keySession);
-          if (!state.events.has(keySession.sessionId))
-            state.events.set(keySession.sessionId, []);
+          if (!state.events.has(keySession.sessionId)) state.events.set(keySession.sessionId, []);
           keySession.addEventListener(
             'message',
             (event) => {
@@ -127,10 +118,7 @@ export default defineBackground({
             },
             false,
           );
-          await keySession.generateRequest(
-            initDataType,
-            fromBase64(initData).toBuffer(),
-          );
+          await keySession.generateRequest(initDataType, fromBase64(initData).toBuffer());
           sendResponse();
         } else if (message.action === 'individualization-request') {
           // TODO: Handle individualization request
@@ -144,9 +132,7 @@ export default defineBackground({
             .get(session.sessionId)
             ?.find((e) => e.messageType === 'license-request');
           if (!event?.message) return console.log(`[okova] No message`);
-          const messageBase64 = fromBuffer(
-            new Uint8Array(event.message),
-          ).toBase64();
+          const messageBase64 = fromBuffer(new Uint8Array(event.message)).toBase64();
           console.log(state.events.get(session.sessionId));
           console.log(`[okova] Sending challenge`, messageBase64, event);
           sendResponse(messageBase64);
@@ -173,10 +159,7 @@ export default defineBackground({
           }
 
           if (isServiceCertificate) {
-            console.log(
-              `[okova] Updating session with service certificate`,
-              message.messageBase64,
-            );
+            console.log(`[okova] Updating session with service certificate`, message.messageBase64);
             session?.update(parseBinary(message.message));
             sendResponse();
           } else {

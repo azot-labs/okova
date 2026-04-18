@@ -26,9 +26,7 @@ export const getRootCertificate = () => {
     fromBase64(signedDrmCertificateBase64).toBuffer(),
   );
 
-  const drmCertificate = DrmCertificate.decode(
-    signedDrmCertificate.drmCertificate,
-  );
+  const drmCertificate = DrmCertificate.decode(signedDrmCertificate.drmCertificate);
 
   return {
     signedDrmCertificateBase64,
@@ -37,10 +35,7 @@ export const getRootCertificate = () => {
   };
 };
 
-export const importCertificateKey = async (
-  publicKey: Uint8Array,
-  usage: 'encrypt' | 'verify',
-) => {
+export const importCertificateKey = async (publicKey: Uint8Array, usage: 'encrypt' | 'verify') => {
   const keyData = parseSpkiFromCertificateKey(publicKey);
   if (usage === 'verify') {
     return importSpkiKeyForVerify(keyData);
@@ -49,9 +44,7 @@ export const importCertificateKey = async (
   }
 };
 
-export const verifyCertificate = async (
-  signedDrmCertificate: SignedDrmCertificate,
-) => {
+export const verifyCertificate = async (signedDrmCertificate: SignedDrmCertificate) => {
   const publicKey = getRootCertificate().drmCertificate.publicKey;
   const signature = signedDrmCertificate.signature;
   const data = signedDrmCertificate.drmCertificate;
@@ -66,9 +59,7 @@ export const verifyCertificate = async (
 };
 
 export const parseCertificate = async (data: Uint8Array | string) => {
-  const certificate = ArrayBuffer.isView(data)
-    ? data
-    : fromBase64(data).toBuffer();
+  const certificate = ArrayBuffer.isView(data) ? data : fromBase64(data).toBuffer();
   let signedDrmCertificate: SignedDrmCertificate;
   let signedMessage: SignedMessage;
   try {
@@ -88,8 +79,6 @@ export const parseCertificate = async (data: Uint8Array | string) => {
       throw new Error('Failed to parse service certificate');
     }
   }
-  const drmCertificate = DrmCertificate.decode(
-    signedDrmCertificate.drmCertificate,
-  );
+  const drmCertificate = DrmCertificate.decode(signedDrmCertificate.drmCertificate);
   return { signedDrmCertificate, drmCertificate };
 };

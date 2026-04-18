@@ -20,9 +20,7 @@ export type Settings = {
 };
 
 export type Client = WidevineClient | PlayReadyClient;
-export type ClientInfo =
-  | { type: 'wvd'; data: string }
-  | { type: 'prd'; data: string };
+export type ClientInfo = { type: 'wvd'; data: string } | { type: 'prd'; data: string };
 
 const fromInfoToClient = async (info: ClientInfo) => {
   const data = fromBase64(info.data).toBuffer();
@@ -113,9 +111,7 @@ export const appStorage = {
       for (const value of values) {
         if (typeof value === 'string') {
           // Deprecated
-          const client = await WidevineClient.fromPacked(
-            fromBase64(value).toBuffer(),
-          );
+          const client = await WidevineClient.fromPacked(fromBase64(value).toBuffer());
           clients.push(client);
         } else {
           const client = await fromInfoToClient(value);

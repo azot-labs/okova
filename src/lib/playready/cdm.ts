@@ -22,11 +22,7 @@ export class PlayReadyCdm implements Cdm {
     return session.sessionId;
   }
 
-  async generateRequest(
-    sessionId: string,
-    initData: Uint8Array,
-    initDataType?: string,
-  ) {
+  async generateRequest(sessionId: string, initData: Uint8Array, initDataType?: string) {
     const session = this.sessions.get(sessionId);
     if (!session) throw new Error('Session not found');
     const pssh = new Pssh(initData);

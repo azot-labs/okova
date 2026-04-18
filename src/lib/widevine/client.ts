@@ -41,9 +41,7 @@ export class WidevineClient {
 
   #key?: { forDecrypt: CryptoKey; forSign: CryptoKey };
 
-  static async from(
-    payload: { wvd: Uint8Array } | { id: Uint8Array; key: Uint8Array },
-  ) {
+  static async from(payload: { wvd: Uint8Array } | { id: Uint8Array; key: Uint8Array }) {
     if ('wvd' in payload) {
       return await WidevineClient.fromPacked(payload.wvd);
     } else {
@@ -89,9 +87,7 @@ export class WidevineClient {
   ) {
     this.id = ArrayBuffer.isView(id) ? ClientIdentification.decode(id) : id;
     this.signedDrmCertificate = SignedDrmCertificate.decode(this.id.token);
-    this.drmCertificate = DrmCertificate.decode(
-      this.signedDrmCertificate.drmCertificate,
-    );
+    this.drmCertificate = DrmCertificate.decode(this.signedDrmCertificate.drmCertificate);
     this.systemId = this.drmCertificate.systemId;
     this.vmp = this.id.vmpData ? FileHashes.decode(this.id.vmpData) : null;
     this.type = type;
@@ -146,8 +142,7 @@ export class WidevineClient {
   }
 
   async importKey(pkcs1: Uint8Array | string) {
-    const pkcs1pem =
-      typeof pkcs1 === 'string' ? pkcs1 : fromBuffer(pkcs1).toText();
+    const pkcs1pem = typeof pkcs1 === 'string' ? pkcs1 : fromBuffer(pkcs1).toText();
     const pkcs8pem = toPKCS8(pkcs1pem);
     const pemContents = pkcs8pem.split('\n').slice(1, -2).join('\n');
     const data = fromBase64(pemContents).toBuffer();
@@ -200,11 +195,8 @@ export class WidevineClient {
   }
 
   async encryptId(certificate: SignedDrmCertificate) {
-    if (!certificate.drmCertificate)
-      throw Error('Service certificate not found');
-    const serviceCertificate = DrmCertificate.decode(
-      certificate.drmCertificate,
-    );
+    if (!certificate.drmCertificate) throw Error('Service certificate not found');
+    const serviceCertificate = DrmCertificate.decode(certificate.drmCertificate);
     const id = ClientIdentification.encode(this.id).finish();
     const privacyKey = await generateAesCbcKey();
     const encryptedClientIdIv = getRandomBytes(16);
@@ -213,15 +205,9 @@ export class WidevineClient {
       privacyKey,
       encryptedClientIdIv,
     );
-    const publicKey = await importCertificateKey(
-      serviceCertificate.publicKey,
-      'encrypt',
-    );
+    const publicKey = await importCertificateKey(serviceCertificate.publicKey, 'encrypt');
     const privacyKeyData = await exportKey(privacyKey);
-    const encryptedPrivacyKey = await encryptWithRsaOaep(
-      privacyKeyData,
-      publicKey,
-    );
+    const encryptedPrivacyKey = await encryptWithRsaOaep(privacyKeyData, publicKey);
     return EncryptedClientIdentification.create({
       providerId: serviceCertificate.providerId,
       serviceCertificateSerialNumber: serviceCertificate.serialNumber,
@@ -242,8 +228,7 @@ export class WidevineClient {
     keySystem: string,
     supportedConfigurations: MediaKeySystemConfiguration[],
   ) {
-    if (keySystem !== 'com.widevine.alpha')
-      throw new Error('Unsupported media key system');
+    if (keySystem !== 'com.widevine.alpha') throw new Error('Unsupported media key system');
     return {
       keySystem,
       createMediaKeys: async () => {
@@ -252,9 +237,7 @@ export class WidevineClient {
           createSession: (sessionType?: SessionType) => {
             return new Session(sessionType, this) as MediaKeySession;
           },
-          setServerCertificate: async (
-            serverCertificate: BufferSource,
-          ): Promise<boolean> => {
+          setServerCertificate: async (serverCertificate: BufferSource): Promise<boolean> => {
             state.serverCertificate = serverCertificate;
             return true;
           },

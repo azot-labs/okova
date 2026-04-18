@@ -12,8 +12,7 @@ test('widevine cdm', async () => {
   const initDataType = 'cenc';
 
   const clientPath = process.env.VITEST_WIDEVINE_CLIENT_PATH;
-  if (!clientPath)
-    return console.warn('Widevine client not found. Skipping test');
+  if (!clientPath) return console.warn('Widevine client not found. Skipping test');
   const clientData = await readFile(clientPath);
   const client = await WidevineCdm.Client.from({ wvd: clientData });
   const cdm = new WidevineCdm({ client });

@@ -4,12 +4,7 @@ export class Key {
   cipherType: number;
   key: Uint8Array;
 
-  constructor(
-    keyId: Uint8Array,
-    keyType: number,
-    cipherType: number,
-    key: Uint8Array,
-  ) {
+  constructor(keyId: Uint8Array, keyType: number, cipherType: number, key: Uint8Array) {
     this.keyId = this._swapEndianess(keyId);
     this.keyType = keyType;
     this.cipherType = cipherType;

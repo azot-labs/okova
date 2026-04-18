@@ -21,17 +21,12 @@ function concatUint8Arrays(...arrays: Uint8Array[]): Uint8Array {
 }
 
 const prepare = (data: Uint8Array | string): string => {
-  const dataBuffer =
-    typeof data === 'string' ? fromBase64(data).toBuffer() : data;
+  const dataBuffer = typeof data === 'string' ? fromBase64(data).toBuffer() : data;
   const dataFragment = dataBuffer.subarray(12, 28);
-  const isWidevineSystemIdDetected = areUint8ArraysEqual(
-    dataFragment,
-    WV_SYSTEM_ID,
-  );
+  const isWidevineSystemIdDetected = areUint8ArraysEqual(dataFragment, WV_SYSTEM_ID);
 
   if (isWidevineSystemIdDetected) {
-    const parsed =
-      typeof data === 'string' ? data : fromBuffer(data).toBase64();
+    const parsed = typeof data === 'string' ? data : fromBuffer(data).toBase64();
     return parsed;
   }
 
@@ -40,22 +35,14 @@ const prepare = (data: Uint8Array | string): string => {
   const version = new Uint8Array([0, 0, 0, 0]);
   const dataLength = new Uint8Array([0, 0, 0, dataBuffer.length]);
 
-  const newData = concatUint8Arrays(
-    header,
-    pssh,
-    version,
-    WV_SYSTEM_ID,
-    dataLength,
-    dataBuffer,
-  );
+  const newData = concatUint8Arrays(header, pssh, version, WV_SYSTEM_ID, dataLength, dataBuffer);
 
   return fromBuffer(newData).toBase64();
 };
 
 const parse = (initData: Uint8Array | string) => {
   try {
-    let buffer =
-      typeof initData === 'string' ? fromBase64(initData).toBuffer() : initData;
+    let buffer = typeof initData === 'string' ? fromBase64(initData).toBuffer() : initData;
 
     // Find Widevine PSSH by searching for its system ID
     let offset = 0;
