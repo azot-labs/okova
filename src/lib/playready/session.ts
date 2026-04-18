@@ -1,5 +1,5 @@
 import { DOMParser } from '@xmldom/xmldom';
-import * as utils from '@noble/curves/utils';
+import * as utils from '@noble/curves/utils.js';
 import {
   base64ToBytes,
   bytesToBase64,
@@ -301,8 +301,8 @@ export class Session extends EventTarget {
         let ck = decrypted.subarray(16, 32);
 
         if (isScalable) {
-          ci = decrypted.filter((_, index) => index % 2 === 0).slice(0, 16);
-          ck = decrypted.filter((_, index) => index % 2 === 1).slice(0, 16);
+          ci = decrypted.filter((_: number, index: number) => index % 2 === 0).slice(0, 16);
+          ck = decrypted.filter((_: number, index: number) => index % 2 === 1).slice(0, 16);
 
           if (viaSymmetric) {
             const embeddedRootLicense = encryptedKey.subarray(0, 144);

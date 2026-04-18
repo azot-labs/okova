@@ -1,4 +1,4 @@
-import { TbTrash } from 'solid-icons/tb';
+import { TbOutlineTrash as TbTrash } from 'solid-icons/tb';
 import { Layout } from '../components/layout';
 import { Header } from '../components/header';
 import { Cell } from '../components/cell';

@@ -1,5 +1,5 @@
 import { BsCheckLg } from 'solid-icons/bs';
-import { TbTrash } from 'solid-icons/tb';
+import { TbOutlineTrash as TbTrash } from 'solid-icons/tb';
 import { appStorage, Client } from '@/utils/storage';
 import { useActiveClient, useClients } from '../utils/state';
 import { Layout } from '../components/layout';
