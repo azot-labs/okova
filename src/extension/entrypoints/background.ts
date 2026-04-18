@@ -120,9 +120,10 @@ export default defineBackground({
             state.events.set(keySession.sessionId, []);
           keySession.addEventListener(
             'message',
-            (event: MediaKeyMessageEvent) => {
-              console.log(event);
-              state.events.get(keySession.sessionId)?.push(event);
+            (event) => {
+              const messageEvent = event as MediaKeyMessageEvent;
+              console.log(messageEvent);
+              state.events.get(keySession.sessionId)?.push(messageEvent);
             },
             false,
           );

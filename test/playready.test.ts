@@ -1,6 +1,6 @@
 import { readFile } from 'node:fs/promises';
 import { expect, test } from 'vitest';
-import { fromBase64 } from '../src/lib';
+import { fromBase64, toBufferSource } from '../src/lib';
 import { requestMediaKeySystemAccess } from '../src/lib/api';
 import { PlayReadyCdm } from '../src/lib/playready/cdm';
 
@@ -26,7 +26,7 @@ test('playready cdm', async () => {
   const licenseRequest = await session.waitForLicenseRequest();
 
   const response = await fetch(url, {
-    body: licenseRequest,
+    body: toBufferSource(licenseRequest),
     method: 'POST',
     headers: { 'Content-Type': 'text/xml; charset=UTF-8' },
   })

@@ -1,5 +1,10 @@
 import { expect, test } from 'vitest';
-import { fromBase64, RemoteCdm, requestMediaKeySystemAccess } from '../src/lib';
+import {
+  fromBase64,
+  RemoteCdm,
+  requestMediaKeySystemAccess,
+  toBufferSource,
+} from '../src/lib';
 
 test('remote session', async () => {
   const url = 'https://cwip-shaka-proxy.appspot.com/no_auth';
@@ -28,7 +33,7 @@ test('remote session', async () => {
   const licenseRequest = await session.waitForLicenseRequest();
 
   const response = await fetch(url, {
-    body: licenseRequest as BufferSource,
+    body: toBufferSource(licenseRequest),
     method: 'POST',
   })
     .then((r) => r.arrayBuffer())

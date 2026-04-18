@@ -1,6 +1,14 @@
 {
   "extends": "./.wxt/tsconfig.json",
   "compilerOptions": {
+    "target": "ESNext",
+    "lib": ["ES2025", "DOM"],
+    "module": "Preserve",
+    "moduleResolution": "Bundler",
+    "rootDir": ".",
+    "types": ["node"],
+    "noUncheckedSideEffectImports": true,
+    "isolatedModules": true,
     "jsx": "preserve",
     "jsxImportSource": "solid-js",
     "paths": {
@@ -15,5 +23,7 @@
       "@okova/lib": ["./src/lib"],
       "@okova/lib/*": ["./src/lib/*"]
     }
-  }
+  },
+  "include": ["src", "test", "*.config.ts", ".wxt/wxt.d.ts"],
+  "exclude": ["dist", ".output", "node_modules"]
 }
