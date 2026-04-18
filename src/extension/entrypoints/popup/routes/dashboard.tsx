@@ -1,12 +1,6 @@
 import { A } from '@solidjs/router';
 import { Cell } from '../components/cell';
-import {
-  useActiveClient,
-  useClients,
-  useRecentKeys,
-  useSettings,
-  useSyncStateWithStorage,
-} from '../utils/state';
+import { useActiveClient, useClients, useRecentKeys, useSettings } from '../utils/state';
 import { Toolbar } from '../components/toolbar';
 import { Layout } from '../components/layout';
 import { Header } from '../components/header';
@@ -20,8 +14,6 @@ export const Dashboard = () => {
   const [clients] = useClients();
   const [recentKeys] = useRecentKeys();
   const [activeClient, setActiveClient] = useActiveClient();
-
-  useSyncStateWithStorage();
 
   createEffect(() => {
     if (clients().length === 1) {
@@ -56,7 +48,7 @@ export const Dashboard = () => {
               Enable Spoofing in{' '}
               <A
                 href="/settings"
-                class="w-fit truncate text-blue-600 hover:underline hover:text-blue-500"
+                class="w-fit truncate text-blue-600 hover:underline hover:text-blue-500 dark:text-blue-400 dark:hover:text-blue-300"
               >
                 Settings
               </A>{' '}

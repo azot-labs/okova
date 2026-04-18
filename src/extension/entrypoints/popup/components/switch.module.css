@@ -36,7 +36,7 @@
   content: '';
   inset: 0;
 
-  background: #efeff4;
+  background: var(--popup-switch-track);
 }
 
 .control::after {
@@ -58,7 +58,7 @@
     0 3px 1px 0 rgba(0, 0, 0, 0.06),
     0 3px 8px 0 rgba(0, 0, 0, 0.15),
     0 0 0 1px rgba(0, 0, 0, 0.04);
-  background: white;
+  background: var(--popup-switch-thumb);
 }
 
 .input:checked + .control::before {

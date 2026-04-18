@@ -17,7 +17,10 @@ export type Settings = {
   spoofing: boolean;
   emeInterception: boolean;
   requestInterception: boolean;
+  theme: ThemeMode;
 };
+
+export type ThemeMode = 'light' | 'dark' | 'auto';
 
 export type Client = WidevineClient | PlayReadyClient;
 export type ClientInfo = { type: 'wvd'; data: string } | { type: 'prd'; data: string };
