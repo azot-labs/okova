@@ -3,6 +3,7 @@
   "version": "0.10.6",
   "description": "Advanced DRM inspection toolkit",
   "type": "module",
+  "packageManager": "pnpm@10.28.1",
   "files": [
     "dist",
     "scripts"
@@ -10,13 +11,13 @@
   "main": "dist/lib/main.cjs",
   "module": "dist/lib/main.js",
   "bin": {
-    "okova": "dist/cli/main.cjs"
+    "okova": "scripts/okova.js"
   },
   "scripts": {
-    "prepublishOnly": "npm run build:lib && npm run build:cli",
+    "prepublishOnly": "pnpm run build:lib && pnpm run build:cli",
     "dev": "wxt",
     "dev:firefox": "wxt -b firefox",
-    "build": "npm run build:lib && npm run build:cli && npm run build:chrome",
+    "build": "pnpm run build:lib && pnpm run build:cli && pnpm run build:chrome",
     "build:lib": "tsup --config tsup.lib.config.ts",
     "build:cli": "tsup --config tsup.cli.config.ts",
     "build:chrome": "wxt build",
@@ -75,6 +76,15 @@
   },
   "engines": {
     "node": ">=22.12.0"
+  },
+  "pnpm": {
+    "onlyBuiltDependencies": [
+      "@tailwindcss/oxide",
+      "esbuild",
+      "okova",
+      "protobufjs",
+      "spawn-sync"
+    ]
   },
   "dependencies": {
     "@hono/node-server": "^1.19.5",
