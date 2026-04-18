@@ -1,4 +1,4 @@
-import { equalBytes } from '@noble/curves/utils';
+import { equalBytes } from '@noble/curves/utils.js';
 import { EccKey } from '../crypto/ecc-key';
 import { getRandomBytes } from '../utils';
 import { Certificate, CertificateChain } from './bcert';

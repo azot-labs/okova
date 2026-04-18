@@ -1,5 +1,9 @@
 import { A } from '@solidjs/router';
-import { TbKey, TbSettings2, TbShieldCog } from 'solid-icons/tb';
+import {
+  TbOutlineKey as TbKey,
+  TbOutlineSettings2 as TbSettings2,
+  TbOutlineShieldCog as TbShieldCog,
+} from 'solid-icons/tb';
 import { CardButton } from './card-button';
 
 export const Toolbar = () => {

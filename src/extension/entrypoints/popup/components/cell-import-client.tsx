@@ -1,5 +1,5 @@
 import { Component } from 'solid-js';
-import { TbShieldPlus } from 'solid-icons/tb';
+import { TbOutlineShieldPlus as TbShieldPlus } from 'solid-icons/tb';
 import { WidevineClient } from '@okova/lib/widevine/client';
 import { PlayReadyClient } from '@okova/lib/playready/client';
 import { Cell } from './cell';

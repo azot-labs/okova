@@ -1,6 +1,6 @@
-import { p256 } from '@noble/curves/nist';
-import { AffinePoint } from '@noble/curves/abstract/curve';
-import * as utils from '@noble/curves/utils';
+import { p256 } from '@noble/curves/nist.js';
+import type { AffinePoint } from '@noble/curves/abstract/curve.js';
+import * as utils from '@noble/curves/utils.js';
 import { getRandomBytes } from '../utils';
 import { createSha256 } from './common';
 
@@ -15,7 +15,7 @@ export class EccKey {
 
   static randomScalar() {
     const randomBytes = getRandomBytes(32);
-    return utils.bytesToNumberBE(randomBytes) % p256.CURVE.n;
+    return utils.bytesToNumberBE(randomBytes) % p256.Point.Fn.ORDER;
   }
 
   static generate() {

@@ -1,4 +1,4 @@
-import * as utils from '@noble/curves/utils';
+import * as utils from '@noble/curves/utils.js';
 import { EccKey } from '../crypto/ecc-key.js';
 
 export class XmlKey {
