@@ -147,7 +147,10 @@ export const ecc256Verify = async (
   data: Uint8Array,
   signature: Uint8Array,
 ) => {
-  return p256.verify(signature, await createSha256(data), publicKey, { prehash: false });
+  return p256.verify(signature, await createSha256(data), publicKey, {
+    prehash: false,
+    lowS: false,
+  });
 };
 
 type CompactSignature = ECDSASignature & {
@@ -162,9 +165,24 @@ export const ecc256Sign = async (private_key: bigint | string | Uint8Array, data
         ? utils.hexToBytes(private_key)
         : private_key;
   const signatureBytes = p256.sign(await createSha256(data), privateKeyBytes, { prehash: false });
-  const signature = p256.Signature.fromBytes(signatureBytes, 'compact') as CompactSignature;
-  signature.toCompactRawBytes = () => signature.toBytes('compact');
-  return signature;
+  const signature = p256.Signature.fromBytes(signatureBytes, 'compact');
+  return {
+    get r() {
+      return signature.r;
+    },
+    get s() {
+      return signature.s;
+    },
+    get recovery() {
+      return signature.recovery;
+    },
+    addRecoveryBit: signature.addRecoveryBit.bind(signature),
+    hasHighS: signature.hasHighS.bind(signature),
+    recoverPublicKey: signature.recoverPublicKey.bind(signature),
+    toBytes: signature.toBytes.bind(signature),
+    toHex: signature.toHex.bind(signature),
+    toCompactRawBytes: () => signature.toBytes('compact'),
+  } satisfies CompactSignature;
 };
 
 export const ecc256decrypt = (private_key: bigint, ciphertext: Uint8Array) => {
