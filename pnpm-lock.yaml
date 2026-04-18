@@ -100,20 +100,20 @@ importers:
   examples/instance:
     dependencies:
       okova:
-        specifier: workspace:*
-        version: link:../..
+        specifier: ^0.10.5
+        version: 0.10.5
 
   examples/remote-session:
     dependencies:
       okova:
-        specifier: workspace:*
-        version: link:../..
+        specifier: ^0.10.5
+        version: 0.10.5
 
   examples/session:
     dependencies:
       okova:
-        specifier: workspace:*
-        version: link:../..
+        specifier: ^0.10.5
+        version: 0.10.5
 
 packages:
 
@@ -2222,6 +2222,11 @@ packages:
 
   ohash@2.0.11:
     resolution: {integrity: sha512-RdR9FQrFwNBNXAr4GixM8YaRZRJ5PUWbKYbE5eOsrwAjJW0q2REGcf79oYPsLyskQCZG1PLN+S/K1V00joZAoQ==}
+
+  okova@0.10.5:
+    resolution: {integrity: sha512-rpP2qYbPJyHp1XirRoCSO769uA5TOThqXJanN0MQ18mOnxUoBdHERVmN59/0CGxaYikrc0kAsUxMVcztlVP1Yw==}
+    engines: {node: '>=20'}
+    hasBin: true
 
   on-exit-leak-free@2.1.2:
     resolution: {integrity: sha512-0eJJY6hXLGf1udHwfNftBqH+g73EU4B504nZeKpz1sYRKafAghwxEJunB2O7rDZkL4PGfsMVnTXZ2EjibbqcsA==}
@@ -4866,6 +4871,18 @@ snapshots:
       ufo: 1.6.1
 
   ohash@2.0.11: {}
+
+  okova@0.10.5:
+    dependencies:
+      '@hono/node-server': 1.19.5(hono@4.10.1)
+      '@hono/zod-validator': 0.7.4(hono@4.10.1)(zod@4.1.12)
+      '@noble/curves': 1.9.2
+      '@xmldom/xmldom': 0.9.8
+      barsic: 0.2.0
+      hono: 4.10.1
+      jsrsasign: 11.1.0
+      protobufjs: 7.5.4
+      zod: 4.1.12
 
   on-exit-leak-free@2.1.2: {}
 

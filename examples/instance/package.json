@@ -12,6 +12,6 @@
     "node": ">=22.12.0"
   },
   "dependencies": {
-    "okova": "workspace:*"
+    "okova": "^0.10.5"
   }
 }
