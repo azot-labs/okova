@@ -25,12 +25,12 @@ export const KeysList: Component<KeysListProps> = (props) => {
                 {/* value may be a status if Spoofing disabled */}
                 <span class="w-1/2 truncate">{value}</span>
               </code>
-              <div class="text-[10px] text-gray-500 flex justify-between">
+              <div class="text-[10px] text-gray-500 flex justify-between dark:text-neutral-400">
                 <a
                   title={mpd || url}
                   target="_blank"
                   href={mpd || url}
-                  class="w-fit truncate hover:underline hover:text-blue-500"
+                  class="w-fit truncate hover:underline hover:text-blue-500 dark:hover:text-blue-400"
                 >
                   {shorten(mpd || url)}
                 </a>

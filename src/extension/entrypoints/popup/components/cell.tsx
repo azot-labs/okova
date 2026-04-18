@@ -16,28 +16,17 @@ interface CellProps {
 }
 
 export const Cell: Component<CellProps> = (props) => {
-  const cellProps = mergeProps({ Component: 'div' }, props);
-
-  const component = (props: any) => {
-    switch (cellProps.component) {
-      case 'button':
-        return <button {...props} />;
-      case 'label':
-        return <label {...props} />;
-      default:
-      case 'div':
-        return <div {...props} />;
-    }
-  };
+  const cellProps = mergeProps({ component: 'div' as const }, props);
 
   return (
     <Dynamic
-      component={component}
+      component={cellProps.component}
       class={cn(
-        'bg-white w-full min-h-9 py-2 rounded-lg text-[13px] flex items-center px-3 cursor-pointer',
-        'transition hover:bg-slate-50 active:bg-slate-100',
-        props.variant === 'primary' && 'text-[#007AFF]',
-        props.variant === 'danger' && 'text-[#E53935]',
+        'bg-white w-full min-h-9 py-2 rounded-lg text-[13px] flex items-center px-3 cursor-pointer text-left text-neutral-950',
+        'transition-colors hover:bg-slate-50 active:bg-slate-100',
+        'dark:bg-neutral-800 dark:text-neutral-50 dark:hover:bg-neutral-700 dark:active:bg-neutral-700',
+        props.variant === 'primary' && 'text-[#007AFF] dark:text-blue-400',
+        props.variant === 'danger' && 'text-[#E53935] dark:text-red-400',
         props.disabled && 'cursor-default pointer-events-none opacity-70',
         props.class,
       )}
@@ -49,8 +38,8 @@ export const Cell: Component<CellProps> = (props) => {
         <span class="truncate">{props.children}</span>
         <span
           class={cn(
-            'text-[11px] text-neutral-500 select-none',
-            props.variant === 'primary' && 'text-blue-500',
+            'text-[11px] text-neutral-500 select-none dark:text-neutral-400',
+            props.variant === 'primary' && 'text-blue-500 dark:text-blue-400',
           )}
         >
           {props.subtitle}

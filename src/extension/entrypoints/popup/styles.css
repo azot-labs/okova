@@ -2,6 +2,20 @@
 
 @custom-variant dark (&:is(.dark *));
 
+:root {
+  --popup-bg: #efeff4;
+  --popup-fg: #0a0a0a;
+  --popup-switch-track: #efeff4;
+  --popup-switch-thumb: #ffffff;
+}
+
+.dark {
+  --popup-bg: #0a0a0a;
+  --popup-fg: #fafafa;
+  --popup-switch-track: #3f3f46;
+  --popup-switch-thumb: #fafafa;
+}
+
 /*
   The default border color has changed to `currentcolor` in Tailwind CSS v4,
   so we've added these compatibility styles to make sure everything still
@@ -17,5 +31,18 @@
   ::backdrop,
   ::file-selector-button {
     border-color: var(--color-gray-200, currentcolor);
+  }
+
+  html,
+  body,
+  #root {
+    min-width: 290px;
+    min-height: 360px;
+    background: var(--popup-bg);
+    color: var(--popup-fg);
+  }
+
+  body {
+    margin: 0;
   }
 }

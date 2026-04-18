@@ -1,3 +1,4 @@
+import { BsCheckLg } from 'solid-icons/bs';
 import { Layout } from '../components/layout';
 import { Header } from '../components/header';
 import { List } from '../components/list';
@@ -5,25 +6,41 @@ import { Section } from '../components/section';
 import { Cell } from '../components/cell';
 import { Switch } from '../components/switch';
 import { useSettings } from '../utils/state';
-import { appStorage } from '@/utils/storage';
+import { appStorage, ThemeMode, Settings as AppSettings } from '@/utils/storage';
 
 export const Settings = () => {
   const [settings, setSettings] = useSettings();
 
+  const updateSettings = (nextSettings: Partial<AppSettings>) => {
+    const updatedSettings = { ...settings, ...nextSettings };
+    setSettings(nextSettings);
+    appStorage.settings.setValue(updatedSettings);
+  };
+
   const switchEmeInterception = (checked: boolean) => {
-    setSettings({ emeInterception: checked });
-    appStorage.settings.setValue(settings);
+    updateSettings({
+      emeInterception: checked,
+      ...(!checked && { spoofing: false }),
+    });
   };
 
   const switchSpoofing = (checked: boolean) => {
-    setSettings({ spoofing: checked });
-    appStorage.settings.setValue(settings);
+    updateSettings({ spoofing: checked });
   };
 
   const switchRequestInterception = (checked: boolean) => {
-    setSettings({ requestInterception: checked });
-    appStorage.settings.setValue(settings);
+    updateSettings({ requestInterception: checked });
   };
+
+  const setTheme = (theme: ThemeMode) => {
+    updateSettings({ theme });
+  };
+
+  const themeOptions: { value: ThemeMode; label: string; subtitle?: string }[] = [
+    { value: 'auto', label: 'Auto' },
+    { value: 'light', label: 'Light' },
+    { value: 'dark', label: 'Dark' },
+  ];
 
   return (
     <Layout>
@@ -79,6 +96,24 @@ export const Settings = () => {
               Request interception
             </Cell>,
           ]}
+        </Section>
+        <Section header="Appearance">
+          {themeOptions.map((option) => (
+            <Cell
+              component="button"
+              subtitle={option.subtitle}
+              onClick={() => setTheme(option.value)}
+              after={
+                <div class="w-5 h-5 flex items-center justify-center">
+                  <Show when={settings.theme === option.value}>
+                    <BsCheckLg class="text-blue-500 dark:text-blue-400 w-5 h-5" />
+                  </Show>
+                </div>
+              }
+            >
+              {option.label}
+            </Cell>
+          ))}
         </Section>
       </List>
     </Layout>

@@ -17,7 +17,10 @@ export const Header: Component<HeaderProps> = (props) => {
       )}
     >
       <Show when={props.backHref}>
-        <A href={props.backHref!}>
+        <A
+          href={props.backHref!}
+          class="transition-colors hover:text-blue-500 dark:hover:text-blue-400"
+        >
           <FaSolidArrowLeft />
         </A>
       </Show>
