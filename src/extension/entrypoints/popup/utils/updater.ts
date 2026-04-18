@@ -28,13 +28,13 @@ export const useUpdater = () => {
       const currentVersion = manifest.version;
       const latestVersion = data.tag_name?.replace('v', '');
       const isCurrentVersionOutdated = compare(latestVersion, currentVersion) > 0;
-      console.log(currentVersion, latestVersion, isCurrentVersionOutdated);
       if (isCurrentVersionOutdated) {
         const asset = data.assets?.find((asset: any) =>
           asset.name.includes(isFirefox ? 'firefox' : 'chrome'),
         );
         const url = asset?.browser_download_url;
-        const timeSinceRelease = formatRelativeTime(data.published_at);
+        const publishedAt = new Date(data.published_at).toLocaleString();
+        const timeSinceRelease = Temporal ? formatRelativeTime(data.published_at) : publishedAt;
         setUpdateInfo({ version: latestVersion, url, timeSinceRelease });
       }
     } catch (error) {
