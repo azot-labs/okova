@@ -2,7 +2,7 @@
   "extends": "./.wxt/tsconfig.json",
   "compilerOptions": {
     "target": "ESNext",
-    "lib": ["ES2025", "DOM"],
+    "lib": ["ESNext", "DOM"],
     "module": "Preserve",
     "moduleResolution": "Bundler",
     "rootDir": ".",
