@@ -8,16 +8,20 @@ import { Clients } from './routes/clients';
 import { Keys } from './routes/keys';
 import { Settings } from './routes/settings';
 import { useSettings, useSyncStateWithStorage } from './utils/state';
+import { useUpdater } from './utils/updater';
 
 const colorSchemeQuery = window.matchMedia('(prefers-color-scheme: dark)');
 
 const Popup = () => {
   const [settings] = useSettings();
   const [prefersDark, setPrefersDark] = createSignal(colorSchemeQuery.matches);
+  const { checkForUpdates } = useUpdater();
 
   useSyncStateWithStorage();
 
   onMount(() => {
+    checkForUpdates();
+
     const syncPreference = () => setPrefersDark(colorSchemeQuery.matches);
 
     syncPreference();

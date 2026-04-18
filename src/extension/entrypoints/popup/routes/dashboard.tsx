@@ -8,12 +8,14 @@ import { CellImportClient } from '../components/cell-import-client';
 import { NoKeys } from '../components/no-keys';
 import { KeysList } from '../components/keys-list';
 import { appStorage } from '@/utils/storage';
+import { useUpdateInfo } from '../utils/updater';
 
 export const Dashboard = () => {
   const [settings] = useSettings();
   const [clients] = useClients();
   const [recentKeys] = useRecentKeys();
   const [activeClient, setActiveClient] = useActiveClient();
+  const { hasUpdate, updateInfo } = useUpdateInfo();
 
   createEffect(() => {
     if (clients().length === 1) {
@@ -39,6 +41,18 @@ export const Dashboard = () => {
             </Cell>
           </Show>
         </div>
+
+        <Show when={hasUpdate()}>
+          <Cell
+            title="Click to download"
+            component="label"
+            variant="primary"
+            subtitle={`Version ${updateInfo()?.version} (published ${updateInfo()?.timeSinceRelease})`}
+            onClick={() => window.open(updateInfo()?.url, '_blank')}
+          >
+            {`Update available`}
+          </Cell>
+        </Show>
 
         <KeysList
           keys={recentKeys}
