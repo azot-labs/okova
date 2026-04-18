@@ -9,19 +9,20 @@ import { Keys } from './routes/keys';
 import { Settings } from './routes/settings';
 import { useSettings, useSyncStateWithStorage } from './utils/state';
 
+const colorSchemeQuery = window.matchMedia('(prefers-color-scheme: dark)');
+
 const Popup = () => {
   const [settings] = useSettings();
-  const [prefersDark, setPrefersDark] = createSignal(false);
+  const [prefersDark, setPrefersDark] = createSignal(colorSchemeQuery.matches);
 
   useSyncStateWithStorage();
 
   onMount(() => {
-    const media = window.matchMedia('(prefers-color-scheme: dark)');
-    const syncPreference = () => setPrefersDark(media.matches);
+    const syncPreference = () => setPrefersDark(colorSchemeQuery.matches);
 
     syncPreference();
-    media.addEventListener('change', syncPreference);
-    onCleanup(() => media.removeEventListener('change', syncPreference));
+    colorSchemeQuery.addEventListener('change', syncPreference);
+    onCleanup(() => colorSchemeQuery.removeEventListener('change', syncPreference));
   });
 
   createEffect(() => {
