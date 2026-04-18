@@ -1,5 +1,5 @@
 import { expect, test } from 'vitest';
-import { fromBase64, fromBuffer } from '../src/lib';
+import { fromBase64, fromBuffer, toBufferSource } from '../src/lib';
 import { PSSH, LICENSE_URL, createClient } from './utils';
 
 // https://www.w3.org/TR/encrypted-media-2/#example-8
@@ -9,7 +9,7 @@ test('encrypted media extensions', async () => {
     keySession: MediaKeySession,
     response: Uint8Array,
   ) => {
-    return keySession.update(response);
+    return keySession.update(toBufferSource(response));
   };
 
   const sendMessage = async (
@@ -18,7 +18,7 @@ test('encrypted media extensions', async () => {
     keySession: MediaKeySession,
   ) => {
     const response = await fetch(LICENSE_URL, {
-      body: message,
+      body: toBufferSource(message),
       method: 'POST',
     });
     const data = await response

@@ -1,6 +1,7 @@
 import { appStorage } from '@/utils/storage';
+import type { PublicPath } from 'wxt/browser';
 
-const inject = async (script: string) => {
+const inject = async (script: PublicPath) => {
   return new Promise((resolve) => {
     const element = document.createElement('script');
     element.type = 'text/javascript';
@@ -22,14 +23,14 @@ export default defineContentScript({
     const settings = await appStorage.settings.getValue();
 
     // Injecting scripts into current page
-    inject('manifest.js');
+    inject('/manifest.js');
     if (settings?.requestInterception) {
       console.log(`[okova] Injecting request interception...`);
-      inject('network.js');
+      inject('/network.js');
     }
     if (settings?.emeInterception) {
       console.log(`[okova] Injecting EME interception...`);
-      inject('eme.js');
+      inject('/eme.js');
     }
 
     // Listen for event from injected script

@@ -1,6 +1,6 @@
 import { readFile } from 'node:fs/promises';
 import { expect, test } from 'vitest';
-import { fromBase64 } from '../src/lib';
+import { fromBase64, toBufferSource } from '../src/lib';
 import { requestMediaKeySystemAccess } from '../src/lib/api';
 import { WidevineCdm } from '../src/lib/widevine/cdm';
 
@@ -25,7 +25,7 @@ test('widevine cdm', async () => {
   const licenseRequest = await session.waitForLicenseRequest();
 
   const response = await fetch(url, {
-    body: licenseRequest,
+    body: toBufferSource(licenseRequest),
     method: 'POST',
   })
     .then((r) => r.arrayBuffer())

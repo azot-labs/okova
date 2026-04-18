@@ -3,6 +3,34 @@ const encode = (input: Parameters<typeof TextEncoder.prototype.encode>['0']) =>
 const decode = (input: Parameters<typeof TextDecoder.prototype.decode>['0']) =>
   new TextDecoder().decode(input);
 
+export type Bytes = Uint8Array<ArrayBuffer>;
+export type BytesLike = BufferSource | Uint8Array<ArrayBufferLike>;
+
+export const toBytes = (data: BytesLike): Bytes => {
+  if (data instanceof Uint8Array && data.buffer instanceof ArrayBuffer) {
+    return data as Bytes;
+  }
+
+  if (data instanceof ArrayBuffer) {
+    return new Uint8Array(data);
+  }
+
+  if (ArrayBuffer.isView(data)) {
+    const source = new Uint8Array(
+      data.buffer,
+      data.byteOffset,
+      data.byteLength,
+    );
+    const bytes = new Uint8Array(source.byteLength);
+    bytes.set(source);
+    return bytes;
+  }
+
+  return new Uint8Array(data);
+};
+
+export const toBufferSource = (data: BytesLike): BufferSource => toBytes(data);
+
 export const fromText = (data: string) => ({
   toBase64: () => {
     return btoa(
@@ -71,12 +99,7 @@ export const fromHex = (data: string) => ({
   },
 });
 
-export const parseBufferSource = (data: BufferSource) => {
-  if (data instanceof Uint8Array) return data;
-  return data instanceof ArrayBuffer
-    ? new Uint8Array(data)
-    : new Uint8Array(data.buffer);
-};
+export const parseBufferSource = (data: BytesLike) => toBytes(data);
 
 export type Logger = Pick<typeof console, 'debug' | 'error' | 'info' | 'warn'>;
 

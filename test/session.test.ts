@@ -1,5 +1,5 @@
 import { readFile } from 'node:fs/promises';
-import { fromBase64 } from '../src/lib';
+import { fromBase64, toBufferSource } from '../src/lib';
 import { expect, test } from 'vitest';
 import { WidevineClient } from '../src/lib/widevine/client';
 import { Session } from '../src/lib/widevine/session';
@@ -23,7 +23,10 @@ test('session', async () => {
 
   // Send license request
   const licenseUrl = 'https://cwip-shaka-proxy.appspot.com/no_auth';
-  const response = await fetch(licenseUrl, { body: challenge, method: 'POST' });
+  const response = await fetch(licenseUrl, {
+    body: challenge ? toBufferSource(challenge) : undefined,
+    method: 'POST',
+  });
   const license = await response.arrayBuffer().then((ab) => new Uint8Array(ab));
 
   // Update session with license

@@ -1,15 +1,18 @@
 import { bitShiftLeftBuffer } from '../buffer';
+import { toBytes, type Bytes, type BytesLike } from '../utils';
 import { encryptWithAesCbc, importAesCbcKeyForEncrypt } from './common';
 
-const xorBuffer = (a: Uint8Array, b: Uint8Array): Uint8Array => {
-  const result = new Uint8Array(a.length);
-  for (let i = 0; i < a.length; i++) {
-    result[i] = a[i] ^ b[i];
+const xorBuffer = (a: BytesLike, b: BytesLike): Bytes => {
+  const left = toBytes(a);
+  const right = toBytes(b);
+  const result = new Uint8Array(left.length);
+  for (let i = 0; i < left.length; i++) {
+    result[i] = left[i] ^ right[i];
   }
   return result;
 };
 
-const hexToBytes = (hex: string): Uint8Array => {
+const hexToBytes = (hex: string): Bytes => {
   const bytes = new Uint8Array(hex.length / 2);
   for (let i = 0; i < hex.length; i += 2) {
     bytes[i / 2] = parseInt(hex.substr(i, 2), 16);
@@ -18,7 +21,7 @@ const hexToBytes = (hex: string): Uint8Array => {
 };
 
 const const_Zero = new Uint8Array(16);
-const const_Rb = new Uint8Array(hexToBytes('00000000000000000000000000000087'));
+const const_Rb = hexToBytes('00000000000000000000000000000087');
 const const_blockSize = 16;
 
 const generateSubkeys = async (key: CryptoKey) => {
@@ -37,83 +40,81 @@ const generateSubkeys = async (key: CryptoKey) => {
   return { subkey1, subkey2 };
 };
 
-const getMessageBlock = (
-  message: Uint8Array,
-  blockIndex: number,
-): Uint8Array => {
+const getMessageBlock = (message: BytesLike, blockIndex: number): Bytes => {
+  const bytes = toBytes(message);
   const start = blockIndex * const_blockSize;
   const end = start + const_blockSize;
-  return message.slice(start, end);
+  return new Uint8Array(bytes.slice(start, end));
 };
 
 const getPaddedMessageBlock = (
-  message: Uint8Array,
+  message: BytesLike,
   blockIndex: number,
-): Uint8Array => {
+): Bytes => {
+  const bytes = toBytes(message);
   const block = new Uint8Array(const_blockSize);
   const start = blockIndex * const_blockSize;
-  const end = message.length;
-  block.set(message.slice(start, end), 0);
+  const end = bytes.length;
+  block.set(bytes.slice(start, end), 0);
   block[end - start] = 0x80;
   return block;
 };
 
-const aes = async (
-  key: CryptoKey,
-  message: Uint8Array,
-): Promise<Uint8Array> => {
+const aes = async (key: CryptoKey, message: BytesLike): Promise<Bytes> => {
   const aesCipher = await encryptWithAesCbc(message, key, const_Zero);
-  return aesCipher.slice(0, 16);
+  return new Uint8Array(aesCipher.slice(0, 16));
 };
 
 type KeyLength = 16 | 24 | 32;
 
 const aesCmac = async (
-  keyData: Uint8Array,
-  message: Uint8Array,
-): Promise<Uint8Array> => {
+  keyData: BytesLike,
+  message: BytesLike,
+): Promise<Bytes> => {
+  const keyBytes = toBytes(keyData);
+  const messageBytes = toBytes(message);
   const keyLengthToCipher: { [key in KeyLength]: string } = {
     16: 'aes-128-cbc',
     24: 'aes-192-cbc',
     32: 'aes-256-cbc',
   };
 
-  if (!keyLengthToCipher[keyData.length as KeyLength]) {
+  if (!keyLengthToCipher[keyBytes.length as KeyLength]) {
     throw new Error('Keys must be 128, 192, or 256 bits in length.');
   }
 
-  const key = await importAesCbcKeyForEncrypt(keyData);
+  const key = await importAesCbcKeyForEncrypt(keyBytes);
   const subkeys = await generateSubkeys(key);
-  let blockCount = Math.ceil(message.length / const_blockSize);
+  let blockCount = Math.ceil(messageBytes.length / const_blockSize);
   let lastBlockCompleteFlag: boolean;
-  let lastBlock: Uint8Array;
+  let lastBlock: Bytes;
 
   if (blockCount === 0) {
     blockCount = 1;
     lastBlockCompleteFlag = false;
   } else {
-    lastBlockCompleteFlag = message.length % const_blockSize === 0;
+    lastBlockCompleteFlag = messageBytes.length % const_blockSize === 0;
   }
 
   const lastBlockIndex = blockCount - 1;
 
   if (lastBlockCompleteFlag) {
     lastBlock = xorBuffer(
-      getMessageBlock(message, lastBlockIndex),
+      getMessageBlock(messageBytes, lastBlockIndex),
       subkeys.subkey1,
     );
   } else {
     lastBlock = xorBuffer(
-      getPaddedMessageBlock(message, lastBlockIndex),
+      getPaddedMessageBlock(messageBytes, lastBlockIndex),
       subkeys.subkey2,
     );
   }
 
-  let x = new Uint8Array(16);
-  let y: Uint8Array;
+  let x: Bytes = new Uint8Array(16);
+  let y: Bytes;
 
   for (let index = 0; index < lastBlockIndex; index++) {
-    y = xorBuffer(x, getMessageBlock(message, index));
+    y = xorBuffer(x, getMessageBlock(messageBytes, index));
     x = await aes(key, y);
   }
   y = xorBuffer(lastBlock, x);

@@ -1,4 +1,4 @@
-import { fromBase64 } from '../utils';
+import { fromBase64, toBufferSource } from '../utils';
 import {
   importSpkiKeyForEncrypt,
   importSpkiKeyForVerify,
@@ -59,8 +59,8 @@ export const verifyCertificate = async (
   const isValid = await crypto.subtle.verify(
     { name: 'RSA-PSS', saltLength: 20 },
     key,
-    signature,
-    data,
+    toBufferSource(signature),
+    toBufferSource(data),
   );
   return isValid;
 };

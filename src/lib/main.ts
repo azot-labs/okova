@@ -1,4 +1,4 @@
-import { fromBase64, Logger } from './utils';
+import { fromBase64, Logger, toBufferSource } from './utils';
 import { Cdm, requestMediaKeySystemAccess } from './api';
 
 interface FetchDecryptionKeysParams {
@@ -28,7 +28,7 @@ const fetchDecryptionKeys = async (params: FetchDecryptionKeysParams) => {
   const licenseRequest = await session.waitForLicenseRequest();
 
   const request = new Request(params.server, {
-    body: licenseRequest as BufferSource,
+    body: toBufferSource(licenseRequest),
     method: 'POST',
     headers: params.headers,
   });

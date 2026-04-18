@@ -1,7 +1,12 @@
 import { KEYUTIL } from 'jsrsasign';
 import { p256 } from '@noble/curves/nist';
 import * as utils from '@noble/curves/utils';
-import { fromBase64, fromBuffer } from '../utils';
+import {
+  fromBase64,
+  fromBuffer,
+  toBufferSource,
+  type BytesLike,
+} from '../utils';
 import { ElGamal } from './elgamal';
 
 export const toPKCS8 = (pkcs1pem: string) => {
@@ -27,10 +32,10 @@ export const parseSpkiFromCertificateKey = (publicKey: Uint8Array) => {
   return fromBase64(body).toBuffer();
 };
 
-export const importSpkiKeyForEncrypt = async (keyData: Uint8Array) => {
+export const importSpkiKeyForEncrypt = async (keyData: BytesLike) => {
   return crypto.subtle.importKey(
     'spki',
-    keyData,
+    toBufferSource(keyData),
     {
       name: 'RSA-OAEP',
       hash: 'SHA-1',
@@ -40,10 +45,10 @@ export const importSpkiKeyForEncrypt = async (keyData: Uint8Array) => {
   );
 };
 
-export const importSpkiKeyForVerify = async (keyData: Uint8Array) => {
+export const importSpkiKeyForVerify = async (keyData: BytesLike) => {
   return crypto.subtle.importKey(
     'spki',
-    keyData,
+    toBufferSource(keyData),
     {
       name: 'RSA-PSS',
       hash: 'SHA-1',
@@ -90,75 +95,90 @@ export const getRandomInt = (start: number, end: number) => {
 export const generateAesCbcKey = async (length = 128) =>
   crypto.subtle.generateKey({ name: 'AES-CBC', length }, true, ['encrypt']);
 
-export const importAesCbcKeyForEncrypt = async (keyData: BufferSource) => {
-  return crypto.subtle.importKey('raw', keyData, 'AES-CBC', false, ['encrypt']);
+export const importAesCbcKeyForEncrypt = async (keyData: BytesLike) => {
+  return crypto.subtle.importKey(
+    'raw',
+    toBufferSource(keyData),
+    'AES-CBC',
+    false,
+    ['encrypt'],
+  );
 };
 
-export const importAesCbcKeyForDecrypt = async (keyData: BufferSource) =>
-  crypto.subtle.importKey('raw', keyData, { name: 'AES-CBC' }, false, [
-    'decrypt',
-  ]);
+export const importAesCbcKeyForDecrypt = async (keyData: BytesLike) =>
+  crypto.subtle.importKey(
+    'raw',
+    toBufferSource(keyData),
+    { name: 'AES-CBC' },
+    false,
+    ['decrypt'],
+  );
 
 export const encryptWithAesCbc = async (
-  data: BufferSource,
+  data: BytesLike,
   key: CryptoKey,
-  iv: BufferSource,
+  iv: BytesLike,
 ) => {
   const result = await crypto.subtle.encrypt(
-    { name: 'AES-CBC', iv },
+    { name: 'AES-CBC', iv: toBufferSource(iv) },
     key,
-    data,
+    toBufferSource(data),
   );
   return new Uint8Array(result);
 };
 
 export const decryptWithAesCbc = async (
-  data: BufferSource,
+  data: BytesLike,
   key: CryptoKey,
-  iv: BufferSource,
+  iv: BytesLike,
 ) => {
   const result = await crypto.subtle.decrypt(
-    { name: 'AES-CBC', iv },
+    { name: 'AES-CBC', iv: toBufferSource(iv) },
     key,
-    data,
+    toBufferSource(data),
   );
   return new Uint8Array(result);
 };
 
-export const encryptWithRsaOaep = async (data: Uint8Array, key: CryptoKey) => {
-  const result = await crypto.subtle.encrypt({ name: 'RSA-OAEP' }, key, data);
+export const encryptWithRsaOaep = async (data: BytesLike, key: CryptoKey) => {
+  const result = await crypto.subtle.encrypt(
+    { name: 'RSA-OAEP' },
+    key,
+    toBufferSource(data),
+  );
   return new Uint8Array(result);
 };
 
 export const exportKey = (key: CryptoKey) =>
   crypto.subtle.exportKey('raw', key).then((value) => new Uint8Array(value));
 
-export const importAesCtrKey = async (keyData: BufferSource) => {
-  return crypto.subtle.importKey('raw', keyData, { name: 'AES-CTR' }, true, [
-    'decrypt',
-  ]);
+export const importAesCtrKey = async (keyData: BytesLike) => {
+  return crypto.subtle.importKey(
+    'raw',
+    toBufferSource(keyData),
+    { name: 'AES-CTR' },
+    true,
+    ['decrypt'],
+  );
 };
 
 export const decryptWithAesCtr = async (
-  data: BufferSource,
+  data: BytesLike,
   key: CryptoKey,
-  iv: BufferSource,
+  iv: BytesLike,
 ) => {
   const result = await crypto.subtle.decrypt(
-    { name: 'AES-CTR', counter: iv },
+    { name: 'AES-CTR', counter: toBufferSource(iv) },
     key,
-    data,
+    toBufferSource(data),
   );
   return new Uint8Array(result);
 };
 
-export const createHmacSha256 = async (
-  key: BufferSource,
-  data: BufferSource,
-) => {
+export const createHmacSha256 = async (key: BytesLike, data: BytesLike) => {
   const hmacKey = await crypto.subtle.importKey(
     'raw',
-    key,
+    toBufferSource(key),
     {
       name: 'HMAC',
       hash: 'SHA-256',
@@ -166,12 +186,19 @@ export const createHmacSha256 = async (
     true,
     ['sign', 'verify'],
   );
-  const signature = await crypto.subtle.sign('HMAC', hmacKey, data);
+  const signature = await crypto.subtle.sign(
+    'HMAC',
+    hmacKey,
+    toBufferSource(data),
+  );
   return new Uint8Array(signature);
 };
 
-export const createSha256 = async (data: Uint8Array) => {
-  const hashBuffer = await crypto.subtle.digest('SHA-256', data);
+export const createSha256 = async (data: BytesLike) => {
+  const hashBuffer = await crypto.subtle.digest(
+    'SHA-256',
+    toBufferSource(data),
+  );
   const hashArray = new Uint8Array(hashBuffer);
   return hashArray;
 };
@@ -209,16 +236,19 @@ export const ecc256decrypt = (private_key: bigint, ciphertext: Uint8Array) => {
   return utils.numberToBytesBE(decrypted.x, 32);
 };
 
-export const aesEcbEncrypt = async (key: Uint8Array, data: Uint8Array) => {
-  const cryptoKey = await crypto.subtle.importKey('raw', key, 'AES-ECB', true, [
-    'encrypt',
-    'decrypt',
-  ]);
+export const aesEcbEncrypt = async (key: BytesLike, data: BytesLike) => {
+  const cryptoKey = await crypto.subtle.importKey(
+    'raw',
+    toBufferSource(key),
+    'AES-ECB',
+    true,
+    ['encrypt', 'decrypt'],
+  );
 
   const encryptedBuffer = await crypto.subtle.encrypt(
     { name: 'AES-ECB' },
     cryptoKey,
-    data,
+    toBufferSource(data),
   );
 
   return new Uint8Array(encryptedBuffer);
