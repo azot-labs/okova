@@ -7,7 +7,7 @@ It's a minimal example of using `okova` to connect to remote Okova API instance 
 Install dependencies:
 
 ```shell
-npm install
+pnpm install
 ```
 
 Go to `index.js` and set your API base URL, secret and client name. Then you can create a session, generate a license request and get keys.

@@ -9,7 +9,7 @@ This logic may be familiar to those who have used [pywidevine](https://github.co
 Install dependencies:
 
 ```shell
-npm install
+pnpm install
 ```
 
 Run script:

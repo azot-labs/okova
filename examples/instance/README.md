@@ -9,11 +9,11 @@ Setup your config in `okova.config.json` file.
 Install dependencies:
 
 ```shell
-npm install
+pnpm install
 ```
 
 Run server:
 
 ```shell
-npm start
+pnpm start
 ```
