@@ -1,4 +1,3 @@
-import { BsCheckLg } from 'solid-icons/bs';
 import { Layout } from '../components/layout';
 import { Header } from '../components/header';
 import { List } from '../components/list';
@@ -9,6 +8,7 @@ import { useSettings } from '../utils/state';
 import { appStorage, ThemeMode, Settings as AppSettings } from '@/utils/storage';
 import { useUpdateInfo, useUpdater } from '../utils/updater';
 import { CellLink } from '../components/cell-link';
+import { CellCheckmark } from '../components/cell-checkmark';
 
 export const Settings = () => {
   const [settings, setSettings] = useSettings();
@@ -107,14 +107,8 @@ export const Settings = () => {
             <Cell
               component="button"
               subtitle={option.subtitle}
+              after={<CellCheckmark checked={settings.theme === option.value} />}
               onClick={() => setTheme(option.value)}
-              after={
-                <div class="w-5 h-5 flex items-center justify-center">
-                  <Show when={settings.theme === option.value}>
-                    <BsCheckLg class="text-blue-500 dark:text-blue-400 w-5 h-5" />
-                  </Show>
-                </div>
-              }
             >
               {option.label}
             </Cell>

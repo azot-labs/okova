@@ -7,6 +7,9 @@
   --popup-fg: #0a0a0a;
   --popup-switch-track: #efeff4;
   --popup-switch-thumb: #ffffff;
+  --scroll-bg: #efeff4;
+  --scroll-thumb: #d1d5db;
+  --scroll-thumb-hover: #b4b5b6;
 }
 
 .dark {
@@ -14,6 +17,9 @@
   --popup-fg: #fafafa;
   --popup-switch-track: #3f3f46;
   --popup-switch-thumb: #fafafa;
+  --scroll-bg: #0a0a0a;
+  --scroll-thumb: #52525b;
+  --scroll-thumb-hover: #71717a;
 }
 
 /*
@@ -36,13 +42,44 @@
   html,
   body,
   #root {
-    min-width: 290px;
-    min-height: 360px;
+    min-width: 500px; /* Max: 800px */
+    min-height: 500px; /* Max: 600px */
     background: var(--popup-bg);
     color: var(--popup-fg);
   }
 
   body {
     margin: 0;
+  }
+
+  html {
+    overflow-y: auto; /* Adds scrollbar inside if needed */
+    scrollbar-gutter: stable; /* Keeps layout steady */
+  }
+
+  ::-webkit-scrollbar {
+    width: 16px;
+    height: 16px;
+    background: var(--scroll-bg);
+  }
+
+  ::-webkit-scrollbar-thumb {
+    background-color: var(--scroll-thumb);
+    border-radius: 10px;
+    border: 5px solid var(--scroll-bg);
+  }
+
+  ::-webkit-scrollbar-thumb:hover {
+    background-color: var(--scroll-thumb-hover);
+    border-radius: 10px;
+    border: 5px solid var(--scroll-bg);
+  }
+
+  ::-webkit-scrollbar-button {
+    display: none;
+  }
+
+  ::-webkit-scrollbar-corner {
+    border-radius: 10px;
   }
 }
