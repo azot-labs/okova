@@ -11,6 +11,7 @@ import { CellImportClient } from '../components/cell-import-client';
 import { WidevineClient } from '../../../../lib/widevine/client';
 import { PlayReadyClient } from '../../../../lib/playready/client';
 import { ClientSettings } from './client-settings';
+import { saveFile } from '../utils/file';
 
 export const Clients = () => {
   const [activeClient, setActiveClient] = useActiveClient();
@@ -26,14 +27,10 @@ export const Clients = () => {
   const [openedClient, setOpenedClient] = createSignal<Client | null>(null);
 
   const exportClient = async (client: Client) => {
-    const data = await client.pack();
-    const filename = `${client.getName()}`.replaceAll(' ', '-').toLowerCase();
-    const handle = await window.showSaveFilePicker({
-      suggestedName: `${filename}.${client instanceof WidevineClient ? 'wvd' : 'prd'}`,
-    });
-    const writable = await handle.createWritable();
-    await writable.write(data);
-    await writable.close();
+    const data = Uint8Array.from(await client.pack());
+    const name = `${client.getName()}`.replaceAll(' ', '-').toLowerCase();
+    const filename = `${name}.${client instanceof WidevineClient ? 'wvd' : 'prd'}`;
+    await saveFile(data, filename);
   };
 
   const removeClient = async (client: Client) => {
@@ -84,7 +81,10 @@ export const Clients = () => {
                       <TbOutlineSettings
                         title="Client Settings"
                         class="absolute top-0 text-blue-500 hover:text-blue-400 cursor-pointer w-5 h-5 transition-all translate-x-2 opacity-0 group-hover:opacity-100 group-hover:translate-x-0"
-                        onClick={() => setOpenedClient(client)}
+                        onClick={(event) => {
+                          event.stopPropagation();
+                          setOpenedClient(client);
+                        }}
                       />
                       <Show when={isActive(client)}>
                         <BsCheckLg
