@@ -1,4 +1,5 @@
 import { appStorage, Client } from '@/utils/storage';
+import type { KeyInfo } from '@/utils/storage';
 import {
   Cdm,
   fromBase64,
@@ -63,19 +64,29 @@ export default defineBackground({
         console.log('[okova] Received message', message);
 
         const settings = await appStorage.settings.getValue();
+        const setRecentKeys = async (keys: KeyInfo[]) => {
+          await appStorage.recentKeys.setValue(keys);
+          await appStorage.recentKeysByDomain.setForUrl(message.url, keys);
+        };
 
         const { initData } = message;
         const allKeys = await appStorage.allKeys.raw.getValue();
-        const keys = allKeys?.filter((keyInfo: any) => keyInfo.pssh === initData);
+        const keys = allKeys?.filter((keyInfo) => keyInfo.pssh === initData);
         const hasKey = !!keys?.length;
         if (hasKey) {
-          await appStorage.recentKeys.setValue(keys);
+          const currentSiteKeys = keys.map((keyInfo: KeyInfo) => ({
+            ...keyInfo,
+            url: message.url ?? keyInfo.url,
+            mpd: message.mpd ?? keyInfo.mpd,
+          }));
+          await setRecentKeys(currentSiteKeys);
           sendResponse();
           return;
         }
 
         if (settings?.emeInterception && message.action === 'keystatuseschange') {
-          const keys = Object.entries(message.keyStatuses).map(([id, status]: any) => ({
+          const keyStatuses = message.keyStatuses as Record<string, string>;
+          const keys = Object.entries(keyStatuses).map(([id, status]) => ({
             id: fromBase64(id).toHex(),
             value: status,
             url: message.url,
@@ -83,8 +94,8 @@ export default defineBackground({
             pssh: message.initData,
             createdAt: new Date().getTime(),
           }));
-          appStorage.recentKeys.setValue(keys);
-          appStorage.allKeys.add(...keys);
+          await setRecentKeys(keys);
+          await appStorage.allKeys.add(...keys);
           sendResponse();
           return;
         }
@@ -182,8 +193,8 @@ export default defineBackground({
 
             const results = keys?.map((key) => toKey(key)) ?? [];
             console.log('[okova] Received keys', results);
-            appStorage.recentKeys.setValue(results);
-            appStorage.allKeys.add(...results);
+            await setRecentKeys(results);
+            await appStorage.allKeys.add(...results);
             sendResponse({ keys: results });
           }
         }
