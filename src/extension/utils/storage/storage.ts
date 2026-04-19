@@ -26,6 +26,22 @@ export const getWebsiteDomain = (url?: string | null) => {
   }
 };
 
+export const getRecentKeysForUrl = (
+  url: string | undefined | null,
+  recentKeysByDomain: RecentKeysByDomain | null | undefined,
+  recentKeys: KeyInfo[] | null | undefined,
+) => {
+  const domain = getWebsiteDomain(url);
+  if (!domain) return [];
+
+  const scopedKeys = recentKeysByDomain?.[domain];
+  if (scopedKeys) return scopedKeys;
+
+  const legacyKeys = recentKeys ?? [];
+  const legacyDomain = getWebsiteDomain(legacyKeys[0]?.url);
+  return legacyDomain === domain ? legacyKeys : [];
+};
+
 export type Settings = {
   spoofing: boolean;
   emeInterception: boolean;

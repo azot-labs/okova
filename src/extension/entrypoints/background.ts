@@ -1,4 +1,4 @@
-import { appStorage, Client } from '@/utils/storage';
+import { appStorage, Client, getRecentKeysForUrl } from '@/utils/storage';
 import type { KeyInfo } from '@/utils/storage';
 import {
   Cdm,
@@ -57,6 +57,86 @@ export default defineBackground({
       }
     };
 
+    const getBadgeText = (count: number) => {
+      if (count === 0) return '';
+      if (count > 99) return '99+';
+      return String(count);
+    };
+
+    const getKeysCountForUrl = async (url?: string | null) => {
+      const [recentKeys, recentKeysByDomain] = await Promise.all([
+        appStorage.recentKeys.getValue(),
+        appStorage.recentKeysByDomain.getValue(),
+      ]);
+      return getRecentKeysForUrl(url, recentKeysByDomain, recentKeys).length;
+    };
+
+    const updateBadgeForTab = async (tab?: Browser.tabs.Tab | null) => {
+      if (typeof tab?.id !== 'number') return;
+
+      const count = await getKeysCountForUrl(tab.url);
+      await browser.action.setBadgeText({
+        tabId: tab.id,
+        text: getBadgeText(count),
+      });
+    };
+
+    const updateBadgeForTabInBackground = (tab?: Browser.tabs.Tab | null) => {
+      void updateBadgeForTab(tab).catch((error) => {
+        console.warn('[okova] Unable to update extension badge', error);
+      });
+    };
+
+    const updateBadgeForTabId = async (tabId: number) => {
+      try {
+        await updateBadgeForTab(await browser.tabs.get(tabId));
+      } catch (error) {
+        // The tab may have been closed before the async badge update runs.
+        console.warn('[okova] Unable to update extension badge', error);
+      }
+    };
+
+    const updateActiveTabBadges = async () => {
+      const activeTabs = await browser.tabs.query({ active: true });
+      const results = await Promise.allSettled(activeTabs.map(updateBadgeForTab));
+      for (const result of results) {
+        if (result.status === 'rejected') {
+          console.warn('[okova] Unable to update extension badge', result.reason);
+        }
+      }
+    };
+
+    const updateActiveTabBadgesInBackground = () => {
+      void updateActiveTabBadges().catch((error) => {
+        console.warn('[okova] Unable to update extension badge', error);
+      });
+    };
+
+    updateActiveTabBadgesInBackground();
+
+    appStorage.recentKeys.watch(() => {
+      updateActiveTabBadgesInBackground();
+    });
+
+    appStorage.recentKeysByDomain.watch(() => {
+      updateActiveTabBadgesInBackground();
+    });
+
+    browser.tabs.onActivated.addListener(({ tabId }) => {
+      void updateBadgeForTabId(tabId);
+    });
+
+    browser.tabs.onUpdated.addListener((_tabId, changeInfo, tab) => {
+      if (changeInfo.url || changeInfo.status === 'complete') {
+        updateBadgeForTabInBackground(tab);
+      }
+    });
+
+    browser.windows.onFocusChanged.addListener((windowId) => {
+      if (windowId === browser.windows.WINDOW_ID_NONE) return;
+      updateActiveTabBadgesInBackground();
+    });
+
     const parseBinary = (data: Record<string, number>) => new Uint8Array(Object.values(data));
 
     browser.runtime.onMessage.addListener((message, sender, sendResponse) => {
@@ -67,6 +147,7 @@ export default defineBackground({
         const setRecentKeys = async (keys: KeyInfo[]) => {
           await appStorage.recentKeys.setValue(keys);
           await appStorage.recentKeysByDomain.setForUrl(message.url, keys);
+          updateBadgeForTabInBackground(sender.tab);
         };
 
         const { initData } = message;

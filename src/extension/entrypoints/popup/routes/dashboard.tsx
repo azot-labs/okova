@@ -14,7 +14,7 @@ import { Header } from '../components/header';
 import { CellImportClient } from '../components/cell-import-client';
 import { NoKeys } from '../components/no-keys';
 import { KeysList } from '../components/keys-list';
-import { appStorage, getWebsiteDomain } from '@/utils/storage';
+import { appStorage, getRecentKeysForUrl, getWebsiteDomain } from '@/utils/storage';
 
 export const Dashboard = () => {
   const [settings] = useSettings();
@@ -28,15 +28,7 @@ export const Dashboard = () => {
     activeDomain() ? `Recent Keys for ${activeDomain()}` : 'Recent Keys',
   );
   const activeDomainRecentKeys = createMemo(() => {
-    const domain = activeDomain();
-    if (!domain) return [];
-
-    const scopedKeys = recentKeysByDomain()[domain];
-    if (scopedKeys) return scopedKeys;
-
-    const legacyKeys = recentKeys();
-    const legacyDomain = getWebsiteDomain(legacyKeys[0]?.url);
-    return legacyDomain === domain ? legacyKeys : [];
+    return getRecentKeysForUrl(activeTabUrl(), recentKeysByDomain(), recentKeys());
   });
 
   createEffect(() => {
