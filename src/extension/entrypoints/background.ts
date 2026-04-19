@@ -81,27 +81,45 @@ export default defineBackground({
       });
     };
 
+    const updateBadgeForTabInBackground = (tab?: Browser.tabs.Tab | null) => {
+      void updateBadgeForTab(tab).catch((error) => {
+        console.warn('[okova] Unable to update extension badge', error);
+      });
+    };
+
     const updateBadgeForTabId = async (tabId: number) => {
       try {
         await updateBadgeForTab(await browser.tabs.get(tabId));
-      } catch {
+      } catch (error) {
         // The tab may have been closed before the async badge update runs.
+        console.warn('[okova] Unable to update extension badge', error);
       }
     };
 
     const updateActiveTabBadges = async () => {
       const activeTabs = await browser.tabs.query({ active: true });
-      await Promise.all(activeTabs.map(updateBadgeForTab));
+      const results = await Promise.allSettled(activeTabs.map(updateBadgeForTab));
+      for (const result of results) {
+        if (result.status === 'rejected') {
+          console.warn('[okova] Unable to update extension badge', result.reason);
+        }
+      }
     };
 
-    void updateActiveTabBadges();
+    const updateActiveTabBadgesInBackground = () => {
+      void updateActiveTabBadges().catch((error) => {
+        console.warn('[okova] Unable to update extension badge', error);
+      });
+    };
+
+    updateActiveTabBadgesInBackground();
 
     appStorage.recentKeys.watch(() => {
-      void updateActiveTabBadges();
+      updateActiveTabBadgesInBackground();
     });
 
     appStorage.recentKeysByDomain.watch(() => {
-      void updateActiveTabBadges();
+      updateActiveTabBadgesInBackground();
     });
 
     browser.tabs.onActivated.addListener(({ tabId }) => {
@@ -110,13 +128,13 @@ export default defineBackground({
 
     browser.tabs.onUpdated.addListener((_tabId, changeInfo, tab) => {
       if (changeInfo.url || changeInfo.status === 'complete') {
-        void updateBadgeForTab(tab);
+        updateBadgeForTabInBackground(tab);
       }
     });
 
     browser.windows.onFocusChanged.addListener((windowId) => {
       if (windowId === browser.windows.WINDOW_ID_NONE) return;
-      void updateActiveTabBadges();
+      updateActiveTabBadgesInBackground();
     });
 
     const parseBinary = (data: Record<string, number>) => new Uint8Array(Object.values(data));
@@ -129,7 +147,7 @@ export default defineBackground({
         const setRecentKeys = async (keys: KeyInfo[]) => {
           await appStorage.recentKeys.setValue(keys);
           await appStorage.recentKeysByDomain.setForUrl(message.url, keys);
-          await updateBadgeForTab(sender.tab);
+          updateBadgeForTabInBackground(sender.tab);
         };
 
         const { initData } = message;
