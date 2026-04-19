@@ -7,6 +7,8 @@ import { Cell } from '../components/cell';
 import { Switch } from '../components/switch';
 import { useSettings } from '../utils/state';
 import { appStorage, ThemeMode, Settings as AppSettings } from '@/utils/storage';
+import { useUpdateInfo, useUpdater } from '../utils/updater';
+import { CellLink } from '../components/cell-link';
 
 export const Settings = () => {
   const [settings, setSettings] = useSettings();
@@ -41,6 +43,9 @@ export const Settings = () => {
     { value: 'light', label: 'Light' },
     { value: 'dark', label: 'Dark' },
   ];
+
+  const { allowUpdateCheck, checkForUpdates, isCheckingForUpdates } = useUpdater();
+  const { hasUpdate, updateInfo } = useUpdateInfo();
 
   return (
     <Layout>
@@ -114,6 +119,39 @@ export const Settings = () => {
               {option.label}
             </Cell>
           ))}
+        </Section>
+        <Section header="About">
+          <Cell subtitle="Current version of the extension.">
+            Version {browser.runtime.getManifest().version}
+          </Cell>
+          <Show
+            when={hasUpdate()}
+            fallback={
+              allowUpdateCheck() ? (
+                <Cell
+                  component="button"
+                  variant="primary"
+                  disabled={isCheckingForUpdates()}
+                  onClick={() => checkForUpdates()}
+                >
+                  Check for Updates
+                </Cell>
+              ) : (
+                <Cell disabled>Up to Date</Cell>
+              )
+            }
+          >
+            <Cell
+              title="Click to download"
+              component="label"
+              variant="primary"
+              subtitle={`Version ${updateInfo()?.version} (published ${updateInfo()?.timeSinceRelease})`}
+              onClick={() => window.open(updateInfo()?.url, '_blank')}
+            >
+              {`Update available`}
+            </Cell>
+          </Show>
+          <CellLink href="https://github.com/azot-labs/okova">GitHub</CellLink>
         </Section>
       </List>
     </Layout>

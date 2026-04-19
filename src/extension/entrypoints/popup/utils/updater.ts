@@ -6,7 +6,11 @@ const [updateInfo, setUpdateInfo] = createSignal<{
   url: string;
   timeSinceRelease: string;
 } | null>(null);
-const hasUpdate = createMemo(() => updateInfo() !== null);
+const hasUpdate = createMemo(
+  () => updateInfo() !== null && updateInfo()?.version !== browser.runtime.getManifest().version,
+);
+const [allowUpdateCheck, setAllowUpdateCheck] = createSignal(true);
+const [isCheckingForUpdates, setIsCheckingForUpdates] = createSignal(false);
 
 export const useUpdateInfo = () => {
   return { updateInfo, setUpdateInfo, hasUpdate };
@@ -17,6 +21,8 @@ export const useUpdater = () => {
 
   const checkForUpdates = async () => {
     try {
+      if (!allowUpdateCheck() || isCheckingForUpdates()) return;
+      setIsCheckingForUpdates(true);
       const owner = 'azot-labs';
       const repo = 'okova';
       const link = `https://api.github.com/repos/${owner}/${repo}/releases/latest`;
@@ -40,7 +46,13 @@ export const useUpdater = () => {
     } catch (error) {
       console.error('Error fetching release:', error);
     }
+    setIsCheckingForUpdates(false);
+    setAllowUpdateCheck(false);
+    setTimeout(
+      () => setAllowUpdateCheck(true),
+      1000 * 30, // 30 seconds
+    );
   };
 
-  return { hasUpdate, updateInfo, checkForUpdates };
+  return { hasUpdate, updateInfo, checkForUpdates, allowUpdateCheck, isCheckingForUpdates };
 };
