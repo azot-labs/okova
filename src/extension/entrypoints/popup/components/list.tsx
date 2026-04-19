@@ -7,5 +7,5 @@ type ListProps = {
 };
 
 export const List: Component<ListProps> = (props) => {
-  return <div class={cn('[&>:not(:last-child)]:mb-3', props.class)}>{props.children}</div>;
+  return <div class={cn('[&>:not(:last-child)]:mb-1', props.class)}>{props.children}</div>;
 };

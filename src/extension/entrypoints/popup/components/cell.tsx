@@ -23,7 +23,7 @@ export const Cell: Component<CellProps> = (props) => {
       component={cellProps.component}
       class={cn(
         'bg-white w-full min-h-9 py-2 rounded-lg text-[13px] flex items-center px-3 cursor-pointer text-left text-neutral-950',
-        'transition-colors hover:bg-slate-50 active:bg-slate-100',
+        'transition-colors hover:duration-0 hover:bg-slate-50 active:bg-slate-100',
         'dark:bg-neutral-800 dark:text-neutral-50 dark:hover:bg-neutral-700 dark:active:bg-neutral-700',
         props.variant === 'primary' && 'text-[#007AFF] dark:text-blue-400',
         props.variant === 'danger' && 'text-[#E53935] dark:text-red-400',
