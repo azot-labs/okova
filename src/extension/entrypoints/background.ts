@@ -1,4 +1,4 @@
-import { appStorage, Client } from '@/utils/storage';
+import { appStorage, Client, getRecentKeysForUrl } from '@/utils/storage';
 import type { KeyInfo } from '@/utils/storage';
 import {
   Cdm,
@@ -57,6 +57,68 @@ export default defineBackground({
       }
     };
 
+    const getBadgeText = (count: number) => {
+      if (count === 0) return '';
+      if (count > 99) return '99+';
+      return String(count);
+    };
+
+    const getKeysCountForUrl = async (url?: string | null) => {
+      const [recentKeys, recentKeysByDomain] = await Promise.all([
+        appStorage.recentKeys.getValue(),
+        appStorage.recentKeysByDomain.getValue(),
+      ]);
+      return getRecentKeysForUrl(url, recentKeysByDomain, recentKeys).length;
+    };
+
+    const updateBadgeForTab = async (tab?: Browser.tabs.Tab | null) => {
+      if (typeof tab?.id !== 'number') return;
+
+      const count = await getKeysCountForUrl(tab.url);
+      await browser.action.setBadgeText({
+        tabId: tab.id,
+        text: getBadgeText(count),
+      });
+    };
+
+    const updateBadgeForTabId = async (tabId: number) => {
+      try {
+        await updateBadgeForTab(await browser.tabs.get(tabId));
+      } catch {
+        // The tab may have been closed before the async badge update runs.
+      }
+    };
+
+    const updateActiveTabBadges = async () => {
+      const activeTabs = await browser.tabs.query({ active: true });
+      await Promise.all(activeTabs.map(updateBadgeForTab));
+    };
+
+    void updateActiveTabBadges();
+
+    appStorage.recentKeys.watch(() => {
+      void updateActiveTabBadges();
+    });
+
+    appStorage.recentKeysByDomain.watch(() => {
+      void updateActiveTabBadges();
+    });
+
+    browser.tabs.onActivated.addListener(({ tabId }) => {
+      void updateBadgeForTabId(tabId);
+    });
+
+    browser.tabs.onUpdated.addListener((_tabId, changeInfo, tab) => {
+      if (changeInfo.url || changeInfo.status === 'complete') {
+        void updateBadgeForTab(tab);
+      }
+    });
+
+    browser.windows.onFocusChanged.addListener((windowId) => {
+      if (windowId === browser.windows.WINDOW_ID_NONE) return;
+      void updateActiveTabBadges();
+    });
+
     const parseBinary = (data: Record<string, number>) => new Uint8Array(Object.values(data));
 
     browser.runtime.onMessage.addListener((message, sender, sendResponse) => {
@@ -67,6 +129,7 @@ export default defineBackground({
         const setRecentKeys = async (keys: KeyInfo[]) => {
           await appStorage.recentKeys.setValue(keys);
           await appStorage.recentKeysByDomain.setForUrl(message.url, keys);
+          await updateBadgeForTab(sender.tab);
         };
 
         const { initData } = message;
