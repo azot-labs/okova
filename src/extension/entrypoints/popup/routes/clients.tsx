@@ -1,5 +1,5 @@
 import { BsCheckLg } from 'solid-icons/bs';
-import { TbOutlineTrash as TbTrash } from 'solid-icons/tb';
+import { TbOutlineSettings } from 'solid-icons/tb';
 import { appStorage, Client } from '@/utils/storage';
 import { useActiveClient, useClients } from '../utils/state';
 import { Layout } from '../components/layout';
@@ -10,6 +10,7 @@ import { Section, SectionFooter } from '../components/section';
 import { CellImportClient } from '../components/cell-import-client';
 import { WidevineClient } from '../../../../lib/widevine/client';
 import { PlayReadyClient } from '../../../../lib/playready/client';
+import { ClientSettings } from './client-settings';
 
 export const Clients = () => {
   const [activeClient, setActiveClient] = useActiveClient();
@@ -22,6 +23,19 @@ export const Clients = () => {
 
   const isActive = (client: Client) => activeClient()?.filename === client.filename;
 
+  const [openedClient, setOpenedClient] = createSignal<Client | null>(null);
+
+  const exportClient = async (client: Client) => {
+    const data = await client.pack();
+    const filename = `${client.getName()}`.replaceAll(' ', '-').toLowerCase();
+    const handle = await window.showSaveFilePicker({
+      suggestedName: `${filename}.${client instanceof WidevineClient ? 'wvd' : 'prd'}`,
+    });
+    const writable = await handle.createWritable();
+    await writable.write(data);
+    await writable.close();
+  };
+
   const removeClient = async (client: Client) => {
     const newClients = clients().filter((c) => c.filename !== client.filename);
     setClients(newClients);
@@ -29,6 +43,7 @@ export const Clients = () => {
     if (newClients.length === 0) setActiveClient(null);
     if (isActive(client)) setActiveClient(newClients[0]);
     await appStorage.clients.active.setValue(activeClient());
+    setOpenedClient(null);
   };
 
   const getClientLevel = (client: Client) => {
@@ -38,40 +53,56 @@ export const Clients = () => {
   };
 
   return (
-    <Layout>
-      <Header backHref="/">Clients</Header>
-      <CellImportClient disabled={clients().length >= 10} />
-      <Show when={clients().length === 0}>
-        <SectionFooter>
-          WVD v2, device_client_id_blob / client_id.bin + device_private_key / private_key.pem
-        </SectionFooter>
-      </Show>
-      <Show when={clients().length > 0}>
-        <List class="mt-2">
-          <Section header="Imported Clients" footer="You can add a maximum of 10 clients.">
-            {clients().map((client) => (
-              <Cell
-                class="capitalize group"
-                subtitle={getClientLevel(client)}
-                after={
-                  <div class="relative min-w-5 min-h-5">
-                    <TbTrash
-                      class="absolute top-0 text-red-500 w-5 h-5 transition-all translate-x-2 opacity-0 group-hover:opacity-100 group-hover:translate-x-0"
-                      onClick={() => removeClient(client)}
-                    />
-                    <Show when={isActive(client)}>
-                      <BsCheckLg class="text-blue-500 w-5 h-5 transition-transform group-hover:-translate-x-7" />
-                    </Show>
-                  </div>
-                }
-                onClick={() => setActive(client)}
-              >
-                {client.label}
-              </Cell>
-            ))}
-          </Section>
-        </List>
-      </Show>
-    </Layout>
+    <Show
+      when={!openedClient()}
+      fallback={
+        <ClientSettings
+          client={openedClient()!}
+          onExport={exportClient}
+          onDelete={removeClient}
+          onClose={() => setOpenedClient(null)}
+        />
+      }
+    >
+      <Layout>
+        <Header backHref="/">Clients</Header>
+        <CellImportClient disabled={clients().length >= 10} />
+        <Show when={clients().length === 0}>
+          <SectionFooter>
+            WVD v2, device_client_id_blob / client_id.bin + device_private_key / private_key.pem
+          </SectionFooter>
+        </Show>
+        <Show when={clients().length > 0}>
+          <List class="mt-2">
+            <Section header="Imported Clients" footer="You can add a maximum of 10 clients.">
+              {clients().map((client) => (
+                <Cell
+                  class="capitalize group"
+                  subtitle={getClientLevel(client)}
+                  after={
+                    <div class="relative min-w-5 min-h-5">
+                      <TbOutlineSettings
+                        title="Client Settings"
+                        class="absolute top-0 text-blue-500 hover:text-blue-400 cursor-pointer w-5 h-5 transition-all translate-x-2 opacity-0 group-hover:opacity-100 group-hover:translate-x-0"
+                        onClick={() => setOpenedClient(client)}
+                      />
+                      <Show when={isActive(client)}>
+                        <BsCheckLg
+                          title="Active Client"
+                          class="text-blue-500 w-5 h-5 transition-transform group-hover:-translate-x-7"
+                        />
+                      </Show>
+                    </div>
+                  }
+                  onClick={() => setActive(client)}
+                >
+                  <div class="group-hover:w-[85%] truncate">{client.label}</div>
+                </Cell>
+              ))}
+            </Section>
+          </List>
+        </Show>
+      </Layout>
+    </Show>
   );
 };
