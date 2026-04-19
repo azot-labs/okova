@@ -13,6 +13,19 @@ export type KeyInfo = {
   createdAt: number;
 };
 
+export type RecentKeysByDomain = Record<string, KeyInfo[]>;
+
+export const getWebsiteDomain = (url?: string | null) => {
+  if (!url) return null;
+
+  try {
+    const hostname = new URL(url).hostname.toLowerCase();
+    return hostname.startsWith('www.') ? hostname.slice(4) : hostname;
+  } catch {
+    return null;
+  }
+};
+
 export type Settings = {
   spoofing: boolean;
   emeInterception: boolean;
@@ -46,6 +59,30 @@ export const appStorage = {
   settings: asJson(storage.defineItem<Settings>('local:settings')),
 
   recentKeys: asJson(storage.defineItem<KeyInfo[]>('local:recent-keys')),
+  recentKeysByDomain: {
+    raw: asJson(storage.defineItem<RecentKeysByDomain>('local:recent-keys-by-domain')),
+    setValue: async (keys: RecentKeysByDomain) => {
+      await appStorage.recentKeysByDomain.raw.setValue(keys);
+    },
+    getValue: async () => {
+      return appStorage.recentKeysByDomain.raw.getValue();
+    },
+    watch: (
+      callback: (newValue: RecentKeysByDomain | null, oldValue: RecentKeysByDomain | null) => void,
+    ) => {
+      return appStorage.recentKeysByDomain.raw.watch(callback);
+    },
+    clear: async () => {
+      await appStorage.recentKeysByDomain.raw.setValue({});
+    },
+    setForUrl: async (url: string | undefined, keys: KeyInfo[]) => {
+      const domain = getWebsiteDomain(url);
+      if (!domain) return;
+
+      const keysByDomain = (await appStorage.recentKeysByDomain.getValue()) || {};
+      await appStorage.recentKeysByDomain.setValue({ ...keysByDomain, [domain]: keys });
+    },
+  },
   allKeys: {
     raw: asJson(storage.defineItem<KeyInfo[]>('local:all-keys')),
     setValue: async (keys: KeyInfo[]) => {
@@ -57,6 +94,7 @@ export const appStorage = {
     clear: async () => {
       await appStorage.allKeys.raw.setValue([]);
       await appStorage.recentKeys.setValue([]);
+      await appStorage.recentKeysByDomain.clear();
     },
     add: async (...newKeys: KeyInfo[]) => {
       const keys = (await appStorage.allKeys.getValue()) || [];

@@ -1,19 +1,43 @@
 import { A } from '@solidjs/router';
 import { Cell } from '../components/cell';
-import { useActiveClient, useClients, useRecentKeys, useSettings } from '../utils/state';
+import {
+  useActiveClient,
+  useActiveTabUrl,
+  useClients,
+  useRecentKeys,
+  useRecentKeysByDomain,
+  useSettings,
+} from '../utils/state';
 import { Toolbar } from '../components/toolbar';
 import { Layout } from '../components/layout';
 import { Header } from '../components/header';
 import { CellImportClient } from '../components/cell-import-client';
 import { NoKeys } from '../components/no-keys';
 import { KeysList } from '../components/keys-list';
-import { appStorage } from '@/utils/storage';
+import { appStorage, getWebsiteDomain } from '@/utils/storage';
 
 export const Dashboard = () => {
   const [settings] = useSettings();
   const [clients] = useClients();
   const [recentKeys] = useRecentKeys();
+  const [recentKeysByDomain] = useRecentKeysByDomain();
+  const [activeTabUrl] = useActiveTabUrl();
   const [activeClient, setActiveClient] = useActiveClient();
+  const activeDomain = createMemo(() => getWebsiteDomain(activeTabUrl()));
+  const recentKeysHeader = createMemo(() =>
+    activeDomain() ? `Recent Keys for ${activeDomain()}` : 'Recent Keys',
+  );
+  const activeDomainRecentKeys = createMemo(() => {
+    const domain = activeDomain();
+    if (!domain) return [];
+
+    const scopedKeys = recentKeysByDomain()[domain];
+    if (scopedKeys) return scopedKeys;
+
+    const legacyKeys = recentKeys();
+    const legacyDomain = getWebsiteDomain(legacyKeys[0]?.url);
+    return legacyDomain === domain ? legacyKeys : [];
+  });
 
   createEffect(() => {
     if (clients().length === 1) {
@@ -40,8 +64,12 @@ export const Dashboard = () => {
         </Show>
 
         <KeysList
-          keys={recentKeys}
-          header="Recent Keys"
+          keys={activeDomainRecentKeys}
+          header={
+            <span class="block truncate" title={recentKeysHeader()}>
+              {recentKeysHeader()}
+            </span>
+          }
           footer={
             <Show when={!settings.spoofing}>
               Enable Spoofing in{' '}
@@ -56,7 +84,7 @@ export const Dashboard = () => {
           }
         />
 
-        <Show when={recentKeys().length === 0}>
+        <Show when={activeDomainRecentKeys().length === 0}>
           <footer class="w-full flex flex-col items-center justify-center text-center gap-1 mt-auto py-2">
             <NoKeys />
           </footer>
