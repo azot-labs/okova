@@ -4,7 +4,7 @@
 ![GitHub Downloads (all assets, latest release)](https://img.shields.io/github/downloads/azot-labs/okova/latest/total?style=flat&color=black)
 [![npm downloads](https://img.shields.io/npm/dt/okova?style=flat&color=black)](https://www.npmjs.com/package/okova)
 
-Okova is a set of tools (JavaScript library, command-line utility and browser extension) for diagnosing, researching, and pentesting [DRM](https://www.urbandictionary.com/define.php?term=DRM) systems like [Widevine](https://www.widevine.com/about).
+Okova is a set of tools (JavaScript library, command-line utility and browser extension) for diagnosing, researching, and pentesting [DRM](https://www.urbandictionary.com/define.php?term=DRM) systems used in playable media content.
 
 > Okova is still in the early stages of development, so until version 1.0 is released, performance may be unstable and major changes may be made
 
@@ -17,23 +17,9 @@ Okova is a set of tools (JavaScript library, command-line utility and browser ex
 - **Runtime agnostic** core: works in Node.js, Bun, Deno, browsers and more
 - **Encrypted Media Extensions API** compatibility via `requestMediaKeySystemAccess()` method
 
-## Installation
+## Browser Extension
 
-> JavaScript library and command-line tool installation requires pre-installed JavaScript runtime (e.g. Node.js).
-
-### JavaScript library
-
-```bash
-npm install okova
-```
-
-### Command-line tool
-
-```bash
-npm install -g okova
-```
-
-### Chrome extension
+### Installing Chrome extension
 
 **Developer Mode** needs to be enabled in `chrome://extensions/` page
 
@@ -43,7 +29,7 @@ npm install -g okova
 
 [Read Google's guide](https://developer.chrome.com/docs/extensions/get-started/tutorial/hello-world#load-unpacked)
 
-### Firefox extension
+### Installing Firefox extension
 
 1. Download archive from [latest release](https://github.com/azot-labs/okova/releases/latest)
 2. Go to `about:debugging#/runtime/this-firefox` page
@@ -53,15 +39,33 @@ npm install -g okova
 
 [Read Mozilla's guide](https://developer.mozilla.org/en-US/docs/Mozilla/Add-ons/WebExtensions/Your_first_WebExtension#installing)
 
-## Usage
+## Command-line tool
 
-### Library
+### Installation
 
-See [examples](https://github.com/azot-labs/okova/blob/main/examples).
+> Command-line tool installation requires pre-installed JavaScript runtime (e.g. [Node.js](https://nodejs.org/en/download)).
 
-### Command-line tool
+```bash
+npm install -g okova
+```
+
+### Usage
 
 See help: `okova --help`
+
+## JavaScript library
+
+> JavaScript library installation requires pre-installed JavaScript runtime (e.g. [Node.js](https://nodejs.org/en/download)).
+
+### Installation
+
+```bash
+npm install okova
+```
+
+### Usage
+
+See [examples](https://github.com/azot-labs/okova/blob/main/examples).
 
 ## Disclaimer
 
