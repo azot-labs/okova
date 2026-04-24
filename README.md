@@ -51,11 +51,40 @@ npm install -g okova
 
 ### Usage
 
-See help: `okova --help`
+> See help for all possible arguments and options: `okova --help`
+
+Convert DRM client files `./drm-files/device_client_id_blob` and `./drm-files/device_private_key` to single WVD file:
+
+```bash
+okova client pack ./drm-files ./unknown_android-sdk-built-for-x86.wvd
+```
+
+```text
+Client packed: /Users/.../unknown_android-sdk-built-for-x86.wvd
+```
+
+Show DRM client info:
+
+```bash
+okova client info ./unknown_android-sdk-built-for-x86.wvd
+```
+
+```text
+application_name: org.chromium.webview_shell
+company_name: unknown
+model_name: Android SDK built for x86
+architecture_name: x86
+device_name: generic_x86
+product_name: sdk_phone_x86
+build_info: Android/sdk_phone_x86/generic_x86:10/RSR1.410600.002.B3/1792159:userdebug/dev-keys
+widevine_cdm_version: 16.0.0
+oem_crypto_security_patch_level: 0
+oem_crypto_build_information: OEMCrypto Level3 Code 8162 May  9 2018 14:01:12
+```
 
 ## JavaScript library
 
-> JavaScript library installation requires pre-installed JavaScript runtime (e.g. [Node.js](https://nodejs.org/en/download)).
+> Library installation requires pre-installed JavaScript runtime (e.g. [Node.js](https://nodejs.org/en/download)).
 
 ### Installation
 
@@ -65,7 +94,54 @@ npm install okova
 
 ### Usage
 
-See [examples](https://github.com/azot-labs/okova/blob/main/examples).
+> See [examples](https://github.com/azot-labs/okova/blob/main/examples) for more.
+
+Obtain a Widevine license for [Bitmovin's video](https://bitmovin.com/demos/drm/):
+
+```ts
+import { readFile } from 'node:fs/promises';
+import { fromBase64, Widevine, requestMediaKeySystemAccess } from 'okova';
+
+async function main() {
+  // Prepare init data
+  const initDataType = 'cenc'; // Encryption scheme
+  const initData = fromBase64(
+    'AAAAW3Bzc2gAAAAA7e+LqXnWSs6jyCfc1R0h7QAAADsIARIQ62dqu8s0Xpa7z2FmMPGj2hoNd2lkZXZpbmVfdGVzdCIQZmtqM2xqYVNkZmFsa3IzaioCSEQyAA==',
+  ).toBuffer(); // PSSH
+
+  // Load device/client
+  const client = await Widevine.Client.from({ wvd: await readFile('client.wvd') });
+
+  const cdm = new Widevine({ client });
+
+  // Create session
+  const keySystemAccess = requestMediaKeySystemAccess(cdm.keySystem, []);
+  const mediaKeys = await keySystemAccess.createMediaKeys({ cdm });
+  const session = mediaKeys.createSession();
+
+  // Get license challenge
+  session.generateRequest(initDataType, initData);
+  const challenge = await session.waitForLicenseRequest();
+
+  // Send license request
+  const licenseUrl = 'https://cwip-shaka-proxy.appspot.com/no_auth';
+  const response = await fetch(licenseUrl, { body: challenge, method: 'POST' })
+    .then((r) => r.arrayBuffer())
+    .then((buffer) => new Uint8Array(buffer));
+
+  // Update session with license response
+  await session.update(response);
+
+  // Print keys
+  const keys = await session.waitForKeyStatusesChange();
+  for (const key of keys) {
+    console.log(`${key.keyId}:${key.key}`);
+  }
+
+  await session.close(); // Close session to delete of any license(s) and key(s) that have not been explicitly stored.
+  await session.remove(); // Destroy the license(s) and/or key(s) associated with the session whether they are in memory, persistent store or both.
+}
+```
 
 ## Disclaimer
 
