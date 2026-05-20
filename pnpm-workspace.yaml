@@ -1,2 +1,7 @@
 packages:
   - examples/*
+allowBuilds:
+  esbuild: true
+  okova: true
+  protobufjs: true
+  spawn-sync: true
