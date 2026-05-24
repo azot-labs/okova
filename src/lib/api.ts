@@ -1,4 +1,13 @@
+import type { EncryptedPacket } from './decrypt';
+import { decryptPacketWithKeys } from './decrypt';
 import { fromHex, parseBufferSource } from './utils';
+export type {
+  EncryptedPacket,
+  EncryptionPattern,
+  EncryptionScheme,
+  PsshBox,
+  SubsampleEncryption,
+} from './decrypt';
 
 export type MediaKeySessionId = string;
 export type MediaKeyId = string;
@@ -41,6 +50,7 @@ export interface MediaKeysEngineSession extends EventTarget {
   ): Promise<void>;
 
   update(response: Uint8Array): Promise<void>;
+  decrypt(packet: EncryptedPacket): Promise<Uint8Array>;
   close(): Promise<void>;
   remove?(): Promise<void>;
   pause?(): string;
@@ -56,6 +66,85 @@ export interface MediaKeysEngine {
 
   createSession(
     /** Default: `temporary` */
+    sessionType?: MediaKeySessionType,
+  ): Promise<MediaKeysEngineSession> | MediaKeysEngineSession;
+
+  resumeSession?(state: string): MediaKeysEngineSession;
+}
+
+export abstract class BaseMediaKeysEngineSession
+  extends EventTarget
+  implements MediaKeysEngineSession
+{
+  sessionId = '';
+  sessionType: MediaKeySessionType;
+  keyStatuses: Map<MediaKeyId, MediaKeyStatus>;
+  keys: MediaKeysMap;
+
+  onmessage:
+    | ((this: MediaKeysEngineSession, ev: CustomEvent<MediaKeyMessageEventInit>) => any)
+    | null;
+  onkeyschange: ((this: MediaKeysEngineSession, ev: Event) => any) | null;
+  onkeystatuseschange:
+    | ((this: MediaKeysEngineSession, ev: CustomEvent<MediaKeyStatusesChangeEventInit>) => any)
+    | null;
+
+  protected constructor(sessionType: MediaKeySessionType = 'temporary') {
+    super();
+    this.sessionType = sessionType;
+    this.keyStatuses = new Map();
+    this.keys = new Map();
+    this.onmessage = null;
+    this.onkeyschange = null;
+    this.onkeystatuseschange = null;
+  }
+
+  abstract generateRequest(initData: Uint8Array, initDataType?: string): Promise<void>;
+  abstract update(response: Uint8Array): Promise<void>;
+  abstract close(): Promise<void>;
+  remove?(): Promise<void>;
+  pause?(): string;
+
+  async decrypt(packet: EncryptedPacket) {
+    return decryptPacketWithKeys(packet, this.keys, this.keyStatuses);
+  }
+
+  waitForKeys(options?: WaitForKeysOptions) {
+    return waitForKeys(this, () => this.keys, options);
+  }
+
+  protected emitMessage(detail: MediaKeyMessageEventInit) {
+    const event = new CustomEvent<MediaKeyMessageEventInit>('message', { detail });
+    this.dispatchEvent(event);
+    this.onmessage?.call(this, event);
+  }
+
+  protected emitKeysChange() {
+    const event = new Event('keyschange');
+    this.dispatchEvent(event);
+    this.onkeyschange?.call(this, event);
+  }
+
+  protected emitKeyStatusesChange() {
+    const detail: MediaKeyStatusesChangeEventInit = {
+      keys: new Map(this.keys),
+      keyStatuses: new Map(this.keyStatuses),
+    };
+    const event = new CustomEvent<MediaKeyStatusesChangeEventInit>('keystatuseschange', { detail });
+    this.dispatchEvent(event);
+    this.onkeystatuseschange?.call(this, event);
+  }
+}
+
+export abstract class BaseMediaKeysEngine implements MediaKeysEngine {
+  abstract readonly keySystem: string;
+
+  async getStatusForPolicy(): Promise<MediaKeyStatus> {
+    return 'usable';
+  }
+
+  abstract setServerCertificate(serverCertificate: Uint8Array): Promise<boolean>;
+  abstract createSession(
     sessionType?: MediaKeySessionType,
   ): Promise<MediaKeysEngineSession> | MediaKeysEngineSession;
 

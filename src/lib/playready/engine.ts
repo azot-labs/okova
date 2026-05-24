@@ -1,13 +1,13 @@
 import type {
-  MediaKeysEngine,
   MediaKeysEngineSession,
 } from '../api';
+import { BaseMediaKeysEngine } from '../api';
 import { PlayReadyDeviceCredentials } from './device-credentials';
 import { TooManySessions } from './exceptions';
 import { RevocationInfoStore } from './revocation-info';
 import { PlayReadySession } from './session';
 
-export class PlayReady implements MediaKeysEngine {
+export class PlayReady extends BaseMediaKeysEngine {
   static MAX_NUM_OF_SESSIONS = 16;
   static SESSION_TIMEOUT_MS = 30_000;
 
@@ -21,14 +21,11 @@ export class PlayReady implements MediaKeysEngine {
   static DeviceCredentials = PlayReadyDeviceCredentials;
 
   constructor(options: { deviceCredentials: PlayReadyDeviceCredentials }) {
+    super();
     this.sessions = new Map();
     this.deviceCredentials = options.deviceCredentials;
     this.revocationInfo = new RevocationInfoStore();
     this.#openedAt = new Map();
-  }
-
-  async getStatusForPolicy(): Promise<MediaKeyStatus> {
-    return 'usable';
   }
 
   async setServerCertificate(): Promise<boolean> {

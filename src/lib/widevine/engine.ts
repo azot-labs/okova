@@ -1,13 +1,13 @@
 import type {
-  MediaKeysEngine,
   MediaKeysEngineSession,
 } from '../api';
+import { BaseMediaKeysEngine } from '../api';
 import { parseCertificate, verifyCertificate } from './certificate';
 import { WidevineDeviceCredentials } from './device-credentials';
 import { SignedDrmCertificate } from './proto';
 import { WidevineSession } from './session';
 
-export class Widevine implements MediaKeysEngine {
+export class Widevine extends BaseMediaKeysEngine {
   keySystem = 'com.widevine.alpha';
   sessions: Map<string, MediaKeysEngineSession>;
   deviceCredentials: WidevineDeviceCredentials;
@@ -16,12 +16,9 @@ export class Widevine implements MediaKeysEngine {
   static DeviceCredentials = WidevineDeviceCredentials;
 
   constructor({ deviceCredentials }: { deviceCredentials: WidevineDeviceCredentials }) {
+    super();
     this.sessions = new Map();
     this.deviceCredentials = deviceCredentials;
-  }
-
-  async getStatusForPolicy(): Promise<MediaKeyStatus> {
-    return 'usable';
   }
 
   async setServerCertificate(serverCertificate: Uint8Array): Promise<boolean> {

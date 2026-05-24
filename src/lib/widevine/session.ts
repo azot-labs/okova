@@ -1,11 +1,5 @@
-import type {
-  MediaKeyMessageEventInit,
-  MediaKeysEngineSession,
-  MediaKeysMap,
-  MediaKeyStatusesChangeEventInit,
-  WaitForKeysOptions,
-} from '../api';
-import { waitForKeys } from '../api';
+import type { MediaKeyMessageEventInit } from '../api';
+import { BaseMediaKeysEngineSession } from '../api';
 import {
   License,
   LicenseRequest,
@@ -22,7 +16,7 @@ import { deriveContext, deriveKeys } from './context';
 import { getMessageType } from './message';
 import { parseCertificate, verifyCertificate } from './certificate';
 import { concatUint8Arrays } from '../buffer';
-import { fromBase64, fromBuffer, fromHex, fromText, Logger, parseBufferSource } from '../utils';
+import { fromBase64, fromBuffer, fromText, Logger, parseBufferSource } from '../utils';
 
 export const SESSION_TYPES = {
   temporary: 0,
@@ -78,21 +72,10 @@ const generateKeyControlNonce = () => {
 
 type ServiceCertificateProvider = () => SignedDrmCertificate | undefined;
 
-export class WidevineSession extends EventTarget implements MediaKeysEngineSession {
+export class WidevineSession extends BaseMediaKeysEngineSession {
   sessionId: string;
   expiration: number;
   closed: Promise<MediaKeySessionClosedReason>;
-  keyStatuses: Map<string, MediaKeyStatus>;
-  keys: MediaKeysMap;
-
-  onmessage:
-    | ((this: MediaKeysEngineSession, ev: CustomEvent<MediaKeyMessageEventInit>) => any)
-    | null;
-  onkeystatuseschange:
-    | ((this: MediaKeysEngineSession, ev: CustomEvent<MediaKeyStatusesChangeEventInit>) => any)
-    | null;
-  onkeyschange: ((this: MediaKeysEngineSession, ev: Event) => any) | null;
-
   sessionType: SessionType;
   deviceCredentials: WidevineDeviceCredentials;
   sessionNumber: number;
@@ -114,17 +97,12 @@ export class WidevineSession extends EventTarget implements MediaKeysEngineSessi
     getServiceCertificate: ServiceCertificateProvider = () => undefined,
     sessionNumber = 1,
   ) {
-    super();
+    super(sessionType);
     this.sessionId = generateSessionId(deviceCredentials.type ?? 'android');
-    this.keyStatuses = new Map();
-    this.keys = new Map();
     this.expiration = NaN;
     this.closed = new Promise<MediaKeySessionClosedReason>((resolve) => {
       this.addEventListener('closed', () => resolve('closed-by-application'));
     });
-    this.onmessage = null;
-    this.onkeystatuseschange = null;
-    this.onkeyschange = null;
     this.sessionType = sessionType;
     this.deviceCredentials = deviceCredentials;
     this.sessionNumber = sessionNumber;
@@ -146,8 +124,7 @@ export class WidevineSession extends EventTarget implements MediaKeysEngineSessi
     first: Uint8Array | string,
     second?: string | BufferSource,
   ): Promise<Uint8Array | void> {
-    const initData =
-      typeof first === 'string' ? parseBufferSource(second as BufferSource) : first;
+    const initData = typeof first === 'string' ? parseBufferSource(second as BufferSource) : first;
     const resolvedInitDataType =
       typeof first === 'string' ? first : typeof second === 'string' ? second : 'cenc';
 
@@ -163,7 +140,7 @@ export class WidevineSession extends EventTarget implements MediaKeysEngineSessi
       fromBuffer(licenseRequest.requestId).toText(),
       deriveContext(licenseRequest.bytes),
     );
-    this.#emitMessage({
+    this.emitMessage({
       message: new Uint8Array(message.bytes),
       messageType: 'license-request',
     });
@@ -185,7 +162,10 @@ export class WidevineSession extends EventTarget implements MediaKeysEngineSessi
 
   async #createLicenseRequest(pssh: PSSH) {
     const serviceCertificate = this.#getCurrentServiceCertificate();
-    const requestId = generateRequestId(this.deviceCredentials.type ?? 'android', this.sessionNumber);
+    const requestId = generateRequestId(
+      this.deviceCredentials.type ?? 'android',
+      this.sessionNumber,
+    );
     const entity = LicenseRequest.create({
       clientId: serviceCertificate ? undefined : this.deviceCredentials.id,
       encryptedClientId: serviceCertificate
@@ -273,8 +253,8 @@ export class WidevineSession extends EventTarget implements MediaKeysEngineSessi
     }
 
     this.contexts.delete(requestId);
-    this.#emitKeysChange();
-    this.#emitKeyStatusesChange();
+    this.emitKeysChange();
+    this.emitKeyStatusesChange();
   }
 
   async #setServiceCertificate(certificate: Uint8Array) {
@@ -405,34 +385,11 @@ export class WidevineSession extends EventTarget implements MediaKeysEngineSessi
       Array.from(session.#contentKeys.entries(), ([keyId, key]) => [keyId, key.value]),
     );
     session.keyStatuses = new Map(
-      Object.entries(values.keyStatuses).map(([keyId, status]) => [keyId, status as MediaKeyStatus]),
+      Object.entries(values.keyStatuses).map(([keyId, status]) => [
+        keyId,
+        status as MediaKeyStatus,
+      ]),
     );
     return session;
-  }
-
-  waitForKeys(options?: WaitForKeysOptions) {
-    return waitForKeys(this, () => this.keys, options);
-  }
-
-  #emitMessage(detail: MediaKeyMessageEventInit) {
-    const event = new CustomEvent<MediaKeyMessageEventInit>('message', { detail });
-    this.dispatchEvent(event);
-    this.onmessage?.call(this, event);
-  }
-
-  #emitKeysChange() {
-    const event = new Event('keyschange');
-    this.dispatchEvent(event);
-    this.onkeyschange?.call(this, event);
-  }
-
-  #emitKeyStatusesChange() {
-    const detail: MediaKeyStatusesChangeEventInit = {
-      keys: new Map(this.keys),
-      keyStatuses: new Map(this.keyStatuses),
-    };
-    const event = new CustomEvent<MediaKeyStatusesChangeEventInit>('keystatuseschange', { detail });
-    this.dispatchEvent(event);
-    this.onkeystatuseschange?.call(this, event);
   }
 }

@@ -1,12 +1,5 @@
-import type {
-  MediaKeyMessageEventInit,
-  MediaKeysEngine,
-  MediaKeysEngineSession,
-  MediaKeysMap,
-  MediaKeyStatusesChangeEventInit,
-  WaitForKeysOptions,
-} from '../api';
-import { waitForKeys } from '../api';
+import type { MediaKeysMap } from '../api';
+import { BaseMediaKeysEngine, BaseMediaKeysEngineSession } from '../api';
 import { fromBase64, fromBuffer } from '../utils';
 
 type RemoteParams = {
@@ -103,20 +96,7 @@ const createHttpClient = ({ baseUrl, secret, ...params }: RemoteParams) => {
   return http;
 };
 
-class RemoteSession extends EventTarget implements MediaKeysEngineSession {
-  readonly sessionId: string;
-  readonly sessionType: MediaKeySessionType;
-  readonly keyStatuses: Map<string, MediaKeyStatus>;
-  readonly keys: MediaKeysMap;
-
-  onmessage:
-    | ((this: MediaKeysEngineSession, ev: CustomEvent<MediaKeyMessageEventInit>) => any)
-    | null;
-  onkeyschange: ((this: MediaKeysEngineSession, ev: Event) => any) | null;
-  onkeystatuseschange:
-    | ((this: MediaKeysEngineSession, ev: CustomEvent<MediaKeyStatusesChangeEventInit>) => any)
-    | null;
-
+class RemoteSession extends BaseMediaKeysEngineSession {
   #http: ReturnType<typeof createHttpClient>;
   #dispose: (sessionId: string) => void;
   #closed: boolean;
@@ -127,16 +107,10 @@ class RemoteSession extends EventTarget implements MediaKeysEngineSession {
     http: ReturnType<typeof createHttpClient>,
     dispose: (sessionId: string) => void,
   ) {
-    super();
+    super(sessionType);
     this.sessionId = sessionId;
-    this.sessionType = sessionType;
     this.#http = http;
     this.#dispose = dispose;
-    this.keyStatuses = new Map();
-    this.keys = new Map();
-    this.onmessage = null;
-    this.onkeyschange = null;
-    this.onkeystatuseschange = null;
     this.#closed = false;
   }
 
@@ -147,7 +121,7 @@ class RemoteSession extends EventTarget implements MediaKeysEngineSession {
       initData: fromBuffer(initData).toBase64(),
     });
     const message = fromBase64(data.message).toBuffer();
-    this.#emitMessage({
+    this.emitMessage({
       message,
       messageType: data.messageType,
     });
@@ -159,7 +133,7 @@ class RemoteSession extends EventTarget implements MediaKeysEngineSession {
       response: fromBuffer(response).toBase64(),
     });
     if (data?.message) {
-      this.#emitMessage({
+      this.emitMessage({
         message: fromBase64(data.message).toBuffer(),
         messageType: data.messageType,
       });
@@ -168,20 +142,16 @@ class RemoteSession extends EventTarget implements MediaKeysEngineSession {
 
     if (data?.keys) {
       this.#syncKeys(new Map(Object.entries(data.keys as Record<string, string>)));
-      const event = new Event('keyschange');
-      this.dispatchEvent(event);
-      this.onkeyschange?.call(this, event);
-      this.#emitKeyStatusesChange();
+      this.emitKeysChange();
+      this.emitKeyStatusesChange();
       return;
     }
 
     const keys = await this.#getKeys();
     if (keys.size) {
       this.#syncKeys(keys);
-      const event = new Event('keyschange');
-      this.dispatchEvent(event);
-      this.onkeyschange?.call(this, event);
-      this.#emitKeyStatusesChange();
+      this.emitKeysChange();
+      this.emitKeyStatusesChange();
     }
   }
 
@@ -199,10 +169,6 @@ class RemoteSession extends EventTarget implements MediaKeysEngineSession {
     this.dispatchEvent(new Event('removed'));
   }
 
-  waitForKeys(options?: WaitForKeysOptions) {
-    return waitForKeys(this, () => this.keys, options);
-  }
-
   async #getKeys() {
     const keys = await this.#http.get(`/sessions/${this.sessionId}/keys`);
     return new Map(Object.entries(keys as Record<string, string>));
@@ -217,40 +183,21 @@ class RemoteSession extends EventTarget implements MediaKeysEngineSession {
       this.keyStatuses.set(keyId, 'usable');
     }
   }
-
-  #emitMessage(detail: MediaKeyMessageEventInit) {
-    const event = new CustomEvent<MediaKeyMessageEventInit>('message', { detail });
-    this.dispatchEvent(event);
-    this.onmessage?.call(this, event);
-  }
-
-  #emitKeyStatusesChange() {
-    const detail: MediaKeyStatusesChangeEventInit = {
-      keys: new Map(this.keys),
-      keyStatuses: new Map(this.keyStatuses),
-    };
-    const event = new CustomEvent<MediaKeyStatusesChangeEventInit>('keystatuseschange', { detail });
-    this.dispatchEvent(event);
-    this.onkeystatuseschange?.call(this, event);
-  }
 }
 
-export class Remote implements MediaKeysEngine {
+export class Remote extends BaseMediaKeysEngine {
   keySystem = 'remote';
-  sessions: Map<string, MediaKeysEngineSession>;
+  sessions: Map<string, RemoteSession>;
 
   #http: ReturnType<typeof createHttpClient>;
   #client?: string;
 
   constructor(params: RemoteParams) {
+    super();
     this.keySystem = params.keySystem;
     this.#http = createHttpClient(params);
     this.#client = params.client;
     this.sessions = new Map();
-  }
-
-  async getStatusForPolicy(): Promise<MediaKeyStatus> {
-    return 'usable';
   }
 
   async setServerCertificate(): Promise<boolean> {

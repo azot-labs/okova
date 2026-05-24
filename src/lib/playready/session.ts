@@ -1,13 +1,6 @@
 import { DOMParser, XMLSerializer } from '@xmldom/xmldom';
 import * as utils from '@noble/curves/utils.js';
-import type {
-  MediaKeyMessageEventInit,
-  MediaKeysEngineSession,
-  MediaKeysMap,
-  MediaKeyStatusesChangeEventInit,
-  WaitForKeysOptions,
-} from '../api';
-import { waitForKeys } from '../api';
+import { BaseMediaKeysEngineSession } from '../api';
 import {
   base64ToBytes,
   bytesToBase64,
@@ -92,21 +85,10 @@ type PlayReadySessionOptions = {
   mergeRevocationInfo?: (revInfoXml: string) => void;
 };
 
-export class PlayReadySession extends EventTarget implements MediaKeysEngineSession {
+export class PlayReadySession extends BaseMediaKeysEngineSession {
   sessionId: string;
   expiration: number;
   closed: Promise<MediaKeySessionClosedReason>;
-  keyStatuses: Map<string, MediaKeyStatus>;
-  keys: MediaKeysMap;
-
-  onmessage:
-    | ((this: MediaKeysEngineSession, ev: CustomEvent<MediaKeyMessageEventInit>) => unknown)
-    | null;
-  onkeyschange: ((this: MediaKeysEngineSession, ev: Event) => unknown) | null;
-  onkeystatuseschange:
-    | ((this: MediaKeysEngineSession, ev: CustomEvent<MediaKeyStatusesChangeEventInit>) => unknown)
-    | null;
-
   sessionType: MediaKeySessionType;
   deviceCredentials: PlayReadySessionCredentials;
   initData?: Uint8Array;
@@ -134,17 +116,12 @@ export class PlayReadySession extends EventTarget implements MediaKeysEngineSess
     dispose: (sessionId: string) => void = () => {},
     options: PlayReadySessionOptions = {},
   ) {
-    super();
+    super(sessionType);
     this.sessionId = fromBuffer(getRandomBytes()).toBase64();
-    this.keyStatuses = new Map();
-    this.keys = new Map();
     this.expiration = NaN;
     this.closed = new Promise<MediaKeySessionClosedReason>((resolve) => {
       this.addEventListener('closed', () => resolve('closed-by-application'));
     });
-    this.onmessage = null;
-    this.onkeyschange = null;
-    this.onkeystatuseschange = null;
     this.sessionType = sessionType;
     this.deviceCredentials = deviceCredentials;
     if (deviceCredentials instanceof PlayReadyDeviceCredentials) {
@@ -296,7 +273,7 @@ export class PlayReadySession extends EventTarget implements MediaKeysEngineSess
     const pssh = new Pssh(initData);
     const wrmHeader = pssh.wrmHeaders[0];
     const challenge = await this.getLicenseChallenge(wrmHeader);
-    this.#emitMessage({
+    this.emitMessage({
       message: fromText(challenge).toBuffer(),
       messageType: 'license-request',
     });
@@ -306,8 +283,8 @@ export class PlayReadySession extends EventTarget implements MediaKeysEngineSess
     const keys = await this.parseLicense(fromBuffer(response).toText());
     if (keys) this.#contentKeys = keys;
     this.#syncKeys();
-    this.#emitKeysChange();
-    this.#emitKeyStatusesChange();
+    this.emitKeysChange();
+    this.emitKeyStatusesChange();
   }
 
   async getLicenseChallenge(wrm_header: string | WrmHeader, rev_lists?: string) {
@@ -457,10 +434,14 @@ export class PlayReadySession extends EventTarget implements MediaKeysEngineSess
       'SigningCertificateChain',
     )?.textContent?.trim();
     const signedInfoElement = findFirstDescendantByLocalName(signatureElement, 'SignedInfo');
-    const digestValue = findFirstDescendantByLocalName(signatureElement, 'DigestValue')
-      ?.textContent?.trim();
-    const signatureValue = findFirstDescendantByLocalName(signatureElement, 'SignatureValue')
-      ?.textContent?.trim();
+    const digestValue = findFirstDescendantByLocalName(
+      signatureElement,
+      'DigestValue',
+    )?.textContent?.trim();
+    const signatureValue = findFirstDescendantByLocalName(
+      signatureElement,
+      'SignatureValue',
+    )?.textContent?.trim();
 
     if (!signingCertificateChainValue || !signedInfoElement || !digestValue || !signatureValue) {
       return;
@@ -510,10 +491,6 @@ export class PlayReadySession extends EventTarget implements MediaKeysEngineSess
     this.dispatchEvent(new Event('closed'));
   }
 
-  waitForKeys(options?: WaitForKeysOptions) {
-    return waitForKeys(this, () => this.keys, options);
-  }
-
   #syncKeys() {
     this.keys.clear();
     this.keyStatuses.clear();
@@ -524,28 +501,6 @@ export class PlayReadySession extends EventTarget implements MediaKeysEngineSess
       this.keys.set(keyId, value);
       this.keyStatuses.set(keyId, 'usable');
     }
-  }
-
-  #emitMessage(detail: MediaKeyMessageEventInit) {
-    const event = new CustomEvent<MediaKeyMessageEventInit>('message', { detail });
-    this.dispatchEvent(event);
-    this.onmessage?.call(this, event);
-  }
-
-  #emitKeysChange() {
-    const event = new Event('keyschange');
-    this.dispatchEvent(event);
-    this.onkeyschange?.call(this, event);
-  }
-
-  #emitKeyStatusesChange() {
-    const detail: MediaKeyStatusesChangeEventInit = {
-      keys: new Map(this.keys),
-      keyStatuses: new Map(this.keyStatuses),
-    };
-    const event = new CustomEvent<MediaKeyStatusesChangeEventInit>('keystatuseschange', { detail });
-    this.dispatchEvent(event);
-    this.onkeystatuseschange?.call(this, event);
   }
 
   pause() {

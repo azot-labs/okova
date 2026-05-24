@@ -1,46 +1,32 @@
+import { cbc, ctr } from '@noble/ciphers/aes.js';
 import { describe, expect, test } from 'vitest';
 import {
+  BaseMediaKeysEngine,
+  BaseMediaKeysEngineSession,
   requestMediaKeySystemAccess,
   Session,
   setSupportedEngines,
   waitForKeys,
-  type MediaKeyMessageEventInit,
-  type MediaKeysEngine,
-  type MediaKeysEngineSession,
-  type MediaKeysMap,
-  type MediaKeyStatusesChangeEventInit,
+  type EncryptedPacket,
 } from '../src/lib/api';
-import { fromBuffer } from '../src/lib/utils';
+import { fromBuffer, fromHex } from '../src/lib/utils';
 
 const KEY_ID = '00112233445566778899aabbccddeeff';
 const KEY_VALUE = 'ffeeddccbbaa99887766554433221100';
 const LICENSE_REQUEST = new Uint8Array([1, 2, 3, 4]);
 
-class FakeEngineSession extends EventTarget implements MediaKeysEngineSession {
+class FakeEngineSession extends BaseMediaKeysEngineSession {
   readonly sessionId = 'fake-session-id';
-  readonly sessionType: MediaKeySessionType;
-  readonly keyStatuses = new Map<string, MediaKeyStatus>();
-  readonly keys: MediaKeysMap = new Map();
-
-  onmessage:
-    | ((this: MediaKeysEngineSession, ev: CustomEvent<MediaKeyMessageEventInit>) => any)
-    | null = null;
-  onkeyschange: ((this: MediaKeysEngineSession, ev: Event) => any) | null = null;
-  onkeystatuseschange:
-    | ((this: MediaKeysEngineSession, ev: CustomEvent<MediaKeyStatusesChangeEventInit>) => any)
-    | null = null;
-
   lastGeneratedRequest?: { initData: Uint8Array; initDataType: string };
   lastUpdatedResponse?: Uint8Array;
 
   constructor(sessionType: MediaKeySessionType = 'temporary') {
-    super();
-    this.sessionType = sessionType;
+    super(sessionType);
   }
 
   async generateRequest(initData: Uint8Array, initDataType: string = 'cenc') {
     this.lastGeneratedRequest = { initData, initDataType };
-    this.#emitMessage({
+    this.emitMessage({
       message: LICENSE_REQUEST,
       messageType: 'license-request',
     });
@@ -50,22 +36,8 @@ class FakeEngineSession extends EventTarget implements MediaKeysEngineSession {
     this.lastUpdatedResponse = response;
     this.keys.set(KEY_ID, KEY_VALUE);
     this.keyStatuses.set(KEY_ID, 'usable');
-
-    const keysChangeEvent = new Event('keyschange');
-    this.dispatchEvent(keysChangeEvent);
-    this.onkeyschange?.call(this, keysChangeEvent);
-
-    const keyStatusesChangeEvent = new CustomEvent<MediaKeyStatusesChangeEventInit>(
-      'keystatuseschange',
-      {
-        detail: {
-          keys: new Map(this.keys),
-          keyStatuses: new Map(this.keyStatuses),
-        },
-      },
-    );
-    this.dispatchEvent(keyStatusesChangeEvent);
-    this.onkeystatuseschange?.call(this, keyStatusesChangeEvent);
+    this.emitKeysChange();
+    this.emitKeyStatusesChange();
   }
 
   async close() {
@@ -77,29 +49,16 @@ class FakeEngineSession extends EventTarget implements MediaKeysEngineSession {
   pause() {
     return 'paused-state';
   }
-
-  waitForKeys() {
-    return waitForKeys(this, () => this.keys);
-  }
-
-  #emitMessage(detail: MediaKeyMessageEventInit) {
-    const event = new CustomEvent<MediaKeyMessageEventInit>('message', { detail });
-    this.dispatchEvent(event);
-    this.onmessage?.call(this, event);
-  }
 }
 
-class FakeEngine implements MediaKeysEngine {
+class FakeEngine extends BaseMediaKeysEngine {
   readonly keySystem: string;
 
   serverCertificate?: Uint8Array;
 
   constructor(keySystem = 'com.example.fake') {
+    super();
     this.keySystem = keySystem;
-  }
-
-  async getStatusForPolicy(): Promise<MediaKeyStatus> {
-    return 'usable';
   }
 
   async setServerCertificate(serverCertificate: Uint8Array): Promise<boolean> {
@@ -174,6 +133,63 @@ describe('Session', () => {
     await expect(session.generateRequest('cenc', new Uint8Array([1]))).rejects.toThrow(
       'Session closed',
     );
+  });
+});
+
+describe('BaseMediaKeysEngineSession', () => {
+  test('decrypts cenc packets with stored content keys', async () => {
+    const session = new FakeEngineSession();
+    await session.update(new Uint8Array([1]));
+
+    const iv = Uint8Array.from([
+      0x10, 0x32, 0x54, 0x76, 0x98, 0xba, 0xdc, 0xfe, 0xef, 0xcd, 0xab, 0x89, 0x67, 0x45, 0x23,
+      0x01,
+    ]);
+    const plaintext = Uint8Array.from([1, 2, 3, 4, 5, 6, 7, 8, 9]);
+    const encrypted = ctr(fromHex(KEY_VALUE).toBuffer(), iv).encrypt(plaintext);
+
+    const packet: EncryptedPacket = {
+      data: encrypted,
+      keyId: KEY_ID,
+      psshBoxes: [],
+      scheme: 'cenc',
+      iv,
+      timestamp: 123,
+      subsamples: null,
+      pattern: null,
+    };
+
+    await expect(session.decrypt(packet)).resolves.toEqual(plaintext);
+  });
+
+  test('decrypts cbcs packets with stored content keys', async () => {
+    const session = new FakeEngineSession();
+    await session.update(new Uint8Array([1]));
+
+    const iv = Uint8Array.from([
+      0x01, 0x23, 0x45, 0x67, 0x89, 0xab, 0xcd, 0xef, 0xfe, 0xdc, 0xba, 0x98, 0x76, 0x54, 0x32,
+      0x10,
+    ]);
+    const plaintext = Uint8Array.from([
+      0x7a, 0x42, 0x19, 0xd0, 0x11, 0x22, 0x33, 0x44, 0x95, 0x86, 0x77, 0x68, 0x59, 0x4a, 0x3b,
+      0x2c,
+    ]);
+    const encrypted = cbc(fromHex(KEY_VALUE).toBuffer(), iv, { disablePadding: true }).encrypt(
+      plaintext,
+    );
+
+    const packet: EncryptedPacket = {
+      data: encrypted,
+      keyId: KEY_ID,
+      psshBoxes: [],
+      scheme: 'cbcs',
+      iv,
+      timestamp: 456,
+      subsamples: [{ clearLen: 0, protectedLen: encrypted.byteLength }],
+      pattern: { cryptByteBlock: 1, skipByteBlock: 0 },
+    };
+
+    await expect(session.decrypt(packet)).resolves.toEqual(plaintext);
   });
 });
 

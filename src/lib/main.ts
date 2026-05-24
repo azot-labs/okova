@@ -78,6 +78,7 @@ const fetchDecryptionKeys = async (params: FetchDecryptionKeysParams) => {
 export { fetchDecryptionKeys };
 export * from './utils';
 export * from './api';
+export * from './decrypt';
 export * from './widevine/engine';
 export * from './widevine/device-credentials';
 export * from './playready/engine';
