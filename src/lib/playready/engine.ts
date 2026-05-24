@@ -9,14 +9,11 @@ import { PlayReadySession } from './session';
 
 export class PlayReady extends BaseMediaKeysEngine {
   static MAX_NUM_OF_SESSIONS = 16;
-  static SESSION_TIMEOUT_MS = 30_000;
 
   keySystem = 'com.microsoft.playready.recommendation';
   sessions: Map<string, MediaKeysEngineSession>;
   deviceCredentials: PlayReadyDeviceCredentials;
   revocationInfo: RevocationInfoStore;
-
-  #openedAt: Map<string, number>;
 
   static DeviceCredentials = PlayReadyDeviceCredentials;
 
@@ -25,7 +22,6 @@ export class PlayReady extends BaseMediaKeysEngine {
     this.sessions = new Map();
     this.deviceCredentials = options.deviceCredentials;
     this.revocationInfo = new RevocationInfoStore();
-    this.#openedAt = new Map();
   }
 
   async setServerCertificate(): Promise<boolean> {
@@ -34,27 +30,9 @@ export class PlayReady extends BaseMediaKeysEngine {
 
   #handleSessionDisposed = (sessionId: string) => {
     this.sessions.delete(sessionId);
-    this.#openedAt.delete(sessionId);
-  };
-
-  #cleanupStaleSessions() {
-    const now = Date.now();
-
-    for (const [sessionId, openedAt] of this.#openedAt.entries()) {
-      if (now - openedAt <= PlayReady.SESSION_TIMEOUT_MS) {
-        continue;
-      }
-
-      const session = this.sessions.get(sessionId);
-      this.sessions.delete(sessionId);
-      this.#openedAt.delete(sessionId);
-      void session?.close?.();
-    }
   }
 
   #assertSessionCapacity() {
-    this.#cleanupStaleSessions();
-
     if (this.sessions.size >= PlayReady.MAX_NUM_OF_SESSIONS) {
       throw new TooManySessions(`Too many Sessions open (${PlayReady.MAX_NUM_OF_SESSIONS}).`);
     }
@@ -62,7 +40,6 @@ export class PlayReady extends BaseMediaKeysEngine {
 
   #trackSession(session: MediaKeysEngineSession) {
     this.sessions.set(session.sessionId, session);
-    this.#openedAt.set(session.sessionId, Date.now());
     return session;
   }
 

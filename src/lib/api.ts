@@ -333,6 +333,15 @@ export class Session extends EventTarget implements MediaKeySession {
     this.dispatchEvent(new Event('closed'));
   };
 
+  #handleRemove = () => {
+    if (!this.#closed) {
+      this.#closed = true;
+      this.dispatchEvent(new Event('closed'));
+    }
+
+    this.dispatchEvent(new Event('removed'));
+  };
+
   #syncFromEngineSession(session: MediaKeysEngineSession) {
     this.keys = new Map(session.keys);
     syncSessionKeys(this.keyStatuses, session.keyStatuses);
@@ -367,10 +376,7 @@ export class Session extends EventTarget implements MediaKeySession {
   async remove(): Promise<void> {
     const session = await this.#getEngineSession();
     await session.remove?.();
-    if (!this.#closed) {
-      this.#closed = true;
-      this.dispatchEvent(new Event('removed'));
-    }
+    this.#handleRemove();
   }
 
   async waitForLicenseRequest() {

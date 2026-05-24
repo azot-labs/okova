@@ -134,6 +134,17 @@ describe('Session', () => {
       'Session closed',
     );
   });
+
+  test('resolves closed when remove transitions the session to closed', async () => {
+    const session = new Session('temporary', new FakeEngine());
+
+    await session.remove();
+
+    await expect(session.closed).resolves.toBe('closed-by-application');
+    await expect(session.generateRequest('cenc', new Uint8Array([1]))).rejects.toThrow(
+      'Session closed',
+    );
+  });
 });
 
 describe('BaseMediaKeysEngineSession', () => {

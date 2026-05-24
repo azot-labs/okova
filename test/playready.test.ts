@@ -448,7 +448,7 @@ test('playready engine rejects opening more than 16 sessions', () => {
   );
 });
 
-test('playready engine evicts stale sessions before enforcing the session limit', () => {
+test('playready engine keeps open sessions counted regardless of age', () => {
   vi.useFakeTimers();
   try {
     vi.setSystemTime(new Date('2026-05-24T00:00:00Z'));
@@ -458,11 +458,12 @@ test('playready engine evicts stale sessions before enforcing the session limit'
       cdm.createSession();
     }
 
-    vi.setSystemTime(Date.now() + PlayReady.SESSION_TIMEOUT_MS + 1);
-    const session = cdm.createSession();
+    vi.setSystemTime(new Date('2026-05-24T00:01:00Z'));
 
-    expect(session).toBeDefined();
-    expect(cdm.sessions.size).toBe(1);
+    expect(() => cdm.createSession()).toThrowError(
+      new TooManySessions(`Too many Sessions open (${PlayReady.MAX_NUM_OF_SESSIONS}).`),
+    );
+    expect(cdm.sessions.size).toBe(PlayReady.MAX_NUM_OF_SESSIONS);
   } finally {
     vi.useRealTimers();
   }
