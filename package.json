@@ -1,6 +1,6 @@
 {
   "name": "okova",
-  "version": "0.11.0",
+  "version": "0.12.0",
   "description": "Advanced DRM inspection toolkit",
   "type": "module",
   "packageManager": "pnpm@11.2.0",
