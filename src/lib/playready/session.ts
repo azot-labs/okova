@@ -1,5 +1,13 @@
 import { DOMParser } from '@xmldom/xmldom';
 import * as utils from '@noble/curves/utils.js';
+import type {
+  MediaKeyMessageEventInit,
+  MediaKeysEngineSession,
+  MediaKeysMap,
+  MediaKeyStatusesChangeEventInit,
+  WaitForKeysOptions,
+} from '../api';
+import { waitForKeys } from '../api';
 import {
   base64ToBytes,
   bytesToBase64,
@@ -38,19 +46,23 @@ type PlayReadySessionCredentials =
       clientVersion?: string;
     };
 
-export class PlayReadySession extends EventTarget {
+export class PlayReadySession extends EventTarget implements MediaKeysEngineSession {
   sessionId: string;
   expiration: number;
   closed: Promise<MediaKeySessionClosedReason>;
-  keyStatuses: Map<BufferSource, MediaKeyStatus>;
+  keyStatuses: Map<string, MediaKeyStatus>;
+  keys: MediaKeysMap;
 
-  onmessage: ((this: MediaKeySession, ev: MediaKeyMessageEvent) => any) | null;
-  onkeyschange: ((this: MediaKeySession, ev: Event) => any) | null;
-  onkeystatuseschange: ((this: MediaKeySession, ev: Event) => any) | null;
+  onmessage:
+    | ((this: MediaKeysEngineSession, ev: CustomEvent<MediaKeyMessageEventInit>) => unknown)
+    | null;
+  onkeyschange: ((this: MediaKeysEngineSession, ev: Event) => unknown) | null;
+  onkeystatuseschange:
+    | ((this: MediaKeysEngineSession, ev: CustomEvent<MediaKeyStatusesChangeEventInit>) => unknown)
+    | null;
 
   sessionType: MediaKeySessionType;
   deviceCredentials: PlayReadySessionCredentials;
-  keys: Key[];
   initData?: Uint8Array;
   initDataType?: string;
   certificateChain: Uint8Array;
@@ -64,13 +76,19 @@ export class PlayReadySession extends EventTarget {
 
   static DeviceCredentials = PlayReadyDeviceCredentials;
 
+  #contentKeys: Key[];
+  #dispose: (sessionId: string) => void;
+  #closed: boolean;
+
   constructor(
     sessionType: MediaKeySessionType = 'temporary',
     deviceCredentials: PlayReadySessionCredentials,
+    dispose: (sessionId: string) => void = () => {},
   ) {
     super();
     this.sessionId = fromBuffer(getRandomBytes()).toBase64();
     this.keyStatuses = new Map();
+    this.keys = new Map();
     this.expiration = NaN;
     this.closed = new Promise<MediaKeySessionClosedReason>((resolve) => {
       this.addEventListener('closed', () => resolve('closed-by-application'));
@@ -102,7 +120,9 @@ export class PlayReadySession extends EventTarget {
     };
 
     this.parser = new DOMParser();
-    this.keys = [];
+    this.#contentKeys = [];
+    this.#dispose = dispose;
+    this.#closed = false;
   }
 
   #getKeyCipher(xmlKey: XmlKey) {
@@ -216,18 +236,24 @@ export class PlayReadySession extends EventTarget {
     );
   }
 
-  async generateRequest(sessionId: string, initData: Uint8Array, initDataType?: string) {
+  async generateRequest(initData: Uint8Array, initDataType: string = 'cenc') {
     this.initData = initData;
     this.initDataType = initDataType;
     const pssh = new Pssh(initData);
     const wrmHeader = pssh.wrmHeaders[0];
     const challenge = await this.getLicenseChallenge(wrmHeader);
-    return fromText(challenge).toBuffer();
+    this.#emitMessage({
+      message: fromText(challenge).toBuffer(),
+      messageType: 'license-request',
+    });
   }
 
   async update(response: Uint8Array) {
     const keys = await this.parseLicense(fromBuffer(response).toText());
-    if (keys) this.keys = keys;
+    if (keys) this.#contentKeys = keys;
+    this.#syncKeys();
+    this.#emitKeysChange();
+    this.#emitKeyStatusesChange();
   }
 
   async getLicenseChallenge(wrm_header: string, rev_lists?: string) {
@@ -342,8 +368,52 @@ export class PlayReadySession extends EventTarget {
         );
       }
     }
-    this.keys = keys;
     return keys;
+  }
+
+  async close() {
+    if (this.#closed) return;
+    this.#closed = true;
+    this.#dispose(this.sessionId);
+    this.dispatchEvent(new Event('closed'));
+  }
+
+  waitForKeys(options?: WaitForKeysOptions) {
+    return waitForKeys(this, () => this.keys, options);
+  }
+
+  #syncKeys() {
+    this.keys.clear();
+    this.keyStatuses.clear();
+
+    for (const key of this.#contentKeys) {
+      const keyId = fromBuffer(key.keyId).toHex();
+      const value = fromBuffer(key.key).toHex();
+      this.keys.set(keyId, value);
+      this.keyStatuses.set(keyId, 'usable');
+    }
+  }
+
+  #emitMessage(detail: MediaKeyMessageEventInit) {
+    const event = new CustomEvent<MediaKeyMessageEventInit>('message', { detail });
+    this.dispatchEvent(event);
+    this.onmessage?.call(this, event);
+  }
+
+  #emitKeysChange() {
+    const event = new Event('keyschange');
+    this.dispatchEvent(event);
+    this.onkeyschange?.call(this, event);
+  }
+
+  #emitKeyStatusesChange() {
+    const detail: MediaKeyStatusesChangeEventInit = {
+      keys: new Map(this.keys),
+      keyStatuses: new Map(this.keyStatuses),
+    };
+    const event = new CustomEvent<MediaKeyStatusesChangeEventInit>('keystatuseschange', { detail });
+    this.dispatchEvent(event);
+    this.onkeystatuseschange?.call(this, event);
   }
 
   pause() {
@@ -353,15 +423,15 @@ export class PlayReadySession extends EventTarget {
       initData: this.initData ? fromBuffer(this.initData).toBase64() : undefined,
       initDataType: this.initDataType,
       certificateChain: fromBuffer(this.certificateChain).toBase64(),
-      encryptionKey: fromBuffer(this.encryptionKey.publicBytes()).toBase64(),
-      signingKey: fromBuffer(this.signingKey.publicBytes()).toBase64(),
+      encryptionKey: fromBuffer(this.encryptionKey.dumps()).toBase64(),
+      signingKey: fromBuffer(this.signingKey.dumps()).toBase64(),
       clientVersion: this.clientVersion,
       rgbMagicConstantZero: fromBuffer(this.rgbMagicConstantZero).toBase64(),
       wmrmServerKey: {
         x: this.wmrmServerKey.x.toString(),
         y: this.wmrmServerKey.y.toString(),
       },
-      keys: this.keys.map((key) => ({
+      keys: this.#contentKeys.map((key) => ({
         keyId: fromBuffer(key.keyId).toHex(),
         key: fromBuffer(key.key).toHex(),
         cipherType: key.cipherType,
@@ -373,12 +443,16 @@ export class PlayReadySession extends EventTarget {
   }
 
   resume(state: string) {
-    return PlayReadySession.resume(state, this.deviceCredentials);
+    return PlayReadySession.resume(state, this.deviceCredentials, this.#dispose);
   }
 
-  static resume(data: string, deviceCredentials: PlayReadySessionCredentials) {
+  static resume(
+    data: string,
+    deviceCredentials: PlayReadySessionCredentials,
+    dispose?: (sessionId: string) => void,
+  ) {
     const values = JSON.parse(data);
-    const session = new PlayReadySession(values.sessionType, deviceCredentials);
+    const session = new PlayReadySession(values.sessionType, deviceCredentials, dispose);
     session.sessionId = values.sessionId;
     session.initData = values.initData ? fromBase64(values.initData).toBuffer() : undefined;
     session.initDataType = values.initDataType;
@@ -391,7 +465,7 @@ export class PlayReadySession extends EventTarget {
       y: BigInt(values.wmrmServerKey.y),
     };
     session.clientVersion = values.clientVersion;
-    session.keys = values.keys.map(
+    session.#contentKeys = values.keys.map(
       (key: { keyId: string; key: string; keyType: number; cipherType: number }) =>
         new Key(
           fromHex(key.keyId).toBuffer(),
@@ -400,6 +474,7 @@ export class PlayReadySession extends EventTarget {
           fromHex(key.key).toBuffer(),
         ),
     );
+    session.#syncKeys();
     return session;
   }
 }
