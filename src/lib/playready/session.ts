@@ -24,13 +24,13 @@ import { EccKey } from '../crypto/ecc-key';
 import { ElGamal } from '../crypto/elgamal';
 import { XmlKey } from './xml-key';
 import { Key } from './key';
-import { PlayReadyClient } from './client';
+import { PlayReadyDeviceCredentials } from './device-credentials';
 import { Pssh } from './pssh';
 
 const DEFAULT_CLIENT_VERSION = '10.0.16384.10011';
 
-type CdmClient =
-  | PlayReadyClient
+type PlayReadySessionCredentials =
+  | PlayReadyDeviceCredentials
   | {
       certificateChain: Uint8Array;
       encryptionKey: Uint8Array;
@@ -38,7 +38,7 @@ type CdmClient =
       clientVersion?: string;
     };
 
-export class Session extends EventTarget {
+export class PlayReadySession extends EventTarget {
   sessionId: string;
   expiration: number;
   closed: Promise<MediaKeySessionClosedReason>;
@@ -49,7 +49,7 @@ export class Session extends EventTarget {
   onkeystatuseschange: ((this: MediaKeySession, ev: Event) => any) | null;
 
   sessionType: MediaKeySessionType;
-  client: CdmClient;
+  deviceCredentials: PlayReadySessionCredentials;
   keys: Key[];
   initData?: Uint8Array;
   initDataType?: string;
@@ -62,9 +62,12 @@ export class Session extends EventTarget {
 
   parser: DOMParser;
 
-  static Client = PlayReadyClient;
+  static DeviceCredentials = PlayReadyDeviceCredentials;
 
-  constructor(sessionType: MediaKeySessionType = 'temporary', client: CdmClient) {
+  constructor(
+    sessionType: MediaKeySessionType = 'temporary',
+    deviceCredentials: PlayReadySessionCredentials,
+  ) {
     super();
     this.sessionId = fromBuffer(getRandomBytes()).toBase64();
     this.keyStatuses = new Map();
@@ -76,17 +79,17 @@ export class Session extends EventTarget {
     this.onkeyschange = null;
     this.onkeystatuseschange = null;
     this.sessionType = sessionType;
-    this.client = client;
-    if (client instanceof PlayReadyClient) {
-      this.certificateChain = client.groupCertificate.dumps();
-      this.encryptionKey = client.encryptionKey;
-      this.signingKey = client.signingKey;
+    this.deviceCredentials = deviceCredentials;
+    if (deviceCredentials instanceof PlayReadyDeviceCredentials) {
+      this.certificateChain = deviceCredentials.groupCertificate.dumps();
+      this.encryptionKey = deviceCredentials.encryptionKey;
+      this.signingKey = deviceCredentials.signingKey;
       this.clientVersion = DEFAULT_CLIENT_VERSION;
     } else {
-      this.certificateChain = client.certificateChain;
-      this.encryptionKey = EccKey.from(client.encryptionKey);
-      this.signingKey = EccKey.from(client.signingKey);
-      this.clientVersion = client.clientVersion ?? DEFAULT_CLIENT_VERSION;
+      this.certificateChain = deviceCredentials.certificateChain;
+      this.encryptionKey = EccKey.from(deviceCredentials.encryptionKey);
+      this.signingKey = EccKey.from(deviceCredentials.signingKey);
+      this.clientVersion = deviceCredentials.clientVersion ?? DEFAULT_CLIENT_VERSION;
     }
 
     this.rgbMagicConstantZero = new Uint8Array([
@@ -370,12 +373,12 @@ export class Session extends EventTarget {
   }
 
   resume(state: string) {
-    return Session.resume(state, this.client);
+    return PlayReadySession.resume(state, this.deviceCredentials);
   }
 
-  static resume(data: string, client: CdmClient) {
+  static resume(data: string, deviceCredentials: PlayReadySessionCredentials) {
     const values = JSON.parse(data);
-    const session = new Session(values.sessionType, client);
+    const session = new PlayReadySession(values.sessionType, deviceCredentials);
     session.sessionId = values.sessionId;
     session.initData = values.initData ? fromBase64(values.initData).toBuffer() : undefined;
     session.initDataType = values.initDataType;

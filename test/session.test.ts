@@ -1,8 +1,8 @@
 import { readFile } from 'node:fs/promises';
 import { fromBase64, toBufferSource } from '../src/lib';
 import { expect, test } from 'vitest';
-import { WidevineClient } from '../src/lib/widevine/client';
-import { Session } from '../src/lib/widevine/session';
+import { WidevineDeviceCredentials } from '../src/lib/widevine/device-credentials';
+import { WidevineSession } from '../src/lib/widevine/session';
 
 test('session', async () => {
   // Prepare pssh
@@ -13,10 +13,10 @@ test('session', async () => {
 
   // Load device/client
   const wvd = await readFile('./clients/client.wvd');
-  const client = await WidevineClient.from({ wvd });
+  const client = await WidevineDeviceCredentials.from({ wvd });
 
   // Create session
-  const session = new Session('temporary', client);
+  const session = new WidevineSession('temporary', client);
 
   // Get license challenge
   const challenge = await session.generateRequest(initDataType, initData);

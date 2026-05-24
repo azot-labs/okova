@@ -6,8 +6,8 @@ import { Layout } from '../components/layout';
 import { List } from '../components/list';
 import { Section } from '../components/section';
 import { Cell } from '../components/cell';
-import { WidevineClient } from '../../../../lib/widevine/client';
-import { PlayReadyClient } from '../../../../lib/playready/client';
+import { WidevineDeviceCredentials } from '../../../../lib/widevine/device-credentials';
+import { PlayReadyDeviceCredentials } from '../../../../lib/playready/device-credentials';
 
 type ClientSettingsProps = {
   client: Client;
@@ -18,8 +18,8 @@ type ClientSettingsProps = {
 
 export const ClientSettings: Component<ClientSettingsProps> = (props) => {
   const drmLabel = createMemo(() => {
-    if (props.client instanceof WidevineClient) return 'Google Widevine';
-    if (props.client instanceof PlayReadyClient) return 'Microsoft PlayReady';
+    if (props.client instanceof WidevineDeviceCredentials) return 'Google Widevine';
+    if (props.client instanceof PlayReadyDeviceCredentials) return 'Microsoft PlayReady';
     return 'Unknown';
   });
 

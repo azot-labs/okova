@@ -1,7 +1,7 @@
 import { join } from 'node:path';
 import { readFile } from 'node:fs/promises';
-import { WidevineCdm, fetchDecryptionKeys } from '../src/lib';
-import { WidevineClient } from '../src/lib/widevine/client';
+import { Widevine, fetchDecryptionKeys } from '../src/lib';
+import { WidevineDeviceCredentials } from '../src/lib/widevine/device-credentials';
 
 export const WORKDIR = join(process.cwd(), '');
 
@@ -15,19 +15,23 @@ export const read = async (filename: string) => readFile(join(WORKDIR, 'clients'
 export const createClient = async () => {
   const id = await read('device_client_id_blob');
   const key = await read('device_private_key');
-  return WidevineClient.fromUnpacked(id, key);
+  return WidevineDeviceCredentials.fromUnpacked(id, key);
 };
 
-export const loadWidevineClient = async () => {
+export const loadWidevineDeviceCredentials = async () => {
   const clientPath = process.env.VITEST_WIDEVINE_CLIENT_PATH;
   if (!clientPath) throw new Error('Widevine client not found. Skipping test');
   const clientData = await readFile(clientPath);
-  const client = await WidevineCdm.Client.from({ wvd: clientData });
-  return client;
+  const deviceCredentials = await Widevine.DeviceCredentials.from({ wvd: clientData });
+  return deviceCredentials;
 };
 
-export const fetchDecryptionKeysWithDefaults = async (client?: WidevineClient) => {
-  const cdm = new WidevineCdm({ client: client || (await createClient()) });
+export const fetchDecryptionKeysWithDefaults = async (
+  deviceCredentials?: WidevineDeviceCredentials,
+) => {
+  const cdm = new Widevine({
+    deviceCredentials: deviceCredentials || (await createClient()),
+  });
   return fetchDecryptionKeys({
     cdm,
     server: LICENSE_URL,

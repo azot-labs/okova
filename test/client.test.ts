@@ -1,12 +1,12 @@
 import { expect, test } from 'vitest';
 import { fetchDecryptionKeysWithDefaults, read } from './utils';
 import { fromBuffer } from '../src/lib';
-import { WidevineClient } from '../src/lib/widevine/client';
+import { WidevineDeviceCredentials } from '../src/lib/widevine/device-credentials';
 
 test('export client', async () => {
   const originalId = await read('device_client_id_blob');
   const originalKey = await read('device_private_key');
-  const client = await WidevineClient.fromUnpacked(originalId, originalKey);
+  const client = await WidevineDeviceCredentials.fromUnpacked(originalId, originalKey);
   const unpacked = await client.unpack();
 
   const originalIdText = fromBuffer(originalId).toBase64();
@@ -26,19 +26,19 @@ test('export client', async () => {
 
 test('import wvd', async () => {
   const wvd = await read('client.wvd');
-  const client = await WidevineClient.fromPacked(wvd, 'wvd');
+  const client = await WidevineDeviceCredentials.fromPacked(wvd, 'wvd');
   expect(client.id).toBeDefined();
   expect(client.key).toBeDefined();
   const keys = await fetchDecryptionKeysWithDefaults();
-  expect(keys.length).toBe(5);
+  expect(keys.size).toBe(5);
 });
 
 test('export wvd', async () => {
   const id = await read('device_client_id_blob');
   const key = await read('device_private_key');
-  const client = await WidevineClient.fromUnpacked(id, key);
+  const client = await WidevineDeviceCredentials.fromUnpacked(id, key);
   const wvd = await client.pack('wvd');
-  const wvdClient = await WidevineClient.fromPacked(wvd, 'wvd');
+  const wvdClient = await WidevineDeviceCredentials.fromPacked(wvd, 'wvd');
   const keys = await fetchDecryptionKeysWithDefaults(wvdClient);
-  expect(keys.length).toBe(5);
+  expect(keys.size).toBe(5);
 });

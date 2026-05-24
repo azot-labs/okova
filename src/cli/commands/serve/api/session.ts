@@ -7,15 +7,19 @@ import { zValidator } from '@hono/zod-validator';
 
 import {
   fromBuffer,
-  PlayReadyCdm,
+  MediaKeyMessageEvent,
+  PlayReady,
   requestMediaKeySystemAccess,
-  WidevineCdm,
+  setSupportedEngines,
+  Widevine,
 } from '../../../../lib';
-import { WidevineClient } from '../../../../lib/widevine/client';
-import { PlayReadyClient } from '../../../../lib/playready/client';
+import { WidevineDeviceCredentials } from '../../../../lib/widevine/device-credentials';
+import { PlayReadyDeviceCredentials } from '../../../../lib/playready/device-credentials';
 import { clients, config, sessions } from '../state';
 
 const app = new Hono();
+const SESSION_MESSAGE_TIMEOUT_MS = 5_000;
+const SESSION_UPDATE_SYNC_TIMEOUT_MS = 250;
 
 const secretKeyMiddleware = createMiddleware(async (c, next) => {
   // If no users are configured, allow public access
@@ -65,10 +69,10 @@ app.post(
       const isWvd = fromBuffer(clientData.subarray(0, 3)).toText() == 'WVD';
       const isPrd = fromBuffer(clientData.subarray(0, 3)).toText() == 'PRD';
       if (isWvd) {
-        const client = await WidevineClient.from({ wvd: clientData });
+        const client = await WidevineDeviceCredentials.from({ wvd: clientData });
         clients.set(clientName, client);
       } else if (isPrd) {
-        const client = await PlayReadyClient.from({ prd: clientData });
+        const client = await PlayReadyDeviceCredentials.from({ prd: clientData });
         clients.set(clientName, client);
       } else {
         return c.json({ error: 'Client is not a valid WVD or PRD file' }, 403);
@@ -78,10 +82,13 @@ app.post(
     const client = clients.get(clientName)!;
 
     const cdm =
-      client instanceof WidevineClient ? new WidevineCdm({ client }) : new PlayReadyCdm({ client });
+      client instanceof WidevineDeviceCredentials
+        ? new Widevine({ deviceCredentials: client })
+        : new PlayReady({ deviceCredentials: client });
 
+    setSupportedEngines([cdm]);
     const keySystemAccess = requestMediaKeySystemAccess(cdm.keySystem, []);
-    const mediaKeys = await keySystemAccess.createMediaKeys({ cdm });
+    const mediaKeys = await keySystemAccess.createMediaKeys();
 
     const sessionType = c.req.valid('json').sessionType as MediaKeySessionType | undefined;
     const session = mediaKeys.createSession(sessionType);
@@ -112,11 +119,47 @@ app.post(
     }
     const initDataType = c.req.valid('json').initDataType || 'cenc';
     const initData = Buffer.from(c.req.valid('json').initData, 'base64');
+    let rejectNextMessage: ((error: unknown) => void) | undefined;
+    const nextMessage = new Promise<MediaKeyMessageEvent>((resolve, reject) => {
+      let settled = false;
+      let timeout: ReturnType<typeof setTimeout>;
 
-    session.generateRequest(initDataType, initData);
-    const data = await session.waitForLicenseRequest();
-    const licenseRequest = Buffer.from(data).toString('base64');
-    return c.json({ licenseRequest });
+      const cleanup = () => {
+        clearTimeout(timeout);
+        session.removeEventListener('message', handler);
+      };
+
+      const fail = (error: unknown) => {
+        if (settled) return;
+        settled = true;
+        cleanup();
+        reject(error);
+      };
+
+      const handler = (event: Event) => {
+        if (settled) return;
+        settled = true;
+        cleanup();
+        resolve(event as MediaKeyMessageEvent);
+      };
+
+      session.addEventListener('message', handler);
+      timeout = setTimeout(() => {
+        fail(new Error(`Timed out after ${SESSION_MESSAGE_TIMEOUT_MS}ms waiting for a session message`));
+      }, SESSION_MESSAGE_TIMEOUT_MS);
+      rejectNextMessage = fail;
+    });
+
+    try {
+      await session.generateRequest(initDataType, initData);
+    } catch (error) {
+      rejectNextMessage?.(error);
+    }
+    const message = await nextMessage;
+    return c.json({
+      message: Buffer.from(new Uint8Array(message.message)).toString('base64'),
+      messageType: message.messageType,
+    });
   },
 );
 
@@ -133,7 +176,56 @@ app.post(
       return c.json({ error: 'Session not found. Unable to update.' }, 400);
     }
     const response = Buffer.from(c.req.valid('json').response, 'base64');
-    await session.update(response);
+    const outcome = {
+      hasKeyStatusesChange: false,
+      nextMessage: null as { message: ArrayBuffer; messageType: MediaKeyMessageType } | null,
+    };
+    const handleMessage = (event: Event) => {
+      outcome.nextMessage = event as MediaKeyMessageEvent;
+      settleSynchronization();
+    };
+    const handleKeyStatusesChange = () => {
+      outcome.hasKeyStatusesChange = true;
+      settleSynchronization();
+    };
+    let settleSynchronization = () => {};
+    const synchronization = new Promise<void>((resolve) => {
+      let settled = false;
+      const timeout = setTimeout(() => {
+        if (settled) return;
+        settled = true;
+        resolve();
+      }, SESSION_UPDATE_SYNC_TIMEOUT_MS);
+
+      settleSynchronization = () => {
+        if (settled) return;
+        settled = true;
+        clearTimeout(timeout);
+        resolve();
+      };
+    });
+
+    session.addEventListener('message', handleMessage);
+    session.addEventListener('keystatuseschange', handleKeyStatusesChange);
+    try {
+      await session.update(response);
+      await synchronization;
+    } finally {
+      session.removeEventListener('message', handleMessage);
+      session.removeEventListener('keystatuseschange', handleKeyStatusesChange);
+    }
+
+    if (outcome.nextMessage) {
+      return c.json({
+        message: Buffer.from(new Uint8Array(outcome.nextMessage.message)).toString('base64'),
+        messageType: outcome.nextMessage.messageType,
+      });
+    }
+
+    if (outcome.hasKeyStatusesChange || session.keys.size) {
+      return c.json({ keys: Object.fromEntries(session.keys) });
+    }
+
     return c.json({ success: true });
   },
 );
@@ -147,7 +239,7 @@ app.get('/:id/keys', zValidator('param', z.object({ id: z.string() })), async (c
     return c.json({ error: 'Session not found. Unable to get keys.' }, 400);
   }
   const keys = await session.waitForKeyStatusesChange();
-  return c.json(keys);
+  return c.json(Object.fromEntries(keys));
 });
 
 app.post('/:id/close', zValidator('param', z.object({ id: z.string() })), async (c) => {

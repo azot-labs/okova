@@ -1,8 +1,8 @@
 import { readFile } from 'node:fs/promises';
 import { expect, test } from 'vitest';
 import { fromBase64, toBufferSource } from '../src/lib';
-import { requestMediaKeySystemAccess } from '../src/lib/api';
-import { PlayReadyCdm } from '../src/lib/playready/cdm';
+import { requestMediaKeySystemAccess, setSupportedEngines } from '../src/lib/api';
+import { PlayReady } from '../src/lib/playready/engine';
 
 test('playready cdm', async () => {
   const url =
@@ -15,11 +15,12 @@ test('playready cdm', async () => {
   const clientPath = process.env.VITEST_PLAYREADY_CLIENT_PATH;
   if (!clientPath) return console.warn('PlayReady client not found. Skipping test');
   const clientData = await readFile(clientPath);
-  const client = await PlayReadyCdm.Client.from({ prd: clientData });
-  const cdm = new PlayReadyCdm({ client });
+  const client = await PlayReady.DeviceCredentials.from({ prd: clientData });
+  const cdm = new PlayReady({ deviceCredentials: client });
 
+  setSupportedEngines([cdm]);
   const keySystemAccess = requestMediaKeySystemAccess(cdm.keySystem, []);
-  const mediaKeys = await keySystemAccess.createMediaKeys({ cdm });
+  const mediaKeys = await keySystemAccess.createMediaKeys();
   const session = mediaKeys.createSession();
   session.generateRequest(initDataType, initData);
   const licenseRequest = await session.waitForLicenseRequest();
@@ -35,8 +36,6 @@ test('playready cdm', async () => {
   session.update(response);
   const keys = await session.waitForKeyStatusesChange();
 
-  expect(keys.length).toBe(1);
-  expect(keys[0]).toBeDefined();
-  expect(keys[0].keyId).toBe('6f651ae1dbe44434bcb4690d1564c41c');
-  expect(keys[0].key).toBe('88da852ae4fa2e1e36aeb2d5c94997b1');
+  expect(keys.size).toBe(1);
+  expect(keys.get('6f651ae1dbe44434bcb4690d1564c41c')).toBe('88da852ae4fa2e1e36aeb2d5c94997b1');
 });

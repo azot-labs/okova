@@ -1,11 +1,11 @@
 import { readFile } from 'node:fs/promises';
 import { expect, test, describe } from 'vitest';
 import { fromBase64 } from '../src/lib';
-import { requestMediaKeySystemAccess } from '../src/lib/api';
-import { WidevineCdm } from '../src/lib/widevine/cdm';
-import { Session as WidevineSession } from '../src/lib/widevine/session';
-import { PlayReadyCdm } from '../src/lib/playready/cdm';
-import { Session as PlayReadySession } from '../src/lib/playready/session';
+import { requestMediaKeySystemAccess, setSupportedEngines } from '../src/lib/api';
+import { Widevine } from '../src/lib/widevine/engine';
+import { WidevineSession } from '../src/lib/widevine/session';
+import { PlayReady } from '../src/lib/playready/engine';
+import { PlayReadySession } from '../src/lib/playready/session';
 
 describe('Widevine Session Resumability', () => {
   test('should pause and resume widevine session via CDM methods', async () => {
@@ -18,12 +18,13 @@ describe('Widevine Session Resumability', () => {
     if (!clientPath) return console.warn('Widevine client not found. Skipping test');
 
     const clientData = await readFile(clientPath);
-    const client = await WidevineCdm.Client.from({ wvd: clientData });
-    const cdm = new WidevineCdm({ client });
+    const client = await Widevine.DeviceCredentials.from({ wvd: clientData });
+    const cdm = new Widevine({ deviceCredentials: client });
 
     // Create and setup session
+    setSupportedEngines([cdm]);
     const keySystemAccess = requestMediaKeySystemAccess(cdm.keySystem, []);
-    const mediaKeys = await keySystemAccess.createMediaKeys({ cdm });
+    const mediaKeys = await keySystemAccess.createMediaKeys();
     const session = mediaKeys.createSession();
     session.generateRequest(initDataType, initData);
     const licenseRequest = await session.waitForLicenseRequest();
@@ -56,7 +57,7 @@ describe('Widevine Session Resumability', () => {
     if (!clientPath) return console.warn('Widevine client not found. Skipping test');
 
     const clientData = await readFile(clientPath);
-    const client = await WidevineCdm.Client.from({ wvd: clientData });
+    const client = await Widevine.DeviceCredentials.from({ wvd: clientData });
 
     // Create a session directly
     const originalSession = new WidevineSession('temporary', client);
@@ -84,7 +85,7 @@ describe('Widevine Session Resumability', () => {
     if (!clientPath) return console.warn('Widevine client not found. Skipping test');
 
     const clientData = await readFile(clientPath);
-    const client = await WidevineCdm.Client.from({ wvd: clientData });
+    const client = await Widevine.DeviceCredentials.from({ wvd: clientData });
 
     // Create session and generate request
     const originalSession = new WidevineSession('temporary', client);
@@ -111,12 +112,13 @@ describe('Widevine Session Resumability', () => {
     if (!clientPath) return console.warn('Widevine client not found. Skipping test');
 
     const clientData = await readFile(clientPath);
-    const client = await WidevineCdm.Client.from({ wvd: clientData });
-    const cdm = new WidevineCdm({ client });
+    const client = await Widevine.DeviceCredentials.from({ wvd: clientData });
+    const cdm = new Widevine({ deviceCredentials: client });
 
     // Create persistent session
+    setSupportedEngines([cdm]);
     const keySystemAccess = requestMediaKeySystemAccess(cdm.keySystem, []);
-    const mediaKeys = await keySystemAccess.createMediaKeys({ cdm });
+    const mediaKeys = await keySystemAccess.createMediaKeys();
     const session = mediaKeys.createSession('persistent-license');
 
     // Pause
@@ -137,12 +139,13 @@ describe('PlayReady Session Resumability', () => {
     if (!clientPath) return console.warn('PlayReady client not found. Skipping test');
 
     const clientData = await readFile(clientPath);
-    const client = await PlayReadyCdm.Client.from({ prd: clientData });
-    const cdm = new PlayReadyCdm({ client });
+    const client = await PlayReady.DeviceCredentials.from({ prd: clientData });
+    const cdm = new PlayReady({ deviceCredentials: client });
 
     // Create session
+    setSupportedEngines([cdm]);
     const keySystemAccess = requestMediaKeySystemAccess(cdm.keySystem, []);
-    const mediaKeys = await keySystemAccess.createMediaKeys({ cdm });
+    const mediaKeys = await keySystemAccess.createMediaKeys();
     const session = mediaKeys.createSession();
 
     // Get original session properties
@@ -173,7 +176,7 @@ describe('PlayReady Session Resumability', () => {
     if (!clientPath) return console.warn('PlayReady client not found. Skipping test');
 
     const clientData = await readFile(clientPath);
-    const client = await PlayReadyCdm.Client.from({ prd: clientData });
+    const client = await PlayReady.DeviceCredentials.from({ prd: clientData });
 
     // Create a session directly
     const originalSession = new PlayReadySession('temporary', client);
@@ -205,7 +208,7 @@ describe('PlayReady Session Resumability', () => {
     if (!clientPath) return console.warn('PlayReady client not found. Skipping test');
 
     const clientData = await readFile(clientPath);
-    const client = await PlayReadyCdm.Client.from({ prd: clientData });
+    const client = await PlayReady.DeviceCredentials.from({ prd: clientData });
 
     // Create session
     const originalSession = new PlayReadySession('temporary', client);
@@ -231,12 +234,13 @@ describe('PlayReady Session Resumability', () => {
     if (!clientPath) return console.warn('PlayReady client not found. Skipping test');
 
     const clientData = await readFile(clientPath);
-    const client = await PlayReadyCdm.Client.from({ prd: clientData });
-    const cdm = new PlayReadyCdm({ client });
+    const client = await PlayReady.DeviceCredentials.from({ prd: clientData });
+    const cdm = new PlayReady({ deviceCredentials: client });
 
     // Create persistent session
+    setSupportedEngines([cdm]);
     const keySystemAccess = requestMediaKeySystemAccess(cdm.keySystem, []);
-    const mediaKeys = await keySystemAccess.createMediaKeys({ cdm });
+    const mediaKeys = await keySystemAccess.createMediaKeys();
     const session = mediaKeys.createSession('persistent-license');
 
     // Pause
@@ -260,13 +264,13 @@ describe('Cross-system Resumability', () => {
 
     // Create Widevine session
     const widevineData = await readFile(widevinePath);
-    const widevineClient = await WidevineCdm.Client.from({ wvd: widevineData });
+    const widevineClient = await Widevine.DeviceCredentials.from({ wvd: widevineData });
     const widevineSession = new WidevineSession('temporary', widevineClient);
     const widevinePaused = widevineSession.pause();
 
     // Create PlayReady session
     const playreadyData = await readFile(playreadyPath);
-    const playreadyClient = await PlayReadyCdm.Client.from({
+    const playreadyClient = await PlayReady.DeviceCredentials.from({
       prd: playreadyData,
     });
     const playreadySession = new PlayReadySession('temporary', playreadyClient);

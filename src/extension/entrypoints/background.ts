@@ -1,17 +1,18 @@
 import { appStorage, Client, getRecentKeysForUrl } from '@/utils/storage';
 import type { KeyInfo } from '@/utils/storage';
 import {
-  Cdm,
   fromBase64,
   fromBuffer,
-  PlayReadyCdm,
+  type MediaKeysEngine,
+  PlayReady,
   requestMediaKeySystemAccess,
-  WidevineCdm,
+  setSupportedEngines,
+  Widevine,
 } from '@okova/lib';
 import { getMessageType } from '@okova/lib/widevine/message';
-import { WidevineClient } from '@okova/lib/widevine/client';
-import { PlayReadyClient } from '@okova/lib/playready/client';
-import { Key, Session } from '@okova/lib/api';
+import { WidevineDeviceCredentials } from '@okova/lib/widevine/device-credentials';
+import { PlayReadyDeviceCredentials } from '@okova/lib/playready/device-credentials';
+import { Session } from '@okova/lib/api';
 
 export default defineBackground({
   type: 'module',
@@ -21,7 +22,7 @@ export default defineBackground({
     });
 
     const state: {
-      cdm: Cdm | null;
+      cdm: MediaKeysEngine | null;
       client: Client | null;
       sessions: Map<string, Session>;
       events: Map<string, MediaKeyMessageEvent[]>;
@@ -48,10 +49,10 @@ export default defineBackground({
     const loadCdm = async () => {
       const client = await loadClient();
       if (!client) return null;
-      if (client instanceof WidevineClient) {
-        return new WidevineCdm({ client });
-      } else if (client instanceof PlayReadyClient) {
-        return new PlayReadyCdm({ client });
+      if (client instanceof WidevineDeviceCredentials) {
+        return new Widevine({ deviceCredentials: client });
+      } else if (client instanceof PlayReadyDeviceCredentials) {
+        return new PlayReady({ deviceCredentials: client });
       } else {
         return null;
       }
@@ -193,8 +194,9 @@ export default defineBackground({
           return;
         }
 
+        setSupportedEngines([cdm]);
         const keySystemAccess = requestMediaKeySystemAccess(cdm.keySystem, []);
-        const mediaKeys = await keySystemAccess.createMediaKeys({ cdm });
+        const mediaKeys = await keySystemAccess.createMediaKeys();
 
         if (message.action === 'generateRequest') {
           const { initDataType, initData } = message;
@@ -232,7 +234,7 @@ export default defineBackground({
           const { initData } = message;
 
           let isServiceCertificate = false;
-          if (cdm instanceof WidevineCdm) {
+          if (cdm instanceof Widevine) {
             console.log(`[okova] Checking for service certificate`);
             const type = getMessageType(parseBinary(message.message));
             const serviceCertificateMessageType = 5;
@@ -261,18 +263,16 @@ export default defineBackground({
             const keys = await session?.waitForKeyStatusesChange();
             console.log(keys);
 
-            const toKey = (key: Key) => {
-              return {
-                id: key.keyId,
-                value: key.key,
-                url: message.url,
-                mpd: message.mpd,
-                pssh: message.initData,
-                createdAt: new Date().getTime(),
-              };
-            };
-
-            const results = keys?.map((key) => toKey(key)) ?? [];
+            const results = keys
+              ? Array.from(keys, ([id, value]) => ({
+                  id,
+                  value,
+                  url: message.url,
+                  mpd: message.mpd,
+                  pssh: message.initData,
+                  createdAt: new Date().getTime(),
+                }))
+              : [];
             console.log('[okova] Received keys', results);
             await setRecentKeys(results);
             await appStorage.allKeys.add(...results);

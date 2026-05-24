@@ -8,8 +8,8 @@ import { Cell } from '../components/cell';
 import { List } from '../components/list';
 import { Section, SectionFooter } from '../components/section';
 import { CellImportClient } from '../components/cell-import-client';
-import { WidevineClient } from '../../../../lib/widevine/client';
-import { PlayReadyClient } from '../../../../lib/playready/client';
+import { WidevineDeviceCredentials } from '../../../../lib/widevine/device-credentials';
+import { PlayReadyDeviceCredentials } from '../../../../lib/playready/device-credentials';
 import { ClientSettings } from './client-settings';
 import { saveFile } from '../utils/file';
 
@@ -29,7 +29,7 @@ export const Clients = () => {
   const exportClient = async (client: Client) => {
     const data = Uint8Array.from(await client.pack());
     const name = `${client.getName()}`.replaceAll(' ', '-').toLowerCase();
-    const filename = `${name}.${client instanceof WidevineClient ? 'wvd' : 'prd'}`;
+    const filename = `${name}.${client instanceof WidevineDeviceCredentials ? 'wvd' : 'prd'}`;
     await saveFile(data, filename);
   };
 
@@ -44,8 +44,8 @@ export const Clients = () => {
   };
 
   const getClientLevel = (client: Client) => {
-    if (client instanceof WidevineClient) return `Widevine L${client.securityLevel}`;
-    if (client instanceof PlayReadyClient) return `PlayReady SL${client.securityLevel}`;
+    if (client instanceof WidevineDeviceCredentials) return `Widevine L${client.securityLevel}`;
+    if (client instanceof PlayReadyDeviceCredentials) return `PlayReady SL${client.securityLevel}`;
     return 'Unknown';
   };
 
