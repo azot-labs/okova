@@ -1,6 +1,6 @@
 import { storage } from '#imports';
-import { WidevineClient } from '../../../lib/widevine/client';
-import { PlayReadyClient } from '../../../lib/playready/client';
+import { WidevineDeviceCredentials } from '../../../lib/widevine/device-credentials';
+import { PlayReadyDeviceCredentials } from '../../../lib/playready/device-credentials';
 import { fromBase64, fromBuffer } from '../../../lib';
 import { asJson } from './utils';
 
@@ -51,22 +51,22 @@ export type Settings = {
 
 export type ThemeMode = 'light' | 'dark' | 'auto';
 
-export type Client = WidevineClient | PlayReadyClient;
+export type Client = WidevineDeviceCredentials | PlayReadyDeviceCredentials;
 export type ClientInfo = { type: 'wvd'; data: string } | { type: 'prd'; data: string };
 
 const fromInfoToClient = async (info: ClientInfo) => {
   const data = fromBase64(info.data).toBuffer();
   if (info.type === 'prd') {
-    return await PlayReadyClient.from({ prd: data });
+    return await PlayReadyDeviceCredentials.from({ prd: data });
   } else if (info.type === 'wvd') {
-    return await WidevineClient.from({ wvd: data });
+    return await WidevineDeviceCredentials.from({ wvd: data });
   } else {
     return null;
   }
 };
 
 const fromClientToInfo = async (client: Client): Promise<ClientInfo> => {
-  const type = client instanceof PlayReadyClient ? 'prd' : 'wvd';
+  const type = client instanceof PlayReadyDeviceCredentials ? 'prd' : 'wvd';
   const data = fromBuffer(await client.pack()).toBase64();
   return { type, data };
 };
@@ -145,7 +145,7 @@ export const appStorage = {
         if (!clientInfo) return null;
         if (typeof clientInfo === 'string') {
           // Deprecated
-          const client = await WidevineClient.from({
+          const client = await WidevineDeviceCredentials.from({
             wvd: fromBase64(clientInfo).toBuffer(),
           });
           return client;
@@ -168,7 +168,7 @@ export const appStorage = {
       for (const value of values) {
         if (typeof value === 'string') {
           // Deprecated
-          const client = await WidevineClient.fromPacked(fromBase64(value).toBuffer());
+          const client = await WidevineDeviceCredentials.fromPacked(fromBase64(value).toBuffer());
           clients.push(client);
         } else {
           const client = await fromInfoToClient(value);

@@ -6,6 +6,25 @@ import {
 } from '../crypto/common';
 import { DrmCertificate, SignedDrmCertificate, SignedMessage } from './proto';
 
+const areUint8ArraysEqual = (a: Uint8Array, b: Uint8Array) =>
+  a.length === b.length && a.every((value, index) => value === b[index]);
+
+const tryDecodeExactly = <T extends object>(
+  data: Uint8Array,
+  codec: {
+    decode(buffer: Uint8Array): T;
+    encode(message: T): { finish(): Uint8Array };
+  },
+) => {
+  try {
+    const decoded = codec.decode(data);
+    const encoded = codec.encode(decoded).finish();
+    return areUint8ArraysEqual(encoded, data) ? decoded : null;
+  } catch {
+    return null;
+  }
+};
+
 export const getRootCertificate = () => {
   const signedDrmCertificateBase64 = `
         CpwDCAASAQAY3ZSIiwUijgMwggGKAoIBgQC0/jnDZZAD2zwRlwnoaM3yw16b8udNI7EQ24dl39z7nzWgVwNTTPZtNX2meNuzNtI/nECplSZy
@@ -60,25 +79,19 @@ export const verifyCertificate = async (signedDrmCertificate: SignedDrmCertifica
 
 export const parseCertificate = async (data: Uint8Array | string) => {
   const certificate = ArrayBuffer.isView(data) ? data : fromBase64(data).toBuffer();
-  let signedDrmCertificate: SignedDrmCertificate;
-  let signedMessage: SignedMessage;
-  try {
-    signedMessage = SignedMessage.decode(certificate);
-  } finally {
+
+  const signedMessage = tryDecodeExactly(certificate, SignedMessage);
+  const signedDrmCertificate =
+    (signedMessage && tryDecodeExactly(signedMessage.msg, SignedDrmCertificate)) ||
+    tryDecodeExactly(certificate, SignedDrmCertificate);
+  if (!signedDrmCertificate) {
+    throw new Error('Failed to parse service certificate as SignedDrmCertificate');
   }
-  if (signedMessage?.type) {
-    try {
-      signedDrmCertificate = SignedDrmCertificate.decode(signedMessage.msg);
-    } catch (e) {
-      throw new Error('Failed to parse service certificate');
-    }
-  } else {
-    try {
-      signedDrmCertificate = SignedDrmCertificate.decode(certificate);
-    } catch (e) {
-      throw new Error('Failed to parse service certificate');
-    }
+
+  const drmCertificate = tryDecodeExactly(signedDrmCertificate.drmCertificate, DrmCertificate);
+  if (!drmCertificate) {
+    throw new Error('Failed to parse service certificate payload as DrmCertificate');
   }
-  const drmCertificate = DrmCertificate.decode(signedDrmCertificate.drmCertificate);
+
   return { signedDrmCertificate, drmCertificate };
 };

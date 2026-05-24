@@ -1,7 +1,7 @@
 import { Component } from 'solid-js';
 import { TbOutlineShieldPlus as TbShieldPlus } from 'solid-icons/tb';
-import { WidevineClient } from '@okova/lib/widevine/client';
-import { PlayReadyClient } from '@okova/lib/playready/client';
+import { WidevineDeviceCredentials } from '@okova/lib/widevine/device-credentials';
+import { PlayReadyDeviceCredentials } from '@okova/lib/playready/device-credentials';
 import { Cell } from './cell';
 import { useActiveClient, useClients } from '../utils/state';
 import { appStorage, Client } from '@/utils/storage';
@@ -25,9 +25,9 @@ export const CellImportClient: Component<{
     const id = await findFile('client');
     const key = await findFile('key');
     if (wvd) {
-      return WidevineClient.from({ wvd });
+      return WidevineDeviceCredentials.from({ wvd });
     } else if (id && key) {
-      return WidevineClient.from({ id, key });
+      return WidevineDeviceCredentials.from({ id, key });
     }
 
     // PlayReady
@@ -35,9 +35,9 @@ export const CellImportClient: Component<{
     const bgroupcert = await findFile('bgroupcert');
     const zgpriv = await findFile('zgpriv');
     if (prd) {
-      return PlayReadyClient.from({ prd });
+      return PlayReadyDeviceCredentials.from({ prd });
     } else if (bgroupcert && zgpriv) {
-      return PlayReadyClient.from({
+      return PlayReadyDeviceCredentials.from({
         groupKey: zgpriv,
         groupCertificate: bgroupcert,
       });

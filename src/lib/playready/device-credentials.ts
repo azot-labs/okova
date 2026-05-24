@@ -1,12 +1,12 @@
 import { equalBytes } from '@noble/curves/utils.js';
 import { EccKey } from '../crypto/ecc-key';
 import { getRandomBytes } from '../utils';
-import { Certificate, CertificateChain } from './bcert';
+import { BCertCertType, Certificate, CertificateChain } from './bcert';
 import { InvalidCertificateChain } from './exceptions';
 import { PRD_MAGIC, PRD3 } from './prd';
 
-export class PlayReadyClient {
-  groupKey?: EccKey;
+export class PlayReadyDeviceCredentials {
+  groupKey: EccKey;
   encryptionKey: EccKey;
   signingKey: EccKey;
 
@@ -15,12 +15,12 @@ export class PlayReadyClient {
   securityLevel: number;
 
   constructor(data: {
-    groupKey?: Uint8Array;
+    groupKey: Uint8Array;
     encryptionKey: Uint8Array;
     signingKey: Uint8Array;
     groupCertificate: Uint8Array;
   }) {
-    this.groupKey = EccKey.from(data.groupKey!);
+    this.groupKey = EccKey.from(data.groupKey);
     this.encryptionKey = EccKey.from(data.encryptionKey);
     this.signingKey = EccKey.from(data.signingKey);
     this.groupCertificate = CertificateChain.from(data.groupCertificate);
@@ -43,7 +43,7 @@ export class PlayReadyClient {
       const encryptionKey = parsed.encryption_key;
       const signingKey = parsed.signing_key;
       const groupCertificate = parsed.group_certificate;
-      return new PlayReadyClient({
+      return new PlayReadyDeviceCredentials({
         groupKey,
         encryptionKey,
         signingKey,
@@ -56,11 +56,19 @@ export class PlayReadyClient {
         : EccKey.generate();
       const signingKey = payload.signingKey ? EccKey.from(payload.signingKey) : EccKey.generate();
       const certificateChain = CertificateChain.from(payload.groupCertificate);
-      const issuerKey = certificateChain.get(0).getIssuerKey();
-      const groupKeyBytes = groupKey.publicBytes();
-      if (issuerKey && !equalBytes(issuerKey, groupKeyBytes)) {
+      if (certificateChain.get(0).getType() === BCertCertType.DEVICE) {
+        throw new InvalidCertificateChain('Device has already been provisioned');
+      }
+      if (certificateChain.get(0).getType() !== BCertCertType.ISSUER) {
+        throw new InvalidCertificateChain(
+          'Leaf-most certificate must be of type ISSUER to issue certificate of type DEVICE',
+        );
+      }
+      if (!certificateChain.get(0).containsPublicKey(groupKey)) {
         throw new InvalidCertificateChain('Group key does not match this certificate');
       }
+      await certificateChain.verify({ checkExpiry: true, certType: BCertCertType.ISSUER });
+
       const newCertificate = await Certificate.newLeafCert({
         certId: getRandomBytes(16),
         securityLevel: certificateChain.getSecurityLevel(),
@@ -71,8 +79,8 @@ export class PlayReadyClient {
         parent: certificateChain,
       });
       certificateChain.prepend(newCertificate);
-      await certificateChain.verify();
-      return new PlayReadyClient({
+      await certificateChain.verify({ checkExpiry: true, certType: BCertCertType.DEVICE });
+      return new PlayReadyDeviceCredentials({
         groupKey: groupKey.dumps(),
         encryptionKey: encryptionKey.dumps(),
         signingKey: signingKey.dumps(),
@@ -83,13 +91,7 @@ export class PlayReadyClient {
 
   getName() {
     const name = `${this.groupCertificate.getName()}_sl${this.securityLevel}`;
-    return name
-      .split('')
-      .filter((char) => char.match(/[a-z0-9_-]/))
-      .join('')
-      .trim()
-      .toLowerCase()
-      .replaceAll(' ', '_');
+    return name.toLowerCase().replaceAll(' ', '_').replace(/[^a-z0-9_-]/g, '');
   }
 
   get filename() {
@@ -104,7 +106,7 @@ export class PlayReadyClient {
     return PRD3.build({
       signature: PRD_MAGIC,
       version: 3,
-      group_key: this.groupKey!.dumps(),
+      group_key: this.groupKey.dumps(),
       encryption_key: this.encryptionKey.dumps(),
       signing_key: this.signingKey.dumps(),
       group_certificate_length: this.groupCertificate.dumps().length,
@@ -113,10 +115,11 @@ export class PlayReadyClient {
   }
 
   unpack() {
-    this.groupCertificate.remove(0);
+    const groupCertificate = CertificateChain.from(this.groupCertificate.dumps());
+    groupCertificate.remove(0);
     return {
-      'zgpriv.dat': this.groupKey!.dumps(true),
-      'bgroupcert.dat': this.groupCertificate.dumps(),
+      'zgpriv.dat': this.groupKey.dumps(true),
+      'bgroupcert.dat': groupCertificate.dumps(),
     };
   }
 }

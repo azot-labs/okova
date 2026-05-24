@@ -1,7 +1,7 @@
 import { b } from 'barsic';
 import { ecc256Sign, ecc256Verify } from '../crypto/common';
 import { EccKey } from '../crypto/ecc-key';
-import { fromBuffer, fromHex, fromText } from '../utils';
+import { compareArrays, fromBuffer, fromHex, fromText } from '../utils';
 import { InvalidCertificate, InvalidCertificateChain } from './exceptions';
 
 export const BCertCertType = {
@@ -65,6 +65,7 @@ export const BCertKeyUsage = {
   SIGN: 0x00000001,
   ENCRYPT_KEY: 0x00000002,
   ISSUER_DEVICE: 0x00000006,
+  SIGN_RESPONSE: 0x00000014,
 } as const;
 
 export const BCertFeatures = {
@@ -167,9 +168,13 @@ const ExtDataSignature = b.object({
   signature: b.bytes((ctx) => ctx.signature_size),
 });
 
-const ExtDataContainer = b.object({
+export const ExtDataRecordSet = b.object({
   record_count: b.uint32(),
   records: b.array(DataRecord, (ctx) => ctx.record_count),
+});
+
+const ExtDataContainer = b.object({
+  record: ExtDataRecordSet,
   signature: ExtDataSignature,
 });
 
@@ -405,6 +410,13 @@ export class Certificate {
       return basicInfo.attribute.security_level;
   }
 
+  getKeyByUsage(keyUsage: number): Uint8Array | undefined {
+    const keyInfo = this.getAttribute(BCertObjType.KEY)?.attribute;
+    if (!keyInfo || !('cert_keys' in keyInfo)) return;
+
+    return keyInfo.cert_keys.find((key) => key.usages.includes(keyUsage))?.key;
+  }
+
   private static _unpad(name: Uint8Array) {
     return fromBuffer(name)
       .toText()
@@ -419,15 +431,65 @@ export class Certificate {
       : undefined;
   }
 
+  getType() {
+    const basicInfo = this.getAttribute(BCertObjType.BASIC);
+    if (basicInfo && 'cert_type' in basicInfo.attribute) {
+      return basicInfo.attribute.cert_type;
+    }
+  }
+
+  getExpirationDate() {
+    const basicInfo = this.getAttribute(BCertObjType.BASIC);
+    if (basicInfo && 'expiration_date' in basicInfo.attribute) {
+      return basicInfo.attribute.expiration_date;
+    }
+  }
+
+  getSignatureKey(): Uint8Array | undefined {
+    const signatureObject = this.getAttribute(BCertObjType.SIGNATURE)?.attribute;
+    if (!signatureObject || !('signature_key' in signatureObject)) return;
+    return signatureObject.signature_key as Uint8Array;
+  }
+
   getIssuerKey(): Uint8Array | undefined {
+    return this.getSignatureKey();
+  }
+
+  containsPublicKey(publicKey: Uint8Array | EccKey) {
+    const rawPublicKey = publicKey instanceof EccKey ? publicKey.publicBytes() : publicKey;
     const keyInfo = this.getAttribute(BCertObjType.KEY)?.attribute;
-    if (!keyInfo || !('cert_keys' in keyInfo)) return;
-    return keyInfo?.cert_keys.find((key) => key.usages.includes(BCertKeyUsage.ISSUER_DEVICE))?.key;
+    if (!keyInfo || !('cert_keys' in keyInfo)) return false;
+
+    return keyInfo.cert_keys.some((key) => compareArrays(key.key, rawPublicKey));
   }
 
   dumps = (): Uint8Array => BCert.build(this.parsed);
 
-  async verify(publicKey: Uint8Array, index: number): Promise<Uint8Array | undefined> {
+  async #verifyExtDataSignature(index: number) {
+    const signKeyObject = this.getAttribute(BCertObjType.EXTDATASIGNKEY)?.attribute;
+    if (!signKeyObject || !('key' in signKeyObject)) {
+      throw new InvalidCertificate(`No extdata sign key object in certificate ${index}`);
+    }
+
+    const extDataObject = this.getAttribute(BCertObjType.EXTDATACONTAINER)?.attribute;
+    if (!extDataObject || !('record' in extDataObject) || !('signature' in extDataObject)) {
+      throw new InvalidCertificate(`No extdata container in certificate ${index}`);
+    }
+
+    const uncompressedPublicKey = new Uint8Array(65);
+    uncompressedPublicKey[0] = 0x04;
+    uncompressedPublicKey.set(signKeyObject.key as Uint8Array, 1);
+
+    const signPayload = ExtDataRecordSet.build(extDataObject.record);
+    const signature = extDataObject.signature.signature as Uint8Array;
+    const isValid = await ecc256Verify(uncompressedPublicKey, signPayload, signature);
+
+    if (!isValid) {
+      throw new InvalidCertificate(`Signature of certificate extdata ${index} is not authentic`);
+    }
+  }
+
+  async verify(publicKey: Uint8Array, index: number): Promise<void> {
     const signatureObject = this.getAttribute(BCertObjType.SIGNATURE);
 
     if (
@@ -456,9 +518,14 @@ export class Certificate {
       throw new InvalidCertificate(`Signature of certificate ${index} is not authentic`);
     }
 
-    const issuerKey = this.getIssuerKey();
-
-    return issuerKey;
+    const basicInfo = this.getAttribute(BCertObjType.BASIC)?.attribute;
+    if (
+      basicInfo &&
+      'flags' in basicInfo &&
+      (basicInfo.flags & BCertFlag.EXTDATA_PRESENT) === BCertFlag.EXTDATA_PRESENT
+    ) {
+      await this.#verifyExtDataSignature(index);
+    }
   }
 }
 
@@ -493,16 +560,37 @@ export class CertificateChain {
     return this.get(0).getName() as string;
   }
 
-  async verify() {
-    let issuerKey: Uint8Array | undefined = this.ECC256MSBCertRootIssuerPubKey;
-
+  async verify(options: { checkExpiry?: boolean; certType?: TBCertCertType } = {}) {
     try {
-      for (let i = this.count() - 1; i >= 0; i--) {
-        const certificate = this.get(i);
-        issuerKey = await certificate.verify(issuerKey!, i);
+      if (this.count() < 1 || this.count() > 6) {
+        throw new InvalidCertificateChain('An invalid maximum license chain depth');
+      }
 
-        if (!issuerKey && i !== 0) {
-          throw new InvalidCertificate(`Certificate ${i} is not valid`);
+      for (let i = 0; i < this.count(); i++) {
+        const certificate = this.get(i);
+        if (i === 0 && options.certType !== undefined && certificate.getType() !== options.certType) {
+          throw new InvalidCertificateChain('Invalid certificate type');
+        }
+
+        await certificate.verify(certificate.getSignatureKey()!, i);
+
+        if (
+          options.checkExpiry &&
+          certificate.getExpirationDate() !== undefined &&
+          Date.now() / 1000 >= certificate.getExpirationDate()!
+        ) {
+          throw new InvalidCertificateChain(`Certificate ${i} has expired`);
+        }
+
+        if (i > 0 && !CertificateChain.#verifyAdjacentCertificates(this.get(i - 1), certificate)) {
+          throw new InvalidCertificateChain('Adjacent certificate validation failed');
+        }
+
+        if (
+          i === this.count() - 1 &&
+          !compareArrays(certificate.getSignatureKey()!, this.ECC256MSBCertRootIssuerPubKey)
+        ) {
+          throw new InvalidCertificateChain('Root certificate issuer mismatch');
         }
       }
     } catch (e) {
@@ -513,6 +601,19 @@ export class CertificateChain {
     }
 
     return true;
+  }
+
+  static #verifyAdjacentCertificates(childCert: Certificate, parentCert: Certificate) {
+    if (parentCert.getType() !== BCertCertType.ISSUER) {
+      return false;
+    }
+
+    const issuerKey = childCert.getSignatureKey();
+    if (!issuerKey) {
+      return false;
+    }
+
+    return parentCert.containsPublicKey(issuerKey);
   }
 
   append(bcert: Certificate) {

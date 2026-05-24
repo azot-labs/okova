@@ -1,10 +1,10 @@
 import { readFile } from 'node:fs/promises';
-import { WidevineClient } from '../../../lib/widevine/client';
-import { PlayReadyClient } from '../../../lib/playready/client';
+import { WidevineDeviceCredentials } from '../../../lib/widevine/device-credentials';
+import { PlayReadyDeviceCredentials } from '../../../lib/playready/device-credentials';
 import { Session } from '../../../lib';
 
 export const sessions = new Map<string, Session>();
-export const clients = new Map<string, WidevineClient | PlayReadyClient>();
+export const clients = new Map<string, WidevineDeviceCredentials | PlayReadyDeviceCredentials>();
 
 type Config = {
   host: string;

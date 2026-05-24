@@ -1,7 +1,7 @@
 import { readdir, readFile, stat } from 'node:fs/promises';
 import { join } from 'node:path';
-import { WidevineClient } from '../lib/widevine/client';
-import { PlayReadyClient } from '../lib/playready/client';
+import { WidevineDeviceCredentials } from '../lib/widevine/device-credentials';
+import { PlayReadyDeviceCredentials } from '../lib/playready/device-credentials';
 
 export const importClient = async (input: string, output?: string) => {
   const inputStat = await stat(input);
@@ -33,20 +33,20 @@ export const importClient = async (input: string, output?: string) => {
     if (isWidevine) {
       if (importForUnpack && wvdFile) {
         const wvd = await readFile(join(input, wvdFile));
-        return await WidevineClient.from({ wvd });
+        return await WidevineDeviceCredentials.from({ wvd });
       } else {
         const id = await readFile(join(input, widevineIdFile!));
         const key = await readFile(join(input, widevineKeyFile!));
-        return WidevineClient.from({ id, key });
+        return WidevineDeviceCredentials.from({ id, key });
       }
     } else if (isPlayReady) {
       if (importForUnpack && prdFile) {
         const prd = await readFile(join(input, prdFile));
-        return await PlayReadyClient.from({ prd });
+        return await PlayReadyDeviceCredentials.from({ prd });
       } else {
         const certificate = await readFile(join(input, playreadyCertificateFile!));
         const key = await readFile(join(input, playreadyKeyFile!));
-        return PlayReadyClient.from({
+        return PlayReadyDeviceCredentials.from({
           groupCertificate: certificate,
           groupKey: key,
         });
@@ -57,10 +57,10 @@ export const importClient = async (input: string, output?: string) => {
     }
   } else if (input.endsWith('.wvd')) {
     const wvd = await readFile(input);
-    return WidevineClient.from({ wvd });
+    return await WidevineDeviceCredentials.from({ wvd });
   } else if (input.endsWith('.prd')) {
     const prd = await readFile(input);
-    return PlayReadyClient.from({ prd });
+    return await PlayReadyDeviceCredentials.from({ prd });
   } else {
     console.log(`Unable to find client files in ${input}`);
     process.exit(1);

@@ -1,6 +1,51 @@
-import { fromBuffer } from '../utils';
+import { fromBase64, fromBuffer } from '../utils';
 import { decryptWithAesCbc, importAesCbcKeyForDecrypt } from '../crypto/common';
 import { License } from './proto';
+
+const ZERO_KEY_ID = new Uint8Array(16);
+
+const decimalStringToBytes = (value: string) => {
+  let remaining = BigInt(value);
+  const bytes = new Uint8Array(16);
+  for (let index = 15; index >= 0; index--) {
+    bytes[index] = Number(remaining & 0xffn);
+    remaining >>= 8n;
+  }
+  return bytes;
+};
+
+const normalizeKeyId = (kid?: Uint8Array | string | null) => {
+  let bytes =
+    typeof kid === 'string' ? fromBase64(kid).toBuffer() : kid ? new Uint8Array(kid) : ZERO_KEY_ID;
+  if (!bytes.length) bytes = ZERO_KEY_ID;
+
+  const text = fromBuffer(bytes).toText();
+  if (/^\d+$/.test(text)) {
+    return fromBuffer(decimalStringToBytes(text)).toHex();
+  }
+
+  if (bytes.length === 32 && /^[0-9a-f]+$/i.test(text)) {
+    return text.toLowerCase();
+  }
+
+  if (bytes.length < 16) {
+    const padded = new Uint8Array(16);
+    padded.set(bytes);
+    bytes = padded;
+  }
+
+  return fromBuffer(bytes.subarray(0, 16)).toHex();
+};
+
+const getPermissions = (container: License.IKeyContainer) => {
+  if (container.type !== License.KeyContainer.KeyType.OPERATOR_SESSION) return [];
+  const permissions = container.operatorSessionKeyPermissions;
+  if (!permissions) return [];
+
+  return Object.entries(permissions)
+    .filter(([, value]) => value === true)
+    .map(([name]) => name);
+};
 
 export class Key {
   id: string;
@@ -44,7 +89,7 @@ export class Key {
       decryptionKey,
       container.iv as BufferSource,
     );
-    const id = container.id ? fromBuffer(container.id).toHex() : 'UNKNOWN';
+    const id = normalizeKeyId(container.id);
     const value = fromBuffer(keyValue).toHex();
     const type = License.KeyContainer.KeyType[container.type!];
     return new Key(
@@ -53,7 +98,7 @@ export class Key {
       type,
       String(container.level),
       container.trackLabel as string,
-      container.operatorSessionKeyPermissions as string[],
+      getPermissions(container),
     );
   }
 }

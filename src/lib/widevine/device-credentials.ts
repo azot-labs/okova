@@ -16,7 +16,7 @@ import {
 } from './proto';
 import { buildWvd, parseWvd, WVD_DEVICE_TYPES } from './wvd';
 import { importCertificateKey } from './certificate';
-import { Session, SessionType } from './session';
+import { requestMediaKeySystemAccess as requestAccess, setSupportedEngines } from '../api';
 import { fromBase64, fromBuffer, fromText } from '../utils';
 
 export const CLIENT_TYPE = { android: 'android', chrome: 'chrome' } as const;
@@ -29,7 +29,34 @@ const types = new Map<number, ClientType>([
   [WVD_DEVICE_TYPES.chrome, CLIENT_TYPE.chrome],
 ]);
 
-export class WidevineClient {
+const isSecurityLevel = (value: unknown): value is SecurityLevel =>
+  value === 1 || value === 2 || value === 3;
+
+const areUint8ArraysEqual = (a: Uint8Array, b: Uint8Array) =>
+  a.length === b.length && a.every((value, index) => value === b[index]);
+
+const decodeExactly = <T extends object>(
+  data: Uint8Array,
+  codec: {
+    decode(buffer: Uint8Array): T;
+    encode(message: T): { finish(): Uint8Array };
+  },
+  label: string,
+) => {
+  try {
+    const decoded = codec.decode(data);
+    const encoded = codec.encode(decoded).finish();
+    if (!areUint8ArraysEqual(encoded, data)) {
+      throw new Error(`${label} did not parse exactly`);
+    }
+    return decoded;
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    throw new Error(`Invalid ${label}: ${message}`);
+  }
+};
+
+export class WidevineDeviceCredentials {
   id: ClientIdentification;
   type: ClientType;
   securityLevel: SecurityLevel;
@@ -43,9 +70,9 @@ export class WidevineClient {
 
   static async from(payload: { wvd: Uint8Array } | { id: Uint8Array; key: Uint8Array }) {
     if ('wvd' in payload) {
-      return await WidevineClient.fromPacked(payload.wvd);
+      return await WidevineDeviceCredentials.fromPacked(payload.wvd);
     } else {
-      return await WidevineClient.fromUnpacked(payload.id, payload.key);
+      return await WidevineDeviceCredentials.fromUnpacked(payload.id, payload.key);
     }
   }
 
@@ -53,26 +80,31 @@ export class WidevineClient {
     const isWvd = fromBuffer(data.slice(0, 3)).toText() == 'WVD';
     if (format === 'wvd' || isWvd) {
       const parsed = parseWvd(data);
-      const pcks1 = `-----BEGIN RSA PRIVATE KEY-----\n${fromBuffer(parsed.privateKey).toBase64()}\n-----END RSA PRIVATE KEY-----`;
-      const key = fromText(pcks1).toBuffer();
       const type = types.get(parsed.deviceType);
-      const securityLevel = parsed.securityLevel as SecurityLevel;
-      const client = new WidevineClient(parsed.clientId, type, securityLevel);
-      await client.importKey(key);
-      return client;
+      if (!type) {
+        throw new Error(`Unsupported device type: ${parsed.deviceType}`);
+      }
+      if (!isSecurityLevel(parsed.securityLevel)) {
+        throw new Error(`Unsupported security level: ${parsed.securityLevel}`);
+      }
+      const securityLevel = parsed.securityLevel;
+      const pkcs1 = `-----BEGIN RSA PRIVATE KEY-----\n${fromBuffer(parsed.privateKey).toBase64()}\n-----END RSA PRIVATE KEY-----`;
+      const deviceCredentials = new WidevineDeviceCredentials(parsed.clientId, type, securityLevel);
+      await deviceCredentials.importKey(pkcs1);
+      return deviceCredentials;
     } else {
       throw new Error('Unsupported format');
     }
   }
 
   static async fromUnpacked(id: Uint8Array, key: Uint8Array, vmp?: Uint8Array) {
-    const client = new WidevineClient(id);
+    const deviceCredentials = new WidevineDeviceCredentials(id);
     if (vmp) {
-      client.vmp = FileHashes.decode(vmp);
-      client.id.vmpData = vmp;
+      deviceCredentials.vmp = decodeExactly(vmp, FileHashes, 'Widevine VMP data');
+      deviceCredentials.id.vmpData = vmp;
     }
-    await client.importKey(key);
-    return client;
+    await deviceCredentials.importKey(key);
+    return deviceCredentials;
   }
 
   get key() {
@@ -85,11 +117,22 @@ export class WidevineClient {
     type: ClientType = CLIENT_TYPE.android,
     securityLevel: SecurityLevel = 3,
   ) {
-    this.id = ArrayBuffer.isView(id) ? ClientIdentification.decode(id) : id;
-    this.signedDrmCertificate = SignedDrmCertificate.decode(this.id.token);
-    this.drmCertificate = DrmCertificate.decode(this.signedDrmCertificate.drmCertificate);
+    this.id =
+      ArrayBuffer.isView(id) ? decodeExactly(id, ClientIdentification, 'Widevine client ID') : id;
+    this.signedDrmCertificate = decodeExactly(
+      this.id.token,
+      SignedDrmCertificate,
+      'Widevine signed DRM certificate',
+    );
+    this.drmCertificate = decodeExactly(
+      this.signedDrmCertificate.drmCertificate,
+      DrmCertificate,
+      'Widevine DRM certificate',
+    );
     this.systemId = this.drmCertificate.systemId;
-    this.vmp = this.id.vmpData ? FileHashes.decode(this.id.vmpData) : null;
+    this.vmp = this.id.vmpData
+      ? decodeExactly(this.id.vmpData, FileHashes, 'Widevine VMP data')
+      : null;
     this.type = type;
     this.securityLevel = securityLevel;
     const clientInfo = this.id.clientInfo;
@@ -128,7 +171,11 @@ export class WidevineClient {
         .slice(1, -1)
         .join('\n');
       const keyDerBinary = fromBase64(keyDer).toBuffer();
-      const [type] = types.entries().find(([, type]) => type === this.type)!;
+      const entry = types.entries().find(([, type]) => type === this.type);
+      if (!entry) {
+        throw new Error(`Unsupported device type: ${this.type}`);
+      }
+      const [type] = entry;
       const wvd = buildWvd({
         clientId: id,
         deviceType: type,
@@ -171,7 +218,7 @@ export class WidevineClient {
     const derAsBase64 = fromBuffer(derAsBinary).toBase64();
     const pemHeader = '-----BEGIN PRIVATE KEY-----';
     const pemFooter = '-----END PRIVATE KEY-----';
-    const pem = `${pemHeader}\n${derAsBase64}\n-----${pemFooter}-----`;
+    const pem = `${pemHeader}\n${derAsBase64}\n${pemFooter}`;
     const pkcs1 = toPKCS1(pem).trim();
     return fromText(pkcs1).toBuffer();
   }
@@ -232,17 +279,11 @@ export class WidevineClient {
     return {
       keySystem,
       createMediaKeys: async () => {
-        const state = { serverCertificate: null as BufferSource | null };
-        return {
-          createSession: (sessionType?: SessionType) => {
-            return new Session(sessionType, this) as MediaKeySession;
-          },
-          setServerCertificate: async (serverCertificate: BufferSource): Promise<boolean> => {
-            state.serverCertificate = serverCertificate;
-            return true;
-          },
-          getStatusForPolicy: async (): Promise<MediaKeyStatus> => 'usable',
-        };
+        const { Widevine } = await import('./engine');
+        const engine = new Widevine({ deviceCredentials: this });
+        setSupportedEngines([engine]);
+        const access = requestAccess(keySystem, supportedConfigurations);
+        return access.createMediaKeys();
       },
       getConfiguration: () => supportedConfigurations[0],
     };

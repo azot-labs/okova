@@ -80,6 +80,7 @@
   "dependencies": {
     "@hono/node-server": "^1.19.14",
     "@hono/zod-validator": "^0.7.6",
+    "@noble/ciphers": "^2.2.0",
     "@noble/curves": "^2.2.0",
     "@xmldom/xmldom": "^0.9.10",
     "barsic": "^0.2.0",

@@ -1,3 +1,5 @@
+import type { MediaKeyMessageEventInit } from '../api';
+import { BaseMediaKeysEngineSession } from '../api';
 import {
   License,
   LicenseRequest,
@@ -8,14 +10,13 @@ import {
 } from './proto';
 import { createHmacSha256, getRandomBytes, getRandomHex } from '../crypto/common';
 import { Key } from './key';
-import { WidevineClient } from './client';
+import { WidevineDeviceCredentials } from './device-credentials';
 import { PSSH, createPssh } from './pssh';
 import { deriveContext, deriveKeys } from './context';
 import { getMessageType } from './message';
 import { parseCertificate, verifyCertificate } from './certificate';
 import { concatUint8Arrays } from '../buffer';
-import { fromBase64, fromBuffer, fromHex, fromText, Logger } from '../utils';
-import { MessageEvent } from '../api';
+import { fromBase64, fromBuffer, fromText, Logger, parseBufferSource } from '../utils';
 
 export const SESSION_TYPES = {
   temporary: 0,
@@ -23,6 +24,16 @@ export const SESSION_TYPES = {
 } as const;
 
 export type SessionType = keyof typeof SESSION_TYPES;
+
+const toLittleEndianBytes = (value: number, byteLength: number) => {
+  const bytes = new Uint8Array(byteLength);
+  let remaining = value;
+  for (let index = 0; index < byteLength; index++) {
+    bytes[index] = remaining & 0xff;
+    remaining = Math.floor(remaining / 256);
+  }
+  return bytes;
+};
 
 export const generateSessionId = (deviceType: string) => {
   switch (deviceType) {
@@ -40,105 +51,125 @@ export const generateSessionId = (deviceType: string) => {
   }
 };
 
-export const INDIVIDUALIZATION_MESSAGE = new Uint8Array([0x08, 0x04]);
+export const generateRequestId = (deviceType: string, sessionNumber: number) => {
+  switch (deviceType) {
+    case 'chrome':
+      return getRandomBytes(16);
+    case 'android':
+    default: {
+      const requestId = new Uint8Array(16);
+      requestId.set(getRandomBytes(4), 0);
+      requestId.set(toLittleEndianBytes(sessionNumber, 8), 8);
+      return fromText(fromBuffer(requestId).toHex().toUpperCase()).toBuffer();
+    }
+  }
+};
 
-/**
- * https://www.w3.org/TR/encrypted-media-2/#mediakeysession-interface
- */
+const generateKeyControlNonce = () => {
+  const limit = 2 ** 31 - 1;
+  return (crypto.getRandomValues(new Uint32Array(1))[0] % limit) + 1;
+};
 
-export class Session extends EventTarget {
+type ServiceCertificateProvider = () => SignedDrmCertificate | undefined;
+
+export class WidevineSession extends BaseMediaKeysEngineSession {
   sessionId: string;
   expiration: number;
   closed: Promise<MediaKeySessionClosedReason>;
-  keyStatuses: MediaKeyStatusMap;
-
-  onkeystatuseschange: ((this: MediaKeySession, ev: Event) => any) | null;
-  onmessage: ((this: MediaKeySession, ev: MediaKeyMessageEvent) => any) | null;
-  onkeyschange: ((this: MediaKeySession, ev: Event) => any) | null;
-
   sessionType: SessionType;
-  client: WidevineClient;
-  keys: Map<string, Key>;
-  initData?: BufferSource;
+  deviceCredentials: WidevineDeviceCredentials;
+  sessionNumber: number;
+  initData?: Uint8Array;
   initDataType?: string;
   serviceCertificate?: SignedDrmCertificate;
   contexts: Map<string, { enc: Uint8Array; auth: Uint8Array }>;
-  individualizationSent: boolean = false;
-  privacyMode?: boolean = false;
   log: Logger;
 
-  constructor(sessionType: SessionType = 'temporary', client: WidevineClient) {
-    super();
-    this.sessionId = generateSessionId('android');
-    this.keyStatuses = new Map();
+  #contentKeys: Map<string, Key>;
+  #dispose: (sessionId: string) => void;
+  #getServiceCertificate: ServiceCertificateProvider;
+  #closed: boolean;
+
+  constructor(
+    sessionType: SessionType = 'temporary',
+    deviceCredentials: WidevineDeviceCredentials,
+    dispose: (sessionId: string) => void = () => {},
+    getServiceCertificate: ServiceCertificateProvider = () => undefined,
+    sessionNumber = 1,
+  ) {
+    super(sessionType);
+    this.sessionId = generateSessionId(deviceCredentials.type ?? 'android');
     this.expiration = NaN;
     this.closed = new Promise<MediaKeySessionClosedReason>((resolve) => {
       this.addEventListener('closed', () => resolve('closed-by-application'));
     });
-    this.onmessage = null;
-    this.onkeystatuseschange = null;
-    this.onkeyschange = null;
     this.sessionType = sessionType;
-    this.client = client;
-    this.keys = new Map();
+    this.deviceCredentials = deviceCredentials;
+    this.sessionNumber = sessionNumber;
     this.contexts = new Map();
     this.log = console;
+    this.#contentKeys = new Map();
+    this.#dispose = dispose;
+    this.#getServiceCertificate = getServiceCertificate;
+    this.#closed = false;
   }
 
   setLogger(logger: Logger) {
     this.log = logger;
   }
 
-  async generateRequest(initDataType: string, initData: BufferSource) {
-    if (this.privacyMode && !this.individualizationSent) {
-      this.dispatchEvent(
-        new MessageEvent(
-          'individualization-request',
-          INDIVIDUALIZATION_MESSAGE as unknown as ArrayBuffer,
-        ),
-      );
-      this.individualizationSent = true;
-      this.initData = initData;
-      this.initDataType = initDataType;
-      return;
-    }
-    const pssh = createPssh(initData as Uint8Array);
+  async generateRequest(initData: Uint8Array, initDataType?: string): Promise<void>;
+  async generateRequest(initDataType: string, initData: BufferSource): Promise<Uint8Array | void>;
+  async generateRequest(
+    first: Uint8Array | string,
+    second?: string | BufferSource,
+  ): Promise<Uint8Array | void> {
+    const initData = typeof first === 'string' ? parseBufferSource(second as BufferSource) : first;
+    const resolvedInitDataType =
+      typeof first === 'string' ? first : typeof second === 'string' ? second : 'cenc';
+
+    const pssh = createPssh(initData);
     const licenseRequest = await this.#createLicenseRequest(pssh);
     const message = await this.#signMessage(
       licenseRequest.bytes,
       SignedMessage.MessageType.LICENSE_REQUEST,
     );
+    this.initData = initData;
+    this.initDataType = resolvedInitDataType;
     this.contexts.set(
       fromBuffer(licenseRequest.requestId).toText(),
       deriveContext(licenseRequest.bytes),
     );
-    this.dispatchEvent(
-      new MessageEvent('license-request', message.bytes as unknown as ArrayBuffer),
-    );
-    return message.bytes;
+    this.emitMessage({
+      message: new Uint8Array(message.bytes),
+      messageType: 'license-request',
+    });
+    return typeof first === 'string' ? message.bytes : undefined;
   }
 
   async waitForLicenseRequest() {
     return new Promise<Uint8Array>((resolve) => {
-      this.addEventListener(
-        'message',
-        (e) => {
-          const event = e as MessageEvent;
-          if (event.messageType === 'license-request') resolve(new Uint8Array(event.message));
-        },
-        false,
-      );
+      const handler = (event: Event) => {
+        const detail = (event as CustomEvent<MediaKeyMessageEventInit>).detail;
+        if (detail.messageType !== 'license-request') return;
+        this.removeEventListener('message', handler);
+        resolve(detail.message);
+      };
+
+      this.addEventListener('message', handler);
     });
   }
 
   async #createLicenseRequest(pssh: PSSH) {
-    const requestId = ArrayBuffer.isView(this.sessionId)
-      ? (this.sessionId as unknown as Uint8Array)
-      : fromText(this.sessionId).toBuffer();
+    const serviceCertificate = this.#getCurrentServiceCertificate();
+    const requestId = generateRequestId(
+      this.deviceCredentials.type ?? 'android',
+      this.sessionNumber,
+    );
     const entity = LicenseRequest.create({
-      clientId: this.serviceCertificate ? undefined : this.client.id,
-      encryptedClientId: this.serviceCertificate
-        ? await this.client.encryptId(this.serviceCertificate)
+      clientId: serviceCertificate ? undefined : this.deviceCredentials.id,
+      encryptedClientId: serviceCertificate
+        ? await this.deviceCredentials.encryptId(serviceCertificate)
         : undefined,
       contentId: {
         widevinePsshData: {
@@ -151,16 +182,21 @@ export class Session extends EventTarget {
       type: LicenseRequest.RequestType.NEW,
       requestTime: Math.round(Date.now() / 1000),
       protocolVersion: ProtocolVersion.VERSION_2_1,
+      keyControlNonce: generateKeyControlNonce(),
     });
     const bytes = LicenseRequest.encode(entity).finish();
     return { requestId, entity, bytes };
   }
 
+  #getCurrentServiceCertificate() {
+    return this.serviceCertificate ?? this.#getServiceCertificate();
+  }
+
   async #signMessage(message: Uint8Array, type: SignedMessage.MessageType) {
     const entity = SignedMessage.create({
-      type: type,
+      type,
       msg: message,
-      signature: await this.client.signWithKey(message),
+      signature: await this.deviceCredentials.signWithKey(message),
     });
     const bytes = SignedMessage.encode(entity).finish();
     return { entity, bytes };
@@ -173,18 +209,17 @@ export class Session extends EventTarget {
 
   async update(response: Uint8Array): Promise<void> {
     const type = getMessageType(response);
-    const typeText = type ? SignedMessage.MessageType[type] : '?';
     if (type === SignedMessage.MessageType.SERVICE_CERTIFICATE) {
       await this.#setServiceCertificate(response);
       if (!this.initData || !this.initDataType) return;
-      this.generateRequest(this.initDataType, this.initData);
+      await this.generateRequest(this.initData, this.initDataType);
       return;
     }
 
     let signedLicense = null;
     try {
       signedLicense = SignedMessage.decode(response);
-    } catch (e) {
+    } catch {
       this.log.error('Unable to parse license - check protobufs');
       this.log.debug(fromBuffer(response).toText());
       return;
@@ -193,10 +228,11 @@ export class Session extends EventTarget {
     const license = License.decode(signedLicense.msg);
     const requestId = fromBuffer(license.id!.requestId!).toText();
     const context = this.contexts.get(requestId);
-    if (!context)
+    if (!context) {
       throw new Error(`Failed to find context to decrypt keys, requestId: ${requestId}`);
+    }
 
-    const sessionKey = await this.client.decryptWithKey(signedLicense.sessionKey);
+    const sessionKey = await this.deviceCredentials.decryptWithKey(signedLicense.sessionKey);
     const derivedKeys = await deriveKeys(context.enc, context.auth, sessionKey);
 
     const { success, signature } = await this.#verifyMessage(
@@ -212,21 +248,18 @@ export class Session extends EventTarget {
     for (const keyContainer of license.key) {
       if (!keyContainer.key || !keyContainer.iv) continue;
       const key = await Key.fromContainer(keyContainer, derivedKeys.encKey);
-      if (!key.id) continue;
+      if (!key.id || key.type !== 'CONTENT') continue;
       this.#addKey(key);
     }
 
-    this.dispatchEvent(new Event('keyschange'));
-    this.dispatchEvent(new Event('keystatuseschange'));
-
     this.contexts.delete(requestId);
-
-    if (this.keys.size) await this.close();
+    this.emitKeysChange();
+    this.emitKeyStatusesChange();
   }
 
   async #setServiceCertificate(certificate: Uint8Array) {
     const { signedDrmCertificate, drmCertificate } = await parseCertificate(certificate);
-    const isValid = verifyCertificate(signedDrmCertificate);
+    const isValid = await verifyCertificate(signedDrmCertificate);
     if (!isValid) throw new Error('Certificate invalid: signature mismatch');
     this.serviceCertificate = signedDrmCertificate;
     return drmCertificate.providerId;
@@ -241,42 +274,46 @@ export class Session extends EventTarget {
       concatUint8Arrays(...data),
     );
     const calculatedSignatureHex = fromBuffer(calculatedSignature).toHex();
-    const success = actualSignatureHex === calculatedSignatureHex;
-    const signature = {
-      actual: actualSignatureHex,
-      calculated: calculatedSignatureHex,
+    return {
+      success: actualSignatureHex === calculatedSignatureHex,
+      signature: {
+        actual: actualSignatureHex,
+        calculated: calculatedSignatureHex,
+      },
     };
-    return { success, signature };
   }
 
   #addKey(key: Key) {
-    this.keys.set(key.id, key);
-    (this.keyStatuses as unknown as Map<Uint8Array, MediaKeyStatus>).set(
-      fromText(`${key.id}:${key.value}`).toBuffer(),
-      'usable',
-    );
+    this.#contentKeys.set(key.id, key);
+    this.keys.set(key.id, key.value);
+    this.keyStatuses.set(key.id, 'usable');
   }
 
   async getKeys() {
-    return Array.from(this.keys.values());
+    return Array.from(this.#contentKeys.values());
   }
 
-  close(): Promise<void> {
+  async close(): Promise<void> {
+    if (this.#closed) return;
+    this.#closed = true;
+    this.#dispose(this.sessionId);
     this.dispatchEvent(new Event('closed'));
-    return Promise.resolve();
   }
 
-  remove(): Promise<void> {
-    return Promise.resolve();
+  async remove(): Promise<void> {
+    if (this.#closed) return;
+    this.#closed = true;
+    this.#dispose(this.sessionId);
+    this.dispatchEvent(new Event('closed'));
   }
 
   pause() {
     const values = {
       sessionId: this.sessionId,
+      sessionNumber: this.sessionNumber,
       sessionType: this.sessionType,
-      initData: this.initData ? fromBuffer(this.initData as Uint8Array).toBase64() : undefined,
+      initData: this.initData ? fromBuffer(this.initData).toBase64() : undefined,
       initDataType: this.initDataType,
-      individualizationSent: this.individualizationSent,
       serviceCertificate: this.serviceCertificate
         ? fromBuffer(SignedDrmCertificate.encode(this.serviceCertificate).finish()).toBase64()
         : undefined,
@@ -290,29 +327,42 @@ export class Session extends EventTarget {
         ]),
       ),
       keys: Object.fromEntries(
-        this.keys.entries().map(([key, value]) => [key, { id: value.id, value: value.value }]),
+        Array.from(this.#contentKeys.entries(), ([keyId, key]) => [
+          keyId,
+          { id: key.id, value: key.value },
+        ]),
       ),
-      keyStatuses: Object.fromEntries(
-        this.keyStatuses
-          .entries()
-          .map(([key, value]) => [fromBuffer(key as Uint8Array).toHex(), value]),
-      ),
+      keyStatuses: Object.fromEntries(this.keyStatuses),
     };
-    const data = JSON.stringify(values);
-    return data;
+    return JSON.stringify(values);
   }
 
   resume(state: string) {
-    return Session.resume(state, this.client);
+    return WidevineSession.resume(
+      state,
+      this.deviceCredentials,
+      this.#dispose,
+      this.#getServiceCertificate,
+    );
   }
 
-  static resume(state: string, client: WidevineClient) {
+  static resume(
+    state: string,
+    deviceCredentials: WidevineDeviceCredentials,
+    dispose?: (sessionId: string) => void,
+    getServiceCertificate: ServiceCertificateProvider = () => undefined,
+  ) {
     const values = JSON.parse(state);
-    const session = new Session(values.sessionType, client);
+    const session = new WidevineSession(
+      values.sessionType,
+      deviceCredentials,
+      dispose,
+      getServiceCertificate,
+      values.sessionNumber,
+    );
     session.sessionId = values.sessionId;
     session.initData = values.initData ? fromBase64(values.initData).toBuffer() : undefined;
     session.initDataType = values.initDataType;
-    session.individualizationSent = values.individualizationSent;
     session.serviceCertificate = values.serviceCertificate
       ? SignedDrmCertificate.decode(fromBase64(values.serviceCertificate).toBuffer())
       : undefined;
@@ -325,16 +375,19 @@ export class Session extends EventTarget {
         },
       ]),
     );
+    session.#contentKeys = new Map(
+      Object.entries(values.keys).map(([keyId, value]) => {
+        const persistedKey = value as Key;
+        return [keyId, new Key(persistedKey.id, persistedKey.value)];
+      }),
+    );
     session.keys = new Map(
-      Object.entries(values.keys).map(([key, value]) => [
-        key,
-        new Key((value as Key).id, (value as Key).value),
-      ]),
+      Array.from(session.#contentKeys.entries(), ([keyId, key]) => [keyId, key.value]),
     );
     session.keyStatuses = new Map(
-      Object.entries(values.keyStatuses).map(([key, value]) => [
-        fromHex(key).toBuffer() as BufferSource,
-        value as MediaKeyStatus,
+      Object.entries(values.keyStatuses).map(([keyId, status]) => [
+        keyId,
+        status as MediaKeyStatus,
       ]),
     );
     return session;

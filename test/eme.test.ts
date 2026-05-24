@@ -5,6 +5,19 @@ import { PSSH, LICENSE_URL, createClient } from './utils';
 // https://www.w3.org/TR/encrypted-media-2/#example-8
 
 test('encrypted media extensions', async () => {
+  let resolveMessageHandled: (() => void) | undefined;
+  let rejectMessageHandled: ((error: unknown) => void) | undefined;
+  const messageHandled = new Promise<void>((resolve, reject) => {
+    resolveMessageHandled = resolve;
+    rejectMessageHandled = reject;
+  });
+  let resolveKeysChecked: (() => void) | undefined;
+  let rejectKeysChecked: ((error: unknown) => void) | undefined;
+  const keysChecked = new Promise<void>((resolve, reject) => {
+    resolveKeysChecked = resolve;
+    rejectKeysChecked = reject;
+  });
+
   const handleMessageResponse = async (keySession: MediaKeySession, response: Uint8Array) => {
     return keySession.update(toBufferSource(response));
   };
@@ -22,21 +35,36 @@ test('encrypted media extensions', async () => {
     return handleMessageResponse(keySession, data);
   };
 
-  const handleMessage = async (event: MediaKeyMessageEvent) => {
-    sendMessage(
-      event.messageType,
-      event.message as unknown as Uint8Array,
-      event.target as MediaKeySession,
-    );
+  const handleMessage = async (event: Event) => {
+    const messageEvent = event as MediaKeyMessageEvent;
+    try {
+      await sendMessage(
+        messageEvent.messageType,
+        messageEvent.message as unknown as Uint8Array,
+        messageEvent.target as MediaKeySession,
+      );
+      resolveMessageHandled?.();
+    } catch (error) {
+      rejectMessageHandled?.(error);
+    }
   };
 
   const handleKeyStatusesChange = async (event: Event) => {
-    const keySession = event.target as MediaKeySession;
-    const keys = Array.from(keySession.keyStatuses.keys());
-    expect(keys.length).toBe(5);
-    const firstKey = fromBuffer(keys[0] as Uint8Array).toText();
-    expect(firstKey).toBeDefined();
-    expect(firstKey).toBe('ccbf5fb4c2965be7aa130ffb3ba9fd73:9cc0c92044cb1d69433f5f5839a159df');
+    try {
+      const keySession = event.target as MediaKeySession & { keys: Map<string, string> };
+      const keyStatuses = Array.from(keySession.keyStatuses.entries());
+      expect(keyStatuses.length).toBe(5);
+
+      const [firstKeyId, firstStatus] = keyStatuses[0]!;
+      expect(fromBuffer(firstKeyId as Uint8Array).toHex()).toBe('ccbf5fb4c2965be7aa130ffb3ba9fd73');
+      expect(firstStatus).toBe('usable');
+      expect(keySession.keys.get('ccbf5fb4c2965be7aa130ffb3ba9fd73')).toBe(
+        '9cc0c92044cb1d69433f5f5839a159df',
+      );
+      resolveKeysChecked?.();
+    } catch (error) {
+      rejectKeysChecked?.(error);
+    }
   };
 
   const client = await createClient();
@@ -48,5 +76,11 @@ test('encrypted media extensions', async () => {
   const keySession = mediaKeys.createSession();
   keySession.addEventListener('message', handleMessage, false);
   keySession.addEventListener('keystatuseschange', handleKeyStatusesChange, false);
-  await keySession.generateRequest(initDataType, initData);
+  try {
+    await keySession.generateRequest(initDataType, initData);
+    await Promise.all([messageHandled, keysChecked]);
+  } finally {
+    keySession.removeEventListener('message', handleMessage, false);
+    keySession.removeEventListener('keystatuseschange', handleKeyStatusesChange, false);
+  }
 });

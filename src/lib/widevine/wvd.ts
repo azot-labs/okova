@@ -30,10 +30,17 @@ const writeUint16BE = (value: number) => {
   return buffer;
 };
 
+const requireLength = (data: Uint8Array, offset: number, length: number, label: string) => {
+  if (offset + length > data.length) {
+    throw new Error(`Invalid WVD file: Truncated ${label}`);
+  }
+};
+
 export const parseWvd = (data: Uint8Array) => {
   let offset = 0;
 
   // Read and verify magic number
+  requireLength(data, offset, 3, 'magic number');
   const magic = data.subarray(offset, offset + 3);
   offset += 3;
   if (!areUint8ArraysEqual(magic, MAGIC)) {
@@ -41,6 +48,7 @@ export const parseWvd = (data: Uint8Array) => {
   }
 
   // Read version
+  requireLength(data, offset, 1, 'version');
   const version = readUint8(data, offset);
   offset += 1;
 
@@ -49,26 +57,38 @@ export const parseWvd = (data: Uint8Array) => {
   }
 
   // Read device type
+  requireLength(data, offset, 1, 'device type');
   const deviceType = readUint8(data, offset);
   offset += 1;
 
   // Read security level
+  requireLength(data, offset, 1, 'security level');
   const securityLevel = readUint8(data, offset);
   offset += 1;
 
   // Skip flags for now
+  requireLength(data, offset, 1, 'flags');
   offset += 1;
 
   // Read private key
+  requireLength(data, offset, 2, 'private key length');
   const privateKeyLen = readUint16BE(data, offset);
   offset += 2;
+  requireLength(data, offset, privateKeyLen, 'private key');
   const privateKey = data.subarray(offset, offset + privateKeyLen);
   offset += privateKeyLen;
 
   // Read client ID
+  requireLength(data, offset, 2, 'client ID length');
   const clientIdLen = readUint16BE(data, offset);
   offset += 2;
+  requireLength(data, offset, clientIdLen, 'client ID');
   const clientId = data.subarray(offset, offset + clientIdLen);
+  offset += clientIdLen;
+
+  if (offset !== data.length) {
+    throw new Error('Invalid WVD file: Unexpected trailing data');
+  }
 
   return {
     version,
