@@ -20,10 +20,28 @@ function concatUint8Arrays(...arrays: Uint8Array[]): Uint8Array {
   return result;
 }
 
+const findWidevinePsshOffset = (data: Uint8Array) => {
+  for (let offset = 0; offset + 32 <= data.length; ) {
+    const size =
+      (data[offset] << 24) | (data[offset + 1] << 16) | (data[offset + 2] << 8) | data[offset + 3];
+    if (size < 32 || offset + size > data.length) {
+      return -1;
+    }
+
+    const systemId = data.subarray(offset + 12, offset + 28);
+    if (areUint8ArraysEqual(systemId, WV_SYSTEM_ID)) {
+      return offset;
+    }
+
+    offset += size;
+  }
+
+  return -1;
+};
+
 const prepare = (data: Uint8Array | string): string => {
   const dataBuffer = typeof data === 'string' ? fromBase64(data).toBuffer() : data;
-  const dataFragment = dataBuffer.subarray(12, 28);
-  const isWidevineSystemIdDetected = areUint8ArraysEqual(dataFragment, WV_SYSTEM_ID);
+  const isWidevineSystemIdDetected = findWidevinePsshOffset(dataBuffer) !== -1;
 
   if (isWidevineSystemIdDetected) {
     const parsed = typeof data === 'string' ? data : fromBuffer(data).toBase64();
@@ -52,6 +70,9 @@ const parse = (initData: Uint8Array | string) => {
         (buffer[offset + 1] << 16) |
         (buffer[offset + 2] << 8) |
         buffer[offset + 3];
+      if (size < 32 || offset + size > buffer.length) {
+        break;
+      }
       const systemId = buffer.subarray(offset + 12, offset + 28);
 
       if (areUint8ArraysEqual(systemId, WV_SYSTEM_ID)) {
@@ -64,7 +85,7 @@ const parse = (initData: Uint8Array | string) => {
         return WidevinePsshData.decode(psshData);
       }
 
-      offset += size + 4;
+      offset += size;
     }
     throw new Error('Widevine PSSH not found');
   } catch (e) {

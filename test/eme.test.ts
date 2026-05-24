@@ -51,12 +51,16 @@ test('encrypted media extensions', async () => {
 
   const handleKeyStatusesChange = async (event: Event) => {
     try {
-      const keySession = event.target as MediaKeySession;
-      const keys = Array.from(keySession.keyStatuses.keys());
-      expect(keys.length).toBe(5);
-      const firstKey = fromBuffer(keys[0] as Uint8Array).toText();
-      expect(firstKey).toBeDefined();
-      expect(firstKey).toBe('ccbf5fb4c2965be7aa130ffb3ba9fd73:9cc0c92044cb1d69433f5f5839a159df');
+      const keySession = event.target as MediaKeySession & { keys: Map<string, string> };
+      const keyStatuses = Array.from(keySession.keyStatuses.entries());
+      expect(keyStatuses.length).toBe(5);
+
+      const [firstKeyId, firstStatus] = keyStatuses[0]!;
+      expect(fromBuffer(firstKeyId as Uint8Array).toHex()).toBe('ccbf5fb4c2965be7aa130ffb3ba9fd73');
+      expect(firstStatus).toBe('usable');
+      expect(keySession.keys.get('ccbf5fb4c2965be7aa130ffb3ba9fd73')).toBe(
+        '9cc0c92044cb1d69433f5f5839a159df',
+      );
       resolveKeysChecked?.();
     } catch (error) {
       rejectKeysChecked?.(error);

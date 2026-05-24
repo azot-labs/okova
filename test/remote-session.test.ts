@@ -14,11 +14,14 @@ test('remote session', async () => {
   const initData = fromBase64(pssh).toBuffer();
   const initDataType = 'cenc';
 
-  const client = 'pixel6';
-  const baseUrl = 'http://localhost:4000'; // Set your API base URL here
-  const secret: string = ''; // Set your API secret here
+  const baseUrl = process.env.VITEST_REMOTE_BASE_URL;
+  if (!baseUrl) {
+    console.warn('Remote session config not found. Skipping test');
+    return;
+  }
 
-  console.warn('Add your API endpoint & secret to test remote session');
+  const secret = process.env.VITEST_REMOTE_SECRET;
+  const client = process.env.VITEST_REMOTE_CLIENT ?? 'pixel6';
 
   const cdm = new Remote({
     keySystem: 'com.widevine.alpha',
@@ -31,7 +34,7 @@ test('remote session', async () => {
   const keySystemAccess = requestMediaKeySystemAccess(cdm.keySystem, []);
   const mediaKeys = await keySystemAccess.createMediaKeys();
   const session = mediaKeys.createSession();
-  session.generateRequest(initDataType, initData);
+  await session.generateRequest(initDataType, initData);
   const licenseRequest = await session.waitForLicenseRequest();
 
   const response = await fetch(url, {
