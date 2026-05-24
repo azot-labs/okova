@@ -6,6 +6,7 @@ interface FetchDecryptionKeysParams {
 
   pssh: string;
   server: string;
+  // Used only if an underlying engine emits `individualization-request` messages.
   individualizationServer?: string;
   headers?: Record<string, string>;
 

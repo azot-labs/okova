@@ -31,6 +31,16 @@ export const SESSION_TYPES = {
 
 export type SessionType = keyof typeof SESSION_TYPES;
 
+const toLittleEndianBytes = (value: number, byteLength: number) => {
+  const bytes = new Uint8Array(byteLength);
+  let remaining = value;
+  for (let index = 0; index < byteLength; index++) {
+    bytes[index] = remaining & 0xff;
+    remaining = Math.floor(remaining / 256);
+  }
+  return bytes;
+};
+
 export const generateSessionId = (deviceType: string) => {
   switch (deviceType) {
     case 'chrome':
@@ -47,7 +57,26 @@ export const generateSessionId = (deviceType: string) => {
   }
 };
 
-export const INDIVIDUALIZATION_MESSAGE = new Uint8Array([0x08, 0x04]);
+export const generateRequestId = (deviceType: string, sessionNumber: number) => {
+  switch (deviceType) {
+    case 'chrome':
+      return getRandomBytes(16);
+    case 'android':
+    default: {
+      const requestId = new Uint8Array(16);
+      requestId.set(getRandomBytes(4), 0);
+      requestId.set(toLittleEndianBytes(sessionNumber, 8), 8);
+      return fromText(fromBuffer(requestId).toHex().toUpperCase()).toBuffer();
+    }
+  }
+};
+
+const generateKeyControlNonce = () => {
+  const limit = 2 ** 31 - 1;
+  return (crypto.getRandomValues(new Uint32Array(1))[0] % limit) + 1;
+};
+
+type ServiceCertificateProvider = () => SignedDrmCertificate | undefined;
 
 export class WidevineSession extends EventTarget implements MediaKeysEngineSession {
   sessionId: string;
@@ -66,25 +95,27 @@ export class WidevineSession extends EventTarget implements MediaKeysEngineSessi
 
   sessionType: SessionType;
   deviceCredentials: WidevineDeviceCredentials;
+  sessionNumber: number;
   initData?: Uint8Array;
   initDataType?: string;
   serviceCertificate?: SignedDrmCertificate;
   contexts: Map<string, { enc: Uint8Array; auth: Uint8Array }>;
-  individualizationSent: boolean;
-  privacyMode?: boolean;
   log: Logger;
 
   #contentKeys: Map<string, Key>;
   #dispose: (sessionId: string) => void;
+  #getServiceCertificate: ServiceCertificateProvider;
   #closed: boolean;
 
   constructor(
     sessionType: SessionType = 'temporary',
     deviceCredentials: WidevineDeviceCredentials,
     dispose: (sessionId: string) => void = () => {},
+    getServiceCertificate: ServiceCertificateProvider = () => undefined,
+    sessionNumber = 1,
   ) {
     super();
-    this.sessionId = generateSessionId('android');
+    this.sessionId = generateSessionId(deviceCredentials.type ?? 'android');
     this.keyStatuses = new Map();
     this.keys = new Map();
     this.expiration = NaN;
@@ -96,11 +127,12 @@ export class WidevineSession extends EventTarget implements MediaKeysEngineSessi
     this.onkeyschange = null;
     this.sessionType = sessionType;
     this.deviceCredentials = deviceCredentials;
+    this.sessionNumber = sessionNumber;
     this.contexts = new Map();
-    this.individualizationSent = false;
     this.log = console;
     this.#contentKeys = new Map();
     this.#dispose = dispose;
+    this.#getServiceCertificate = getServiceCertificate;
     this.#closed = false;
   }
 
@@ -118,17 +150,6 @@ export class WidevineSession extends EventTarget implements MediaKeysEngineSessi
       typeof first === 'string' ? parseBufferSource(second as BufferSource) : first;
     const resolvedInitDataType =
       typeof first === 'string' ? first : typeof second === 'string' ? second : 'cenc';
-
-    if (this.privacyMode && !this.individualizationSent) {
-      this.initData = initData;
-      this.initDataType = resolvedInitDataType;
-      this.individualizationSent = true;
-      this.#emitMessage({
-        message: INDIVIDUALIZATION_MESSAGE,
-        messageType: 'individualization-request',
-      });
-      return;
-    }
 
     const pssh = createPssh(initData);
     const licenseRequest = await this.#createLicenseRequest(pssh);
@@ -163,13 +184,12 @@ export class WidevineSession extends EventTarget implements MediaKeysEngineSessi
   }
 
   async #createLicenseRequest(pssh: PSSH) {
-    const requestId = ArrayBuffer.isView(this.sessionId)
-      ? (this.sessionId as unknown as Uint8Array)
-      : fromText(this.sessionId).toBuffer();
+    const serviceCertificate = this.#getCurrentServiceCertificate();
+    const requestId = generateRequestId(this.deviceCredentials.type ?? 'android', this.sessionNumber);
     const entity = LicenseRequest.create({
-      clientId: this.serviceCertificate ? undefined : this.deviceCredentials.id,
-      encryptedClientId: this.serviceCertificate
-        ? await this.deviceCredentials.encryptId(this.serviceCertificate)
+      clientId: serviceCertificate ? undefined : this.deviceCredentials.id,
+      encryptedClientId: serviceCertificate
+        ? await this.deviceCredentials.encryptId(serviceCertificate)
         : undefined,
       contentId: {
         widevinePsshData: {
@@ -182,9 +202,14 @@ export class WidevineSession extends EventTarget implements MediaKeysEngineSessi
       type: LicenseRequest.RequestType.NEW,
       requestTime: Math.round(Date.now() / 1000),
       protocolVersion: ProtocolVersion.VERSION_2_1,
+      keyControlNonce: generateKeyControlNonce(),
     });
     const bytes = LicenseRequest.encode(entity).finish();
     return { requestId, entity, bytes };
+  }
+
+  #getCurrentServiceCertificate() {
+    return this.serviceCertificate ?? this.#getServiceCertificate();
   }
 
   async #signMessage(message: Uint8Array, type: SignedMessage.MessageType) {
@@ -243,20 +268,18 @@ export class WidevineSession extends EventTarget implements MediaKeysEngineSessi
     for (const keyContainer of license.key) {
       if (!keyContainer.key || !keyContainer.iv) continue;
       const key = await Key.fromContainer(keyContainer, derivedKeys.encKey);
-      if (!key.id) continue;
+      if (!key.id || key.type !== 'CONTENT') continue;
       this.#addKey(key);
     }
 
     this.contexts.delete(requestId);
     this.#emitKeysChange();
     this.#emitKeyStatusesChange();
-
-    if (this.keys.size) await this.close();
   }
 
   async #setServiceCertificate(certificate: Uint8Array) {
     const { signedDrmCertificate, drmCertificate } = await parseCertificate(certificate);
-    const isValid = verifyCertificate(signedDrmCertificate);
+    const isValid = await verifyCertificate(signedDrmCertificate);
     if (!isValid) throw new Error('Certificate invalid: signature mismatch');
     this.serviceCertificate = signedDrmCertificate;
     return drmCertificate.providerId;
@@ -307,10 +330,10 @@ export class WidevineSession extends EventTarget implements MediaKeysEngineSessi
   pause() {
     const values = {
       sessionId: this.sessionId,
+      sessionNumber: this.sessionNumber,
       sessionType: this.sessionType,
       initData: this.initData ? fromBuffer(this.initData).toBase64() : undefined,
       initDataType: this.initDataType,
-      individualizationSent: this.individualizationSent,
       serviceCertificate: this.serviceCertificate
         ? fromBuffer(SignedDrmCertificate.encode(this.serviceCertificate).finish()).toBase64()
         : undefined,
@@ -335,20 +358,31 @@ export class WidevineSession extends EventTarget implements MediaKeysEngineSessi
   }
 
   resume(state: string) {
-    return WidevineSession.resume(state, this.deviceCredentials, this.#dispose);
+    return WidevineSession.resume(
+      state,
+      this.deviceCredentials,
+      this.#dispose,
+      this.#getServiceCertificate,
+    );
   }
 
   static resume(
     state: string,
     deviceCredentials: WidevineDeviceCredentials,
     dispose?: (sessionId: string) => void,
+    getServiceCertificate: ServiceCertificateProvider = () => undefined,
   ) {
     const values = JSON.parse(state);
-    const session = new WidevineSession(values.sessionType, deviceCredentials, dispose);
+    const session = new WidevineSession(
+      values.sessionType,
+      deviceCredentials,
+      dispose,
+      getServiceCertificate,
+      values.sessionNumber,
+    );
     session.sessionId = values.sessionId;
     session.initData = values.initData ? fromBase64(values.initData).toBuffer() : undefined;
     session.initDataType = values.initDataType;
-    session.individualizationSent = values.individualizationSent;
     session.serviceCertificate = values.serviceCertificate
       ? SignedDrmCertificate.decode(fromBase64(values.serviceCertificate).toBuffer())
       : undefined;

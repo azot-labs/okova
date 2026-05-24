@@ -32,6 +32,30 @@ const types = new Map<number, ClientType>([
 const isSecurityLevel = (value: unknown): value is SecurityLevel =>
   value === 1 || value === 2 || value === 3;
 
+const areUint8ArraysEqual = (a: Uint8Array, b: Uint8Array) =>
+  a.length === b.length && a.every((value, index) => value === b[index]);
+
+const decodeExactly = <T extends object>(
+  data: Uint8Array,
+  codec: {
+    decode(buffer: Uint8Array): T;
+    encode(message: T): { finish(): Uint8Array };
+  },
+  label: string,
+) => {
+  try {
+    const decoded = codec.decode(data);
+    const encoded = codec.encode(decoded).finish();
+    if (!areUint8ArraysEqual(encoded, data)) {
+      throw new Error(`${label} did not parse exactly`);
+    }
+    return decoded;
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    throw new Error(`Invalid ${label}: ${message}`);
+  }
+};
+
 export class WidevineDeviceCredentials {
   id: ClientIdentification;
   type: ClientType;
@@ -57,6 +81,9 @@ export class WidevineDeviceCredentials {
     if (format === 'wvd' || isWvd) {
       const parsed = parseWvd(data);
       const type = types.get(parsed.deviceType);
+      if (!type) {
+        throw new Error(`Unsupported device type: ${parsed.deviceType}`);
+      }
       if (!isSecurityLevel(parsed.securityLevel)) {
         throw new Error(`Unsupported security level: ${parsed.securityLevel}`);
       }
@@ -73,7 +100,7 @@ export class WidevineDeviceCredentials {
   static async fromUnpacked(id: Uint8Array, key: Uint8Array, vmp?: Uint8Array) {
     const deviceCredentials = new WidevineDeviceCredentials(id);
     if (vmp) {
-      deviceCredentials.vmp = FileHashes.decode(vmp);
+      deviceCredentials.vmp = decodeExactly(vmp, FileHashes, 'Widevine VMP data');
       deviceCredentials.id.vmpData = vmp;
     }
     await deviceCredentials.importKey(key);
@@ -90,11 +117,22 @@ export class WidevineDeviceCredentials {
     type: ClientType = CLIENT_TYPE.android,
     securityLevel: SecurityLevel = 3,
   ) {
-    this.id = ArrayBuffer.isView(id) ? ClientIdentification.decode(id) : id;
-    this.signedDrmCertificate = SignedDrmCertificate.decode(this.id.token);
-    this.drmCertificate = DrmCertificate.decode(this.signedDrmCertificate.drmCertificate);
+    this.id =
+      ArrayBuffer.isView(id) ? decodeExactly(id, ClientIdentification, 'Widevine client ID') : id;
+    this.signedDrmCertificate = decodeExactly(
+      this.id.token,
+      SignedDrmCertificate,
+      'Widevine signed DRM certificate',
+    );
+    this.drmCertificate = decodeExactly(
+      this.signedDrmCertificate.drmCertificate,
+      DrmCertificate,
+      'Widevine DRM certificate',
+    );
     this.systemId = this.drmCertificate.systemId;
-    this.vmp = this.id.vmpData ? FileHashes.decode(this.id.vmpData) : null;
+    this.vmp = this.id.vmpData
+      ? decodeExactly(this.id.vmpData, FileHashes, 'Widevine VMP data')
+      : null;
     this.type = type;
     this.securityLevel = securityLevel;
     const clientInfo = this.id.clientInfo;

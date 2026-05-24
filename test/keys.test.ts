@@ -15,7 +15,7 @@ test('fetch decryption keys', async () => {
   expect(keys.get('ccbf5fb4c2965be7aa130ffb3ba9fd73')).toBe('9cc0c92044cb1d69433f5f5839a159df');
 });
 
-test('fetch decryption keys with privacy mode', async () => {
+test('fetch decryption keys with an extra individualization server configured', async () => {
   const cdm = new Widevine({
     deviceCredentials: await loadWidevineDeviceCredentials(),
   });

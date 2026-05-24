@@ -24,3 +24,13 @@ test('parsing concatenated pssh when playready box comes first', () => {
     fromBuffer(createPssh(PSSH_WV).toBuffer()).toBase64(),
   );
 });
+
+test('preserves raw init data when it is not a Widevine header', () => {
+  const rawInitData = new Uint8Array(300);
+  rawInitData.set([1, 2, 3, 4], 0);
+  rawInitData.set([9, 8, 7, 6], 296);
+
+  const pssh = createPssh(rawInitData);
+
+  expect(pssh.toBuffer()).toEqual(rawInitData);
+});
