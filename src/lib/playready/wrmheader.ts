@@ -1,6 +1,5 @@
-import { createHash } from 'node:crypto';
 import { DOMParser, XMLSerializer } from '@xmldom/xmldom';
-import { aesEcbEncrypt } from '../crypto/common';
+import { aesEcbEncrypt, createSha1 } from '../crypto/common';
 import { tryGetUtf16Le } from '../buffer';
 import { base64ToBytes, bytesToBase64, compareArrays, fromBase64 } from '../utils';
 import { InvalidChecksum, InvalidWrmHeader } from './exceptions';
@@ -125,7 +124,7 @@ export class SignedKeyId {
     if (this.algId === WRMHEADER_KEY_ALG_IDS.COCKTAIL) {
       let buffer = padEnd(contentKey, 21);
       for (let index = 0; index < 5; index++) {
-        buffer = createHash('sha1').update(buffer).digest();
+        buffer = await createSha1(buffer);
       }
 
       return compareArrays(buffer.subarray(0, 7), this.checksum);

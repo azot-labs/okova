@@ -2,7 +2,7 @@ import { expect, test } from 'vitest';
 import { bytesToBase64 } from '../src/lib/utils';
 import { InvalidChecksum, InvalidWrmHeader } from '../src/lib/playready/exceptions';
 import { WrmHeader } from '../src/lib/playready/wrmheader';
-import { aesEcbEncrypt } from '../src/lib/crypto/common';
+import { aesEcbEncrypt, createSha1 } from '../src/lib/crypto/common';
 
 const CONTENT_KEY = new Uint8Array([
   0x88, 0xda, 0x85, 0x2a, 0xe4, 0xfa, 0x2e, 0x1e, 0x36, 0xae, 0xb2, 0xd5, 0xc9, 0x49, 0x97, 0xb1,
@@ -73,4 +73,21 @@ test('rejects WRMHEADER checksum verification without a checksum', async () => {
   await expect(header.keyIds[0].verify(CONTENT_KEY)).rejects.toThrowError(
     new InvalidChecksum('Checksum must not be empty'),
   );
+});
+
+test('verifies WRMHEADER COCKTAIL checksums without node-specific crypto', async () => {
+  let checksumSource = new Uint8Array(21);
+  checksumSource.set(CONTENT_KEY);
+  for (let index = 0; index < 5; index++) {
+    checksumSource = await createSha1(checksumSource);
+  }
+
+  const header = new WrmHeader(
+    buildWrmHeader(
+      '4.2.0.0',
+      `<KIDS><KID VALUE="${bytesToBase64(KEY_ID)}" ALGID="COCKTAIL" CHECKSUM="${bytesToBase64(checksumSource.subarray(0, 7))}"></KID></KIDS>`,
+    ),
+  );
+
+  expect(await header.keyIds[0].verify(CONTENT_KEY)).toBe(true);
 });

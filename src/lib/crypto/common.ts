@@ -143,6 +143,11 @@ export const createSha256 = async (data: BytesLike) => {
   return hashArray;
 };
 
+export const createSha1 = async (data: BytesLike) => {
+  const hashBuffer = await crypto.subtle.digest('SHA-1', toBufferSource(data));
+  return new Uint8Array(hashBuffer);
+};
+
 export const ecc256Verify = async (
   publicKey: Uint8Array,
   data: Uint8Array,
