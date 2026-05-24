@@ -1,7 +1,7 @@
 import { equalBytes } from '@noble/curves/utils.js';
 import { EccKey } from '../crypto/ecc-key';
 import { getRandomBytes } from '../utils';
-import { Certificate, CertificateChain } from './bcert';
+import { BCertCertType, Certificate, CertificateChain } from './bcert';
 import { InvalidCertificateChain } from './exceptions';
 import { PRD_MAGIC, PRD3 } from './prd';
 
@@ -56,11 +56,19 @@ export class PlayReadyDeviceCredentials {
         : EccKey.generate();
       const signingKey = payload.signingKey ? EccKey.from(payload.signingKey) : EccKey.generate();
       const certificateChain = CertificateChain.from(payload.groupCertificate);
-      const issuerKey = certificateChain.get(0).getIssuerKey();
-      const groupKeyBytes = groupKey.publicBytes();
-      if (issuerKey && !equalBytes(issuerKey, groupKeyBytes)) {
+      if (certificateChain.get(0).getType() === BCertCertType.DEVICE) {
+        throw new InvalidCertificateChain('Device has already been provisioned');
+      }
+      if (certificateChain.get(0).getType() !== BCertCertType.ISSUER) {
+        throw new InvalidCertificateChain(
+          'Leaf-most certificate must be of type ISSUER to issue certificate of type DEVICE',
+        );
+      }
+      if (!certificateChain.get(0).containsPublicKey(groupKey)) {
         throw new InvalidCertificateChain('Group key does not match this certificate');
       }
+      await certificateChain.verify({ checkExpiry: true, certType: BCertCertType.ISSUER });
+
       const newCertificate = await Certificate.newLeafCert({
         certId: getRandomBytes(16),
         securityLevel: certificateChain.getSecurityLevel(),
@@ -71,7 +79,7 @@ export class PlayReadyDeviceCredentials {
         parent: certificateChain,
       });
       certificateChain.prepend(newCertificate);
-      await certificateChain.verify();
+      await certificateChain.verify({ checkExpiry: true, certType: BCertCertType.DEVICE });
       return new PlayReadyDeviceCredentials({
         groupKey: groupKey.dumps(),
         encryptionKey: encryptionKey.dumps(),

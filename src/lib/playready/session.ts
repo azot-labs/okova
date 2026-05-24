@@ -1,4 +1,4 @@
-import { DOMParser } from '@xmldom/xmldom';
+import { DOMParser, XMLSerializer } from '@xmldom/xmldom';
 import * as utils from '@noble/curves/utils.js';
 import type {
   MediaKeyMessageEventInit,
@@ -16,26 +16,67 @@ import {
   fromHex,
   fromText,
   stringToBytes,
+  compareArrays,
   xorArrays,
 } from '../utils';
 import {
   aesEcbEncrypt,
   createSha256,
   ecc256decrypt,
+  ecc256Verify,
   ecc256Sign,
   encryptWithAesCbc,
   getRandomBytes,
   importAesCbcKeyForEncrypt,
 } from '../crypto/common';
-import { _AuxiliaryKeysObject, _ContentKeyObject, XmrLicense } from './xmr-license';
+import {
+  _AuxiliaryKeysObject,
+  _ContentKeyObject,
+  _EccDeviceKeyObject,
+  XmrLicense,
+} from './xmr-license';
 import { EccKey } from '../crypto/ecc-key';
 import { ElGamal } from '../crypto/elgamal';
 import { XmlKey } from './xml-key';
 import { Key } from './key';
 import { PlayReadyDeviceCredentials } from './device-credentials';
+import { BCertKeyUsage, CertificateChain } from './bcert';
+import { InvalidLicense } from './exceptions';
+import { ServerException } from './exceptions';
 import { Pssh } from './pssh';
+import { WrmHeader } from './wrmheader';
 
 const DEFAULT_CLIENT_VERSION = '10.0.16384.10011';
+
+const getLocalName = (node: any) => node.localName ?? node.nodeName?.split(':').pop() ?? '';
+
+const findDirectChildByLocalName = (parent: any, localName: string) => {
+  for (let index = 0; index < parent.childNodes.length; index++) {
+    const child = parent.childNodes[index];
+    if (child.nodeType === child.ELEMENT_NODE && getLocalName(child) === localName) {
+      return child;
+    }
+  }
+  return null;
+};
+
+const findDescendantsByLocalName = (parent: any, localName: string) => {
+  const matches: any[] = [];
+  const elements = parent.getElementsByTagName('*');
+
+  for (let index = 0; index < elements.length; index++) {
+    const element = elements[index];
+    if (getLocalName(element) === localName) {
+      matches.push(element);
+    }
+  }
+
+  return matches;
+};
+
+const findFirstDescendantByLocalName = (parent: any, localName: string) => {
+  return findDescendantsByLocalName(parent, localName)[0] ?? null;
+};
 
 type PlayReadySessionCredentials =
   | PlayReadyDeviceCredentials
@@ -45,6 +86,11 @@ type PlayReadySessionCredentials =
       signingKey: Uint8Array;
       clientVersion?: string;
     };
+
+type PlayReadySessionOptions = {
+  getRevocationListsXml?: () => string;
+  mergeRevocationInfo?: (revInfoXml: string) => void;
+};
 
 export class PlayReadySession extends EventTarget implements MediaKeysEngineSession {
   sessionId: string;
@@ -73,17 +119,20 @@ export class PlayReadySession extends EventTarget implements MediaKeysEngineSess
   wmrmServerKey: { x: bigint; y: bigint };
 
   parser: DOMParser;
+  serializer: XMLSerializer;
 
   static DeviceCredentials = PlayReadyDeviceCredentials;
 
   #contentKeys: Key[];
   #dispose: (sessionId: string) => void;
   #closed: boolean;
+  #options: PlayReadySessionOptions;
 
   constructor(
     sessionType: MediaKeySessionType = 'temporary',
     deviceCredentials: PlayReadySessionCredentials,
     dispose: (sessionId: string) => void = () => {},
+    options: PlayReadySessionOptions = {},
   ) {
     super();
     this.sessionId = fromBuffer(getRandomBytes()).toBase64();
@@ -120,9 +169,11 @@ export class PlayReadySession extends EventTarget implements MediaKeysEngineSess
     };
 
     this.parser = new DOMParser();
+    this.serializer = new XMLSerializer();
     this.#contentKeys = [];
     this.#dispose = dispose;
     this.#closed = false;
+    this.#options = options;
   }
 
   #getKeyCipher(xmlKey: XmlKey) {
@@ -137,7 +188,9 @@ export class PlayReadySession extends EventTarget implements MediaKeysEngineSess
 
   async #getDataCipher(xmlKey: XmlKey) {
     const b64CertificateChain = bytesToBase64(this.certificateChain);
-    const body = `<Data><CertificateChains><CertificateChain>${b64CertificateChain}</CertificateChain></CertificateChains><Features><Feature Name="AESCBC">""</Feature><REE><AESCBCS></AESCBCS></REE></Features></Data>`;
+    const body =
+      `<Data><CertificateChains><CertificateChain>${b64CertificateChain}</CertificateChain></CertificateChains>` +
+      `<Features><Feature Name="AESCBC"></Feature><REE><AESCBCS></AESCBCS></REE></Features></Data>`;
 
     const key = await importAesCbcKeyForEncrypt(xmlKey.aesKey as BufferSource);
     const cipherText = await encryptWithAesCbc(
@@ -171,6 +224,7 @@ export class PlayReadySession extends EventTarget implements MediaKeysEngineSess
     revLists?: string,
   ) {
     const clientTime = Math.floor(Date.now() / 1000);
+    const revocationListsXml = revLists ?? '';
 
     return (
       `<LA xmlns="http://schemas.microsoft.com/DRM/2007/03/protocols" Id="SignedData" xml:space="preserve">` +
@@ -179,7 +233,7 @@ export class PlayReadySession extends EventTarget implements MediaKeysEngineSess
       `<CLIENTINFO>` +
       `<CLIENTVERSION>${this.clientVersion}</CLIENTVERSION>` +
       `</CLIENTINFO>` +
-      revLists +
+      revocationListsXml +
       `<LicenseNonce>${nonce}</LicenseNonce>` +
       `<ClientTime>${clientTime}</ClientTime>` +
       `<EncryptedData xmlns="http://www.w3.org/2001/04/xmlenc#" Type="http://www.w3.org/2001/04/xmlenc#Element">` +
@@ -256,30 +310,19 @@ export class PlayReadySession extends EventTarget implements MediaKeysEngineSess
     this.#emitKeyStatusesChange();
   }
 
-  async getLicenseChallenge(wrm_header: string, rev_lists?: string) {
+  async getLicenseChallenge(wrm_header: string | WrmHeader, rev_lists?: string) {
+    const wrmHeader = wrm_header instanceof WrmHeader ? wrm_header : new WrmHeader(wrm_header);
     const xml_key = new XmlKey();
-
-    const wrmHeaderDoc = this.parser.parseFromString(wrm_header, 'application/xml').documentElement;
-    const wrmHeaderVersion = wrmHeaderDoc?.getAttribute('version');
-
-    let protocol_version = 1;
-
-    switch (wrmHeaderVersion) {
-      case '4.3.0.0':
-        protocol_version = 5;
-        break;
-      case '4.2.0.0':
-        protocol_version = 4;
-        break;
-    }
+    const protocol_version = wrmHeader.getProtocolVersion();
+    const revocationListsXml = rev_lists ?? this.#options.getRevocationListsXml?.();
 
     const laContent = this.#buildDigestContent(
-      wrm_header,
+      wrmHeader.dumps(),
       bytesToBase64(getRandomBytes(16)),
       bytesToBase64(this.#getKeyCipher(xml_key)),
       bytesToBase64(await this.#getDataCipher(xml_key)),
       protocol_version,
-      rev_lists,
+      revocationListsXml,
     );
 
     const contentHash = await createSha256(fromText(laContent).toBuffer());
@@ -305,12 +348,29 @@ export class PlayReadySession extends EventTarget implements MediaKeysEngineSess
 
   async parseLicense(rawLicense: string) {
     const xmlDoc = this.parser.parseFromString(rawLicense, 'application/xml');
-    const licenseElements = xmlDoc.getElementsByTagName('License');
+    this.#throwIfSoapFault(xmlDoc);
+    await this.#verifySignedLicenseResponse(xmlDoc);
+    this.#mergeRevocationInfo(xmlDoc);
+    const licenseElements = findDescendantsByLocalName(xmlDoc, 'License');
 
     const keys: Key[] = [];
 
     for (const licenseElement of Array.from(licenseElements)) {
       const license = XmrLicense.loads(base64ToBytes(licenseElement.textContent ?? ''));
+      const deviceKeyObject = license.getObjects(42)[0]?.data;
+      const deviceKeyBytes =
+        deviceKeyObject instanceof _EccDeviceKeyObject
+          ? deviceKeyObject.key
+          : deviceKeyObject &&
+              typeof deviceKeyObject === 'object' &&
+              'key' in deviceKeyObject &&
+              deviceKeyObject.key instanceof Uint8Array
+            ? (deviceKeyObject.key as Uint8Array)
+            : null;
+
+      if (deviceKeyBytes && !compareArrays(deviceKeyBytes, this.encryptionKey.publicBytes())) {
+        throw new InvalidLicense('Public encryption key does not match');
+      }
 
       const isScalable = license.getObjects(81).length > 0;
 
@@ -318,7 +378,7 @@ export class PlayReadySession extends EventTarget implements MediaKeysEngineSess
         const contentKeyObject = obj.data as _ContentKeyObject;
 
         if (![3, 4, 6].includes(contentKeyObject.cipherType)) {
-          return;
+          throw new InvalidLicense(`Unsupported cipher type ${contentKeyObject.cipherType}`);
         }
 
         const viaSymmetric = contentKeyObject.cipherType === 6;
@@ -354,8 +414,9 @@ export class PlayReadySession extends EventTarget implements MediaKeysEngineSess
           }
         }
 
-        if (!license.checkSignature(ci)) {
-          throw new Error('License integrity signature does not match');
+        const isValidSignature = await license.checkSignature(ci);
+        if (!isValidSignature) {
+          throw new InvalidLicense('License integrity signature does not match');
         }
 
         keys.push(
@@ -369,6 +430,77 @@ export class PlayReadySession extends EventTarget implements MediaKeysEngineSess
       }
     }
     return keys;
+  }
+
+  #throwIfSoapFault(xmlDoc: any) {
+    const faultElement = findFirstDescendantByLocalName(xmlDoc, 'Fault');
+    if (!faultElement) return;
+
+    const faultString =
+      findFirstDescendantByLocalName(faultElement, 'faultstring')?.textContent?.trim() ||
+      findFirstDescendantByLocalName(faultElement, 'Text')?.textContent?.trim() ||
+      'Unknown SOAP fault';
+
+    throw new ServerException(faultString);
+  }
+
+  async #verifySignedLicenseResponse(xmlDoc: any) {
+    const responseElement = findFirstDescendantByLocalName(xmlDoc, 'Response');
+    if (!responseElement) return;
+
+    const licenseResponseElement = findDirectChildByLocalName(responseElement, 'LicenseResponse');
+    const signatureElement = findDirectChildByLocalName(responseElement, 'Signature');
+    if (!licenseResponseElement || !signatureElement) return;
+
+    const signingCertificateChainValue = findFirstDescendantByLocalName(
+      licenseResponseElement,
+      'SigningCertificateChain',
+    )?.textContent?.trim();
+    const signedInfoElement = findFirstDescendantByLocalName(signatureElement, 'SignedInfo');
+    const digestValue = findFirstDescendantByLocalName(signatureElement, 'DigestValue')
+      ?.textContent?.trim();
+    const signatureValue = findFirstDescendantByLocalName(signatureElement, 'SignatureValue')
+      ?.textContent?.trim();
+
+    if (!signingCertificateChainValue || !signedInfoElement || !digestValue || !signatureValue) {
+      return;
+    }
+
+    const serializedLicenseResponse = this.serializer.serializeToString(licenseResponseElement);
+    const responseHash = await createSha256(fromText(serializedLicenseResponse).toBuffer());
+    if (!compareArrays(responseHash, base64ToBytes(digestValue))) {
+      throw new InvalidLicense('Digest mismatch in license');
+    }
+
+    const certificateChain = CertificateChain.from(base64ToBytes(signingCertificateChainValue));
+    await certificateChain.verify();
+
+    const signingKey = certificateChain.get(0).getKeyByUsage(BCertKeyUsage.SIGN_RESPONSE);
+    if (!signingKey) {
+      throw new InvalidLicense('No signing response key in license certificate chain');
+    }
+
+    const uncompressedPublicKey = new Uint8Array(65);
+    uncompressedPublicKey[0] = 0x04;
+    uncompressedPublicKey.set(signingKey, 1);
+
+    const serializedSignedInfo = this.serializer.serializeToString(signedInfoElement);
+    const isValidSignature = await ecc256Verify(
+      uncompressedPublicKey,
+      fromText(serializedSignedInfo).toBuffer(),
+      base64ToBytes(signatureValue),
+    );
+
+    if (!isValidSignature) {
+      throw new InvalidLicense('Signature mismatch in license');
+    }
+  }
+
+  #mergeRevocationInfo(xmlDoc: any) {
+    const revInfoElement = findFirstDescendantByLocalName(xmlDoc, 'RevInfo');
+    if (!revInfoElement) return;
+
+    this.#options.mergeRevocationInfo?.(this.serializer.serializeToString(revInfoElement));
   }
 
   async close() {
@@ -432,7 +564,7 @@ export class PlayReadySession extends EventTarget implements MediaKeysEngineSess
         y: this.wmrmServerKey.y.toString(),
       },
       keys: this.#contentKeys.map((key) => ({
-        keyId: fromBuffer(key.keyId).toHex(),
+        keyId: fromBuffer(key.rawKeyId()).toHex(),
         key: fromBuffer(key.key).toHex(),
         cipherType: key.cipherType,
         keyType: key.keyType,
@@ -443,16 +575,17 @@ export class PlayReadySession extends EventTarget implements MediaKeysEngineSess
   }
 
   resume(state: string) {
-    return PlayReadySession.resume(state, this.deviceCredentials, this.#dispose);
+    return PlayReadySession.resume(state, this.deviceCredentials, this.#dispose, this.#options);
   }
 
   static resume(
     data: string,
     deviceCredentials: PlayReadySessionCredentials,
     dispose?: (sessionId: string) => void,
+    options: PlayReadySessionOptions = {},
   ) {
     const values = JSON.parse(data);
-    const session = new PlayReadySession(values.sessionType, deviceCredentials, dispose);
+    const session = new PlayReadySession(values.sessionType, deviceCredentials, dispose, options);
     session.sessionId = values.sessionId;
     session.initData = values.initData ? fromBase64(values.initData).toBuffer() : undefined;
     session.initDataType = values.initDataType;

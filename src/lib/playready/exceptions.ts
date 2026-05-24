@@ -29,6 +29,18 @@ export class InvalidInitData extends PlayreadyException {
   }
 }
 
+export class InvalidWrmHeader extends PlayreadyException {
+  constructor(message = 'The PlayReady WRMHEADER is invalid or empty.') {
+    super(message);
+  }
+}
+
+export class InvalidChecksum extends PlayreadyException {
+  constructor(message = 'The PlayReady checksum is invalid.') {
+    super(message);
+  }
+}
+
 export class DeviceMismatch extends PlayreadyException {
   constructor(
     message = 'The Remote CDMs Device information and the APIs Device information did not match.',

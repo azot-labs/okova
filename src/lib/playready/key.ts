@@ -5,13 +5,13 @@ export class Key {
   key: Uint8Array;
 
   constructor(keyId: Uint8Array, keyType: number, cipherType: number, key: Uint8Array) {
-    this.keyId = this._swapEndianess(keyId);
+    this.keyId = Key.swapEndianess(keyId);
     this.keyType = keyType;
     this.cipherType = cipherType;
     this.key = key;
   }
 
-  _swapEndianess(uuidBytes: Uint8Array) {
+  static swapEndianess(uuidBytes: Uint8Array) {
     return new Uint8Array([
       uuidBytes[3],
       uuidBytes[2],
@@ -25,5 +25,9 @@ export class Key {
       uuidBytes[9],
       ...uuidBytes.slice(10, 16),
     ]);
+  }
+
+  rawKeyId() {
+    return Key.swapEndianess(this.keyId);
   }
 }

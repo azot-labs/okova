@@ -1,8 +1,9 @@
+import { unsafe as nobleAesUnsafe } from '@noble/ciphers/aes.js';
 import { KEYUTIL } from 'jsrsasign';
 import { p256 } from '@noble/curves/nist.js';
 import type { ECDSASignature } from '@noble/curves/abstract/weierstrass.js';
 import * as utils from '@noble/curves/utils.js';
-import { fromBase64, fromBuffer, toBufferSource, type BytesLike } from '../utils';
+import { fromBase64, fromBuffer, toBufferSource, toBytes, type BytesLike } from '../utils';
 import { ElGamal } from './elgamal';
 
 export const toPKCS8 = (pkcs1pem: string) => {
@@ -204,16 +205,22 @@ export const ecc256decrypt = (private_key: bigint, ciphertext: Uint8Array) => {
 };
 
 export const aesEcbEncrypt = async (key: BytesLike, data: BytesLike) => {
-  const cryptoKey = await crypto.subtle.importKey('raw', toBufferSource(key), 'AES-ECB', true, [
-    'encrypt',
-    'decrypt',
-  ]);
+  const keyBytes = toBytes(key);
+  const inputBytes = toBytes(data);
 
-  const encryptedBuffer = await crypto.subtle.encrypt(
-    { name: 'AES-ECB' },
-    cryptoKey,
-    toBufferSource(data),
-  );
+  if (inputBytes.length % 16 !== 0) {
+    throw new Error('AES-ECB input length must be a multiple of 16 bytes');
+  }
 
-  return new Uint8Array(encryptedBuffer);
+  const expandedKey = nobleAesUnsafe.expandKeyLE(keyBytes);
+  const encrypted = new Uint8Array(inputBytes.length);
+
+  for (let offset = 0; offset < inputBytes.length; offset += 16) {
+    const block = new Uint8Array(16);
+    block.set(inputBytes.subarray(offset, offset + 16));
+    nobleAesUnsafe.encryptBlock(expandedKey, block);
+    encrypted.set(block, offset);
+  }
+
+  return encrypted;
 };
