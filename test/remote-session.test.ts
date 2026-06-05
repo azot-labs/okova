@@ -1,4 +1,4 @@
-import { expect, test } from 'vitest';
+import { afterEach, expect, test, vi } from 'vitest';
 import {
   fromBase64,
   Remote,
@@ -6,6 +6,11 @@ import {
   setSupportedEngines,
   toBufferSource,
 } from '../src/lib';
+
+afterEach(() => {
+  vi.restoreAllMocks();
+  vi.useRealTimers();
+});
 
 test('remote session', async () => {
   const url = 'https://cwip-shaka-proxy.appspot.com/no_auth';
@@ -52,4 +57,65 @@ test('remote session', async () => {
 
   await session.close();
   await session.remove();
+});
+
+test('remote session update surfaces backend JSON errors', async () => {
+  const fetch = vi.fn(async (url: string | URL | Request) => {
+    const route = String(url);
+    if (route.endsWith('/sessions')) {
+      return new Response(JSON.stringify({ id: 'session-1' }), {
+        headers: { 'content-type': 'application/json' },
+      });
+    }
+    if (route.endsWith('/sessions/session-1/update')) {
+      return new Response(JSON.stringify({ error: 'Failed to update remote CDM session' }), {
+        status: 502,
+        statusText: 'Bad Gateway',
+        headers: { 'content-type': 'application/json' },
+      });
+    }
+    return new Response(JSON.stringify({ success: true }), {
+      headers: { 'content-type': 'application/json' },
+    });
+  });
+  vi.stubGlobal('fetch', fetch);
+
+  const cdm = new Remote({
+    keySystem: 'com.widevine.alpha',
+    baseUrl: 'https://remote.example',
+  });
+  const session = await cdm.createSession();
+
+  await expect(session.update(new Uint8Array([1, 2, 3]))).rejects.toThrow(
+    '502 Bad Gateway: Failed to update remote CDM session',
+  );
+});
+
+test('remote requests time out', async () => {
+  vi.useFakeTimers();
+  vi.stubGlobal(
+    'fetch',
+    vi.fn(
+      async (_url: string | URL | Request, init?: RequestInit) =>
+        new Promise<Response>((_resolve, reject) => {
+          init?.signal?.addEventListener(
+            'abort',
+            () => reject(init.signal?.reason ?? new Error('Aborted')),
+            { once: true },
+          );
+        }),
+    ),
+  );
+
+  const cdm = new Remote({
+    keySystem: 'com.widevine.alpha',
+    baseUrl: 'https://remote.example',
+    requestTimeoutMs: 100,
+  });
+
+  const expectation = expect(cdm.createSession()).rejects.toThrow(
+    'Remote CDM request timed out after 100ms',
+  );
+  await vi.advanceTimersByTimeAsync(100);
+  await expectation;
 });

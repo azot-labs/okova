@@ -8,6 +8,7 @@ type RemoteParams = {
   secret?: string;
   client?: string;
   headers?: Record<string, string>;
+  requestTimeoutMs?: number;
 };
 
 const createHttpClient = ({ baseUrl, secret, ...params }: RemoteParams) => {
@@ -17,6 +18,7 @@ const createHttpClient = ({ baseUrl, secret, ...params }: RemoteParams) => {
   };
   if (secret) headers['x-secret-key'] = secret;
 
+  const requestTimeoutMs = params.requestTimeoutMs ?? 30_000;
   const json = (data: any) => JSON.stringify(data);
 
   const handleError = (data: any, response: Response) => {
@@ -56,9 +58,27 @@ const createHttpClient = ({ baseUrl, secret, ...params }: RemoteParams) => {
     throw new Error(message, { cause: response });
   };
 
+  const request = async (route: string, init: RequestInit) => {
+    const signal = AbortSignal.timeout(requestTimeoutMs);
+
+    try {
+      return await fetch(`${baseUrl}${route}`, {
+        ...init,
+        signal,
+      });
+    } catch (error) {
+      if (signal.aborted) {
+        throw new Error(`Remote CDM request timed out after ${requestTimeoutMs}ms`, {
+          cause: error,
+        });
+      }
+      throw error;
+    }
+  };
+
   const http = {
     post: async (route: string, body?: object) => {
-      const response = await fetch(`${baseUrl}${route}`, {
+      const response = await request(route, {
         method: 'POST',
         headers,
         ...(body ? { body: json(body) } : {}),
@@ -70,7 +90,7 @@ const createHttpClient = ({ baseUrl, secret, ...params }: RemoteParams) => {
       return data;
     },
     get: async (route: string) => {
-      const response = await fetch(`${baseUrl}${route}`, {
+      const response = await request(route, {
         method: 'GET',
         headers,
       });
@@ -81,7 +101,7 @@ const createHttpClient = ({ baseUrl, secret, ...params }: RemoteParams) => {
       return data;
     },
     delete: async (route: string) => {
-      const response = await fetch(`${baseUrl}${route}`, {
+      const response = await request(route, {
         method: 'DELETE',
         headers,
       });

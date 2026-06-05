@@ -122,7 +122,6 @@ app.post(
     let rejectNextMessage: ((error: unknown) => void) | undefined;
     const nextMessage = new Promise<MediaKeyMessageEvent>((resolve, reject) => {
       let settled = false;
-      let timeout: ReturnType<typeof setTimeout>;
 
       const cleanup = () => {
         clearTimeout(timeout);
@@ -144,8 +143,12 @@ app.post(
       };
 
       session.addEventListener('message', handler);
-      timeout = setTimeout(() => {
-        fail(new Error(`Timed out after ${SESSION_MESSAGE_TIMEOUT_MS}ms waiting for a session message`));
+      const timeout = setTimeout(() => {
+        fail(
+          new Error(
+            `Timed out after ${SESSION_MESSAGE_TIMEOUT_MS}ms waiting for a session message`,
+          ),
+        );
       }, SESSION_MESSAGE_TIMEOUT_MS);
       rejectNextMessage = fail;
     });
@@ -210,6 +213,10 @@ app.post(
     try {
       await session.update(response);
       await synchronization;
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      console.error('Failed to update remote CDM session', error);
+      return c.json({ error: `Failed to update remote CDM session: ${message}` }, 502);
     } finally {
       session.removeEventListener('message', handleMessage);
       session.removeEventListener('keystatuseschange', handleKeyStatusesChange);
