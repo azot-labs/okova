@@ -208,7 +208,14 @@ export class WidevineSession extends BaseMediaKeysEngineSession {
   }
 
   async update(response: Uint8Array): Promise<void> {
-    const type = getMessageType(response);
+    let type: SignedMessage.MessageType;
+    try {
+      type = getMessageType(response);
+    } catch (error) {
+      this.log.error('Unable to parse license - check protobufs');
+      this.log.debug(fromBuffer(response).toText());
+      throw error;
+    }
     if (type === SignedMessage.MessageType.SERVICE_CERTIFICATE) {
       await this.#setServiceCertificate(response);
       if (!this.initData || !this.initDataType) return;
@@ -219,10 +226,10 @@ export class WidevineSession extends BaseMediaKeysEngineSession {
     let signedLicense = null;
     try {
       signedLicense = SignedMessage.decode(response);
-    } catch {
+    } catch (error) {
       this.log.error('Unable to parse license - check protobufs');
       this.log.debug(fromBuffer(response).toText());
-      return;
+      throw new Error('Unable to parse license - check protobufs', { cause: error });
     }
 
     const license = License.decode(signedLicense.msg);

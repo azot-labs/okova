@@ -236,7 +236,14 @@ export default defineBackground({
           let isServiceCertificate = false;
           if (cdm instanceof Widevine) {
             console.log(`[okova] Checking for service certificate`);
-            const type = getMessageType(parseBinary(message.message));
+            let type: number | undefined;
+            try {
+              type = getMessageType(parseBinary(message.message));
+            } catch (error) {
+              console.error('[okova] Failed to parse Widevine message', error);
+              sendResponse();
+              return;
+            }
             const serviceCertificateMessageType = 5;
             isServiceCertificate = type === serviceCertificateMessageType;
             console.log({ isServiceCertificate });

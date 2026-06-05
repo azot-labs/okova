@@ -118,6 +118,20 @@ test('session stays open after parsing a license', async () => {
   expect(disposeCalls).toBe(0);
 });
 
+test('session update rejects immediately when the license is not a SignedMessage', async () => {
+  const session = new WidevineSession(
+    'temporary',
+    {
+      id: ClientIdentification.create({}),
+      signWithKey: async () => new Uint8Array([0xaa]),
+    } as unknown as WidevineDeviceCredentials,
+  );
+
+  await expect(session.update(new Uint8Array([0xff, 0x00, 0x01]))).rejects.toThrow(
+    'Failed to parse message as SignedMessage',
+  );
+});
+
 test('android license requests use an OEMCrypto-like request id and set keyControlNonce', async () => {
   const challenge = await new WidevineSession(
     'temporary',
