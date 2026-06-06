@@ -1,5 +1,6 @@
 import { fromBase64 } from '../utils';
 import { WidevinePsshData } from './proto';
+import { createProtoWriter } from './protobuf';
 
 const WV_SYSTEM_ID = new Uint8Array([
   237, 239, 139, 169, 121, 214, 74, 206, 163, 200, 39, 220, 213, 29, 33, 237,
@@ -14,7 +15,7 @@ const readUint32BE = (data: Uint8Array, offset: number) =>
 const decodeExactlyWidevinePsshData = (data: Uint8Array) => {
   try {
     const parsed = WidevinePsshData.decode(data);
-    const encoded = WidevinePsshData.encode(parsed).finish();
+    const encoded = WidevinePsshData.encode(parsed, createProtoWriter()).finish();
     return areUint8ArraysEqual(encoded, data) ? parsed : null;
   } catch {
     return null;
@@ -67,7 +68,7 @@ const createPssh = (initData: Uint8Array | string) => {
 
   return {
     data: parsed ?? WidevinePsshData.create({}),
-    toBuffer: () => (parsed ? WidevinePsshData.encode(parsed).finish() : payload),
+    toBuffer: () => (parsed ? WidevinePsshData.encode(parsed, createProtoWriter()).finish() : payload),
   };
 };
 

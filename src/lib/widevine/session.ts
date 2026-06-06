@@ -15,6 +15,7 @@ import { PSSH, createPssh } from './pssh';
 import { deriveContext, deriveKeys } from './context';
 import { getMessageType } from './message';
 import { parseCertificate, verifyCertificate } from './certificate';
+import { createProtoWriter } from './protobuf';
 import { concatUint8Arrays } from '../buffer';
 import { fromBase64, fromBuffer, fromText, Logger, parseBufferSource } from '../utils';
 
@@ -184,7 +185,7 @@ export class WidevineSession extends BaseMediaKeysEngineSession {
       protocolVersion: ProtocolVersion.VERSION_2_1,
       keyControlNonce: generateKeyControlNonce(),
     });
-    const bytes = LicenseRequest.encode(entity).finish();
+    const bytes = LicenseRequest.encode(entity, createProtoWriter()).finish();
     return { requestId, entity, bytes };
   }
 
@@ -198,7 +199,7 @@ export class WidevineSession extends BaseMediaKeysEngineSession {
       msg: message,
       signature: await this.deviceCredentials.signWithKey(message),
     });
-    const bytes = SignedMessage.encode(entity).finish();
+    const bytes = SignedMessage.encode(entity, createProtoWriter()).finish();
     return { entity, bytes };
   }
 
@@ -322,7 +323,9 @@ export class WidevineSession extends BaseMediaKeysEngineSession {
       initData: this.initData ? fromBuffer(this.initData).toBase64() : undefined,
       initDataType: this.initDataType,
       serviceCertificate: this.serviceCertificate
-        ? fromBuffer(SignedDrmCertificate.encode(this.serviceCertificate).finish()).toBase64()
+        ? fromBuffer(
+            SignedDrmCertificate.encode(this.serviceCertificate, createProtoWriter()).finish(),
+          ).toBase64()
         : undefined,
       contexts: Object.fromEntries(
         this.contexts.entries().map(([key, value]) => [

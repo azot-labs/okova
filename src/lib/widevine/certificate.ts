@@ -5,6 +5,7 @@ import {
   parseSpkiFromCertificateKey,
 } from '../crypto/common';
 import { DrmCertificate, SignedDrmCertificate, SignedMessage } from './proto';
+import { createProtoWriter, type ProtobufWriter } from './protobuf';
 
 const areUint8ArraysEqual = (a: Uint8Array, b: Uint8Array) =>
   a.length === b.length && a.every((value, index) => value === b[index]);
@@ -13,12 +14,12 @@ const tryDecodeExactly = <T extends object>(
   data: Uint8Array,
   codec: {
     decode(buffer: Uint8Array): T;
-    encode(message: T): { finish(): Uint8Array };
+    encode(message: T, writer?: ProtobufWriter): { finish(): Uint8Array };
   },
 ) => {
   try {
     const decoded = codec.decode(data);
-    const encoded = codec.encode(decoded).finish();
+    const encoded = codec.encode(decoded, createProtoWriter()).finish();
     return areUint8ArraysEqual(encoded, data) ? decoded : null;
   } catch {
     return null;

@@ -14,7 +14,7 @@ import {
   FileHashes,
   SignedDrmCertificate,
 } from './proto';
-import * as protobufjs from 'protobufjs/minimal.js';
+import { createProtoWriter, type ProtobufWriter } from './protobuf';
 import { buildWvd, parseWvd, WVD_DEVICE_TYPES } from './wvd';
 import { importCertificateKey } from './certificate';
 import { requestMediaKeySystemAccess as requestAccess, setSupportedEngines } from '../api';
@@ -40,13 +40,13 @@ const decodeExactly = <T extends object>(
   data: Uint8Array,
   codec: {
     decode(buffer: Uint8Array): T;
-    encode(message: T, writer?: protobufjs.Writer): { finish(): Uint8Array };
+    encode(message: T, writer?: ProtobufWriter): { finish(): Uint8Array };
   },
   label: string,
 ) => {
   try {
     const decoded = codec.decode(data);
-    const encoded = codec.encode(decoded, new protobufjs.Writer()).finish();
+    const encoded = codec.encode(decoded, createProtoWriter()).finish();
     if (!areUint8ArraysEqual(encoded, data)) {
       throw new Error(`${label} did not parse exactly`);
     }
@@ -154,7 +154,7 @@ export class WidevineDeviceCredentials {
   }
 
   async unpack() {
-    const id = ClientIdentification.encode(this.id).finish();
+    const id = ClientIdentification.encode(this.id, createProtoWriter()).finish();
     const key = await this.exportKey();
     return {
       device_client_id_blob: id,
@@ -164,7 +164,7 @@ export class WidevineDeviceCredentials {
 
   async pack(format: 'wvd' = 'wvd') {
     if (format === 'wvd') {
-      const id = ClientIdentification.encode(this.id).finish();
+      const id = ClientIdentification.encode(this.id, createProtoWriter()).finish();
       const key = await this.exportKey();
       const keyDer = fromBuffer(key)
         .toText()
@@ -246,7 +246,7 @@ export class WidevineDeviceCredentials {
   async encryptId(certificate: SignedDrmCertificate) {
     if (!certificate.drmCertificate) throw Error('Service certificate not found');
     const serviceCertificate = DrmCertificate.decode(certificate.drmCertificate);
-    const id = ClientIdentification.encode(this.id).finish();
+    const id = ClientIdentification.encode(this.id, createProtoWriter()).finish();
     const privacyKey = await generateAesCbcKey();
     const encryptedClientIdIv = getRandomBytes(16);
     const encryptedClientId = await encryptWithAesCbc(
