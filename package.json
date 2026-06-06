@@ -89,7 +89,7 @@
     "@xmldom/xmldom": "^0.9.10",
     "barsic": "^0.2.0",
     "hono": "^4.12.22",
-    "protobufjs": "^8.4.2",
+    "protobufjs": "^8.6.0",
     "semver": "^7.8.1",
     "zod": "^4.4.3"
   },

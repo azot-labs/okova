@@ -14,6 +14,7 @@ import {
   FileHashes,
   SignedDrmCertificate,
 } from './proto';
+import * as protobufjs from 'protobufjs/minimal.js';
 import { buildWvd, parseWvd, WVD_DEVICE_TYPES } from './wvd';
 import { importCertificateKey } from './certificate';
 import { requestMediaKeySystemAccess as requestAccess, setSupportedEngines } from '../api';
@@ -39,13 +40,13 @@ const decodeExactly = <T extends object>(
   data: Uint8Array,
   codec: {
     decode(buffer: Uint8Array): T;
-    encode(message: T): { finish(): Uint8Array };
+    encode(message: T, writer?: protobufjs.Writer): { finish(): Uint8Array };
   },
   label: string,
 ) => {
   try {
     const decoded = codec.decode(data);
-    const encoded = codec.encode(decoded).finish();
+    const encoded = codec.encode(decoded, new protobufjs.Writer()).finish();
     if (!areUint8ArraysEqual(encoded, data)) {
       throw new Error(`${label} did not parse exactly`);
     }
