@@ -10,4 +10,5 @@ export const pack = async (input = process.cwd(), format?: string, output?: stri
   const outputPath = output || join(process.cwd(), `${filename}.${ext}`);
   await writeFile(outputPath, data);
   console.log(`Client packed: ${outputPath}`);
+  // Convert to Base64: `base64 -i /Users/.../client.wvd | tr -d '\n' | pbcopy`
 };
