@@ -1,6 +1,4 @@
-import type {
-  MediaKeysEngineSession,
-} from '../api';
+import type { MediaKeysEngineSession } from '../api';
 import { BaseMediaKeysEngine } from '../api';
 import { parseCertificate, verifyCertificate } from './certificate';
 import { WidevineDeviceCredentials } from './device-credentials';

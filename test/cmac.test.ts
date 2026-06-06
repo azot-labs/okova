@@ -17,9 +17,7 @@ describe('aesCmac', () => {
 
   test('matches the NIST vector for a multi-block partial message', async () => {
     const message = fromHex(
-      '6bc1bee22e409f96e93d7e117393172a' +
-        'ae2d8a571e03ac9c9eb76fac45af8e51' +
-        '30c81c46a35ce411',
+      '6bc1bee22e409f96e93d7e117393172a' + 'ae2d8a571e03ac9c9eb76fac45af8e51' + '30c81c46a35ce411',
     ).toBuffer();
 
     const mac = await aesCmac(KEY, message);

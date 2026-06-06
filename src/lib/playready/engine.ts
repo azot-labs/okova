@@ -1,6 +1,4 @@
-import type {
-  MediaKeysEngineSession,
-} from '../api';
+import type { MediaKeysEngineSession } from '../api';
 import { BaseMediaKeysEngine } from '../api';
 import { PlayReadyDeviceCredentials } from './device-credentials';
 import { TooManySessions } from './exceptions';
@@ -30,7 +28,7 @@ export class PlayReady extends BaseMediaKeysEngine {
 
   #handleSessionDisposed = (sessionId: string) => {
     this.sessions.delete(sessionId);
-  }
+  };
 
   #assertSessionCapacity() {
     if (this.sessions.size >= PlayReady.MAX_NUM_OF_SESSIONS) {
@@ -46,12 +44,17 @@ export class PlayReady extends BaseMediaKeysEngine {
   createSession(sessionType?: MediaKeySessionType) {
     this.#assertSessionCapacity();
 
-    const session = new PlayReadySession(sessionType, this.deviceCredentials, this.#handleSessionDisposed, {
-      getRevocationListsXml: () => this.revocationInfo.buildRequestXml(),
-      mergeRevocationInfo: (revInfoXml) => {
-        this.revocationInfo.merge(revInfoXml);
+    const session = new PlayReadySession(
+      sessionType,
+      this.deviceCredentials,
+      this.#handleSessionDisposed,
+      {
+        getRevocationListsXml: () => this.revocationInfo.buildRequestXml(),
+        mergeRevocationInfo: (revInfoXml) => {
+          this.revocationInfo.merge(revInfoXml);
+        },
       },
-    });
+    );
 
     return this.#trackSession(session);
   }

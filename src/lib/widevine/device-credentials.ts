@@ -117,8 +117,9 @@ export class WidevineDeviceCredentials {
     type: ClientType = CLIENT_TYPE.android,
     securityLevel: SecurityLevel = 3,
   ) {
-    this.id =
-      ArrayBuffer.isView(id) ? decodeExactly(id, ClientIdentification, 'Widevine client ID') : id;
+    this.id = ArrayBuffer.isView(id)
+      ? decodeExactly(id, ClientIdentification, 'Widevine client ID')
+      : id;
     this.signedDrmCertificate = decodeExactly(
       this.id.token,
       SignedDrmCertificate,

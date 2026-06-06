@@ -2,38 +2,65 @@ import { unsafe as nobleAesUnsafe } from '@noble/ciphers/aes.js';
 import { p256 } from '@noble/curves/nist.js';
 import type { ECDSASignature } from '@noble/curves/abstract/weierstrass.js';
 import * as utils from '@noble/curves/utils.js';
+import { AsnConvert } from '@peculiar/asn1-schema';
+import { PrivateKey, PrivateKeyInfo } from '@peculiar/asn1-pkcs8';
+import { rsaEncryption, RSAPrivateKey, RSAPublicKey } from '@peculiar/asn1-rsa';
+import { SubjectPublicKeyInfo } from '@peculiar/asn1-x509';
 import { fromBase64, fromBuffer, toBufferSource, toBytes, type BytesLike } from '../utils';
 import { ElGamal } from './elgamal';
 
-const loadKeyUtil = async () => {
-  const { KEYUTIL } = await import('jsrsasign');
-  return KEYUTIL;
+const pemToDer = (pem: string, label: string) => {
+  const normalizedLabel = label.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  const match = pem.match(
+    new RegExp(
+      `-----BEGIN ${normalizedLabel}-----\\s*([A-Za-z0-9+/=\\r\\n]+?)\\s*-----END ${normalizedLabel}-----`,
+    ),
+  );
+
+  if (!match?.[1]) {
+    throw new Error(`Invalid ${label} PEM`);
+  }
+
+  return fromBase64(match[1].replace(/\s+/g, '')).toBuffer();
+};
+
+const derToPem = (der: Uint8Array, label: string) => {
+  const body = fromBuffer(der)
+    .toBase64()
+    .match(/.{1,64}/g)
+    ?.join('\n');
+
+  if (!body) {
+    throw new Error(`Invalid ${label} DER`);
+  }
+
+  return `-----BEGIN ${label}-----\n${body}\n-----END ${label}-----\n`;
 };
 
 export const toPKCS8 = async (pkcs1pem: string) => {
-  const KEYUTIL = await loadKeyUtil();
-  const keyobj = KEYUTIL.getKey(pkcs1pem);
-  const pkcs8pem = KEYUTIL.getPEM(keyobj, 'PKCS8PRV');
-  return pkcs8pem;
+  const pkcs1Der = pemToDer(pkcs1pem, 'RSA PRIVATE KEY');
+  AsnConvert.parse(pkcs1Der, RSAPrivateKey);
+  const privateKeyInfo = new PrivateKeyInfo({
+    privateKeyAlgorithm: rsaEncryption,
+    privateKey: new PrivateKey(pkcs1Der),
+  });
+  return derToPem(new Uint8Array(AsnConvert.serialize(privateKeyInfo)), 'PRIVATE KEY');
 };
 
 export const toPKCS1 = async (pkcs8pem: string) => {
-  const KEYUTIL = await loadKeyUtil();
-  const keyobj = KEYUTIL.getKey(pkcs8pem);
-  const pkcs1pem = KEYUTIL.getPEM(keyobj, 'PKCS1PRV');
-  return pkcs1pem;
+  const pkcs8Der = pemToDer(pkcs8pem, 'PRIVATE KEY');
+  const privateKeyInfo = AsnConvert.parse(pkcs8Der, PrivateKeyInfo);
+  return derToPem(new Uint8Array(privateKeyInfo.privateKey.buffer), 'RSA PRIVATE KEY');
 };
 
 export const parseSpkiFromCertificateKey = async (publicKey: Uint8Array) => {
-  const KEYUTIL = await loadKeyUtil();
-  const publicKeyDerHex = fromBuffer(publicKey).toHex();
-  const keyResult = KEYUTIL.parsePublicRawRSAKeyHex(publicKeyDerHex);
-  const key = KEYUTIL.getKey(keyResult);
-  const pem = KEYUTIL.getPEM(key);
-  const header = '-----BEGIN PUBLIC KEY-----';
-  const footer = '-----END PUBLIC KEY-----';
-  const body = pem.substring(header.length, pem.length - footer.length - 2);
-  return fromBase64(body).toBuffer();
+  const rsaPublicKey = AsnConvert.parse(publicKey, RSAPublicKey);
+  const rsaPublicKeyDer = AsnConvert.serialize(rsaPublicKey);
+  const subjectPublicKeyInfo = new SubjectPublicKeyInfo({
+    algorithm: rsaEncryption,
+    subjectPublicKey: rsaPublicKeyDer,
+  });
+  return new Uint8Array(AsnConvert.serialize(subjectPublicKeyInfo));
 };
 
 export const importSpkiKeyForEncrypt = async (keyData: BytesLike) => {

@@ -1,11 +1,20 @@
 import { readFile } from 'node:fs/promises';
 import { fromBase64, toBufferSource } from '../src/lib';
 import { expect, test } from 'vitest';
-import { createHmacSha256, encryptWithAesCbc, importAesCbcKeyForEncrypt } from '../src/lib/crypto/common';
+import {
+  createHmacSha256,
+  encryptWithAesCbc,
+  importAesCbcKeyForEncrypt,
+} from '../src/lib/crypto/common';
 import { fromBuffer } from '../src/lib/utils';
 import { deriveKeys } from '../src/lib/widevine/context';
 import { WidevineDeviceCredentials } from '../src/lib/widevine/device-credentials';
-import { License, LicenseRequest, SignedMessage, ClientIdentification } from '../src/lib/widevine/proto';
+import {
+  License,
+  LicenseRequest,
+  SignedMessage,
+  ClientIdentification,
+} from '../src/lib/widevine/proto';
 import { WidevineSession } from '../src/lib/widevine/session';
 
 test('session', async () => {
@@ -119,13 +128,10 @@ test('session stays open after parsing a license', async () => {
 });
 
 test('session update rejects immediately when the license is not a SignedMessage', async () => {
-  const session = new WidevineSession(
-    'temporary',
-    {
-      id: ClientIdentification.create({}),
-      signWithKey: async () => new Uint8Array([0xaa]),
-    } as unknown as WidevineDeviceCredentials,
-  );
+  const session = new WidevineSession('temporary', {
+    id: ClientIdentification.create({}),
+    signWithKey: async () => new Uint8Array([0xaa]),
+  } as unknown as WidevineDeviceCredentials);
 
   await expect(session.update(new Uint8Array([0xff, 0x00, 0x01]))).rejects.toThrow(
     'Failed to parse message as SignedMessage',
@@ -162,14 +168,11 @@ test('android license requests use an OEMCrypto-like request id and set keyContr
 });
 
 test('chrome license requests use a binary 16-byte request id', async () => {
-  const challenge = await new WidevineSession(
-    'temporary',
-    {
-      id: ClientIdentification.create({}),
-      type: 'chrome',
-      signWithKey: async () => new Uint8Array([0xaa]),
-    } as unknown as WidevineDeviceCredentials,
-  ).generateRequest(
+  const challenge = await new WidevineSession('temporary', {
+    id: ClientIdentification.create({}),
+    type: 'chrome',
+    signWithKey: async () => new Uint8Array([0xaa]),
+  } as unknown as WidevineDeviceCredentials).generateRequest(
     'cenc',
     fromBase64(
       'AAAAW3Bzc2gAAAAA7e+LqXnWSs6jyCfc1R0h7QAAADsIARIQ62dqu8s0Xpa7z2FmMPGj2hoNd2lkZXZpbmVfdGVzdCIQZmtqM2xqYVNkZmFsa3IzaioCSEQyAA==',

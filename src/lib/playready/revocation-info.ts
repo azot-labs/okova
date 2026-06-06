@@ -73,7 +73,10 @@ export class RevocationInfoStore {
 
     for (let index = 0; index < root.childNodes.length; index++) {
       const revocation = root.childNodes[index];
-      if (revocation.nodeType !== revocation.ELEMENT_NODE || getLocalName(revocation) !== 'Revocation') {
+      if (
+        revocation.nodeType !== revocation.ELEMENT_NODE ||
+        getLocalName(revocation) !== 'Revocation'
+      ) {
         continue;
       }
 
@@ -116,13 +119,13 @@ export class RevocationInfoStore {
   }
 
   snapshot() {
-    return new Map(
-      Array.from(this.#entries.entries()).map(([key, value]) => [key, { ...value }]),
-    );
+    return new Map(Array.from(this.#entries.entries()).map(([key, value]) => [key, { ...value }]));
   }
 
   dumpRevInfoXml() {
-    const revocations = Array.from(this.#entries.values()).map((entry) => entry.xml).join('');
+    const revocations = Array.from(this.#entries.values())
+      .map((entry) => entry.xml)
+      .join('');
     return `<RevInfo>${revocations}</RevInfo>`;
   }
 }

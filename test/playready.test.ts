@@ -9,11 +9,7 @@ import * as common from '../src/lib/crypto/common';
 import { EccKey } from '../src/lib/crypto/ecc-key';
 import { CertificateChain } from '../src/lib/playready/bcert';
 import { PlayReady } from '../src/lib/playready/engine';
-import {
-  InvalidLicense,
-  ServerException,
-  TooManySessions,
-} from '../src/lib/playready/exceptions';
+import { InvalidLicense, ServerException, TooManySessions } from '../src/lib/playready/exceptions';
 import { Key } from '../src/lib/playready/key';
 import { DEFAULT_REVOCATION_LIST_IDS } from '../src/lib/playready/revocation-info';
 import { PlayReadySession } from '../src/lib/playready/session';
@@ -100,7 +96,9 @@ const buildSignedLicenseResponse = async (
   const digestValue =
     options.digestValue ??
     serializeToBase64(
-      await common.createSha256(new TextEncoder().encode(serializer.serializeToString(licenseResponseElement))),
+      await common.createSha256(
+        new TextEncoder().encode(serializer.serializeToString(licenseResponseElement)),
+      ),
     );
   digestValueElement.textContent = digestValue;
 
@@ -126,12 +124,12 @@ test('playready challenge omits revocation-lists XML when none is provided', asy
     signingKey: EccKey.generate().dumps(),
   });
 
-  const challenge = await session.getLicenseChallenge(
-    WRM_HEADER,
-  );
+  const challenge = await session.getLicenseChallenge(WRM_HEADER);
 
   expect(challenge).not.toContain('undefined');
-  expect(challenge).toContain('<CLIENTINFO><CLIENTVERSION>10.0.16384.10011</CLIENTVERSION></CLIENTINFO><LicenseNonce>');
+  expect(challenge).toContain(
+    '<CLIENTINFO><CLIENTVERSION>10.0.16384.10011</CLIENTVERSION></CLIENTINFO><LicenseNonce>',
+  );
 });
 
 test('playready engine sessions include revocation-list versions and persist merged RevInfo', async () => {
@@ -151,8 +149,12 @@ test('playready engine sessions include revocation-list versions and persist mer
   );
 
   const updatedChallenge = await session.getLicenseChallenge(WRM_HEADER);
-  expect(updatedChallenge).toContain('<ListID>ioydTlK2p0WXkWklprR5Hw==</ListID><Version>7</Version>');
-  expect(updatedChallenge).toContain('<ListID>Ef/RUojT3U6Ct2jqTCChbA==</ListID><Version>11</Version>');
+  expect(updatedChallenge).toContain(
+    '<ListID>ioydTlK2p0WXkWklprR5Hw==</ListID><Version>7</Version>',
+  );
+  expect(updatedChallenge).toContain(
+    '<ListID>Ef/RUojT3U6Ct2jqTCChbA==</ListID><Version>11</Version>',
+  );
 });
 
 test('playready parseLicense rejects unsupported cipher types', async () => {
@@ -373,18 +375,7 @@ test('playready XMR parser unwraps flag-based container objects', () => {
 
 test('playready XMR getObjects keeps the matching container before descending', () => {
   const nestedSignatureObject = new Uint8Array([
-    0x00,
-    0x00,
-    0x00,
-    0x0b,
-    0x00,
-    0x00,
-    0x00,
-    0x0c,
-    0x00,
-    0x01,
-    0x00,
-    0x00,
+    0x00, 0x00, 0x00, 0x0b, 0x00, 0x00, 0x00, 0x0c, 0x00, 0x01, 0x00, 0x00,
   ]);
   const licenseBytes = new Uint8Array([
     0x58,
@@ -420,7 +411,10 @@ test('playready pause and resume preserve key identifiers', async () => {
   };
   const session = new PlayReadySession('temporary', credentials);
   const contentKey = new Key(
-    new Uint8Array([0x10, 0x32, 0x54, 0x76, 0x98, 0xba, 0xdc, 0xfe, 0x01, 0x23, 0x45, 0x67, 0x89, 0xab, 0xcd, 0xef]),
+    new Uint8Array([
+      0x10, 0x32, 0x54, 0x76, 0x98, 0xba, 0xdc, 0xfe, 0x01, 0x23, 0x45, 0x67, 0x89, 0xab, 0xcd,
+      0xef,
+    ]),
     1,
     3,
     new Uint8Array(16).fill(0xaa),
@@ -477,7 +471,7 @@ test('playready cdm', async () => {
   const initData = fromBase64(pssh).toBuffer();
   const initDataType = 'cenc';
 
-  const clientPath = process.env.VITEST_PLAYREADY_CLIENT_PATH;
+  const clientPath = process.env.VITEST_PRD_PATH;
   if (!clientPath) return console.warn('PlayReady client not found. Skipping test');
   const clientData = await readFile(clientPath);
   const client = await PlayReady.DeviceCredentials.from({ prd: clientData });

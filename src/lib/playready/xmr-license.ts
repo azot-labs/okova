@@ -88,7 +88,8 @@ class _XmrObject {
     const payloadLength = this.length - 8;
 
     if (this.flags === 2 || this.flags === 3) {
-      this.data = _XmrObject.tryParseNested(reader, payloadLength) ?? reader.readBytes(payloadLength);
+      this.data =
+        _XmrObject.tryParseNested(reader, payloadLength) ?? reader.readBytes(payloadLength);
       return;
     }
 
@@ -111,7 +112,8 @@ class _XmrObject {
         this.data = new _AuxiliaryKeysObject(reader);
         break;
       default:
-        this.data = _XmrObject.tryParseNested(reader, payloadLength) ?? reader.readBytes(payloadLength);
+        this.data =
+          _XmrObject.tryParseNested(reader, payloadLength) ?? reader.readBytes(payloadLength);
         break;
     }
   }
@@ -163,7 +165,10 @@ export class XmrLicense {
   }
 
   static loads(bytes: Uint8Array) {
-    if (bytes.length < XMR_SIGNATURE.length || !compareArrays(bytes.subarray(0, 4), XMR_SIGNATURE)) {
+    if (
+      bytes.length < XMR_SIGNATURE.length ||
+      !compareArrays(bytes.subarray(0, 4), XMR_SIGNATURE)
+    ) {
       throw new InvalidLicense('Invalid XMR license signature');
     }
 

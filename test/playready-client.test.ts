@@ -20,8 +20,7 @@ import { InvalidCertificate, InvalidCertificateChain } from '../src/lib/playread
 const WORKDIR = join(process.cwd(), '');
 
 const loadPlayReadyClientData = async () => {
-  const clientPath =
-    process.env.VITEST_PLAYREADY_CLIENT_PATH ?? join(WORKDIR, 'clients', 'client.prd');
+  const clientPath = process.env.VITEST_PRD_PATH ?? join(WORKDIR, 'clients', 'client.prd');
   return readFile(clientPath);
 };
 
@@ -106,10 +105,7 @@ test('verifies certificate extdata signatures when EXTDATA is present', async ()
     records: [{ data_size: 4, data: new Uint8Array([1, 2, 3, 4]) }],
   };
   const extDataSignature = (
-    await common.ecc256Sign(
-      extDataSigningKey.privateKey,
-      ExtDataRecordSet.build(extDataRecord),
-    )
+    await common.ecc256Sign(extDataSigningKey.privateKey, ExtDataRecordSet.build(extDataRecord))
   ).toCompactRawBytes();
 
   const extDataSignKeyAttribute = {

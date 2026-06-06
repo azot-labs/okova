@@ -15,7 +15,12 @@ const WRM_HEADER =
 
 const encodeUtf16Le = (text: string) => Buffer.from(text, 'utf16le');
 
-const createPsshBox = (systemId: Uint8Array, data: Uint8Array, version = 0, keyIds: Uint8Array[] = []) => {
+const createPsshBox = (
+  systemId: Uint8Array,
+  data: Uint8Array,
+  version = 0,
+  keyIds: Uint8Array[] = [],
+) => {
   const versionField = new Uint8Array([version, 0x00, 0x00, 0x00]);
   const keyIdSection =
     version === 1
@@ -74,7 +79,9 @@ const createPlayreadyHeader = (records: Array<{ type: number; data: Uint8Array }
 };
 
 test('playready PSSH parses version 1 boxes with key IDs', () => {
-  const box = createPsshBox(PLAYREADY_SYSTEM_ID, encodeUtf16Le(WRM_HEADER), 1, [new Uint8Array(16).fill(1)]);
+  const box = createPsshBox(PLAYREADY_SYSTEM_ID, encodeUtf16Le(WRM_HEADER), 1, [
+    new Uint8Array(16).fill(1),
+  ]);
 
   const pssh = new Pssh(box);
 

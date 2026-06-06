@@ -13,8 +13,7 @@ export const LICENSE_URL = 'https://cwip-shaka-proxy.appspot.com/no_auth';
 export const read = async (filename: string) => readFile(join(WORKDIR, 'clients', filename));
 
 export const loadWidevineClientData = async () => {
-  const clientPath =
-    process.env.VITEST_WIDEVINE_CLIENT_PATH ?? join(WORKDIR, 'clients', 'client.wvd');
+  const clientPath = process.env.VITEST_WVD_PATH ?? join(WORKDIR, 'clients', 'client.wvd');
   return readFile(clientPath);
 };
 

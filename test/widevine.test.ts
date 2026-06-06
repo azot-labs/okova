@@ -56,7 +56,7 @@ test('widevine native session', async () => {
     'AAAAW3Bzc2gAAAAA7e+LqXnWSs6jyCfc1R0h7QAAADsIARIQ62dqu8s0Xpa7z2FmMPGj2hoNd2lkZXZpbmVfdGVzdCIQZmtqM2xqYVNkZmFsa3IzaioCSEQyAA==';
   const initData = fromBase64(pssh).toBuffer();
 
-  const credentialsPath = process.env.VITEST_WIDEVINE_CLIENT_PATH;
+  const credentialsPath = process.env.VITEST_WVD_PATH;
   if (!credentialsPath) return console.warn('Widevine client not found. Skipping test');
   const credentialsData = await readFile(credentialsPath);
   const credentials = await WidevineDeviceCredentials.from({ wvd: credentialsData });
@@ -87,7 +87,7 @@ test('widevine cdm', async () => {
   const initData = fromBase64(pssh).toBuffer();
   const initDataType = 'cenc';
 
-  const clientPath = process.env.VITEST_WIDEVINE_CLIENT_PATH;
+  const clientPath = process.env.VITEST_WVD_PATH;
   if (!clientPath) return console.warn('Widevine client not found. Skipping test');
   const clientData = await readFile(clientPath);
   const client = await Widevine.DeviceCredentials.from({ wvd: clientData });

@@ -91,7 +91,10 @@ export class PlayReadyDeviceCredentials {
 
   getName() {
     const name = `${this.groupCertificate.getName()}_sl${this.securityLevel}`;
-    return name.toLowerCase().replaceAll(' ', '_').replace(/[^a-z0-9_-]/g, '');
+    return name
+      .toLowerCase()
+      .replaceAll(' ', '_')
+      .replace(/[^a-z0-9_-]/g, '');
   }
 
   get filename() {

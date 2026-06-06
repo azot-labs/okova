@@ -568,7 +568,11 @@ export class CertificateChain {
 
       for (let i = 0; i < this.count(); i++) {
         const certificate = this.get(i);
-        if (i === 0 && options.certType !== undefined && certificate.getType() !== options.certType) {
+        if (
+          i === 0 &&
+          options.certType !== undefined &&
+          certificate.getType() !== options.certType
+        ) {
           throw new InvalidCertificateChain('Invalid certificate type');
         }
 

@@ -21,8 +21,7 @@ const WRMHEADER_KEY_ALG_IDS = {
   UNKNOWN: 'UNKNOWN',
 } as const;
 
-export type WrmHeaderKeyAlgId =
-  (typeof WRMHEADER_KEY_ALG_IDS)[keyof typeof WRMHEADER_KEY_ALG_IDS];
+export type WrmHeaderKeyAlgId = (typeof WRMHEADER_KEY_ALG_IDS)[keyof typeof WRMHEADER_KEY_ALG_IDS];
 
 const getLocalName = (node: any) => node?.localName ?? node?.nodeName?.split(':').pop() ?? '';
 
@@ -96,7 +95,11 @@ export class SignedKeyId {
     this.checksum = checksum;
   }
 
-  static load(value: string | null | undefined, algId: string | null | undefined, checksum?: string | null) {
+  static load(
+    value: string | null | undefined,
+    algId: string | null | undefined,
+    checksum?: string | null,
+  ) {
     if (!value) {
       throw new InvalidWrmHeader('WRMHEADER key ID value must not be empty');
     }

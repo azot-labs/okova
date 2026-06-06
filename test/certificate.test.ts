@@ -47,7 +47,9 @@ test('parse signed message wrapped certificate', async () => {
   const { drmCertificate, signedDrmCertificate } = await parseCertificate(wrappedCertificate);
 
   expect(drmCertificate.providerId).toBe('staging.google.com');
-  expect(SignedDrmCertificate.encode(signedDrmCertificate).finish()).toEqual(signedDrmCertificateBytes);
+  expect(SignedDrmCertificate.encode(signedDrmCertificate).finish()).toEqual(
+    signedDrmCertificateBytes,
+  );
 });
 
 test('reject unsigned drm certificate input', async () => {
