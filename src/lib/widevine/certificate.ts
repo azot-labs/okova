@@ -55,7 +55,7 @@ export const getRootCertificate = () => {
 };
 
 export const importCertificateKey = async (publicKey: Uint8Array, usage: 'encrypt' | 'verify') => {
-  const keyData = parseSpkiFromCertificateKey(publicKey);
+  const keyData = await parseSpkiFromCertificateKey(publicKey);
   if (usage === 'verify') {
     return importSpkiKeyForVerify(keyData);
   } else {

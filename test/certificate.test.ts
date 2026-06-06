@@ -17,7 +17,7 @@ const getSignedDrmCertificateBytes = async () => {
 
 test('parse spki from certificate key', async () => {
   const { drmCertificate } = await parseCertificate(SERVICE_CERTIFICATE);
-  const publicKey = parseSpkiFromCertificateKey(drmCertificate.publicKey);
+  const publicKey = await parseSpkiFromCertificateKey(drmCertificate.publicKey);
   const expectedPublicKey =
     'MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAtSESuNBdAj/MXZXiwlHB' +
     'xkm0F3zY0r7vNVuwZ0PeZh49KrwxgreZRtVf3Ajf6VQHgV6aYnSzIqLH9eBnu18K' +

@@ -1,24 +1,31 @@
 import { unsafe as nobleAesUnsafe } from '@noble/ciphers/aes.js';
-import { KEYUTIL } from 'jsrsasign';
 import { p256 } from '@noble/curves/nist.js';
 import type { ECDSASignature } from '@noble/curves/abstract/weierstrass.js';
 import * as utils from '@noble/curves/utils.js';
 import { fromBase64, fromBuffer, toBufferSource, toBytes, type BytesLike } from '../utils';
 import { ElGamal } from './elgamal';
 
-export const toPKCS8 = (pkcs1pem: string) => {
+const loadKeyUtil = async () => {
+  const { KEYUTIL } = await import('jsrsasign');
+  return KEYUTIL;
+};
+
+export const toPKCS8 = async (pkcs1pem: string) => {
+  const KEYUTIL = await loadKeyUtil();
   const keyobj = KEYUTIL.getKey(pkcs1pem);
   const pkcs8pem = KEYUTIL.getPEM(keyobj, 'PKCS8PRV');
   return pkcs8pem;
 };
 
-export const toPKCS1 = (pkcs8pem: string) => {
+export const toPKCS1 = async (pkcs8pem: string) => {
+  const KEYUTIL = await loadKeyUtil();
   const keyobj = KEYUTIL.getKey(pkcs8pem);
   const pkcs1pem = KEYUTIL.getPEM(keyobj, 'PKCS1PRV');
   return pkcs1pem;
 };
 
-export const parseSpkiFromCertificateKey = (publicKey: Uint8Array) => {
+export const parseSpkiFromCertificateKey = async (publicKey: Uint8Array) => {
+  const KEYUTIL = await loadKeyUtil();
   const publicKeyDerHex = fromBuffer(publicKey).toHex();
   const keyResult = KEYUTIL.parsePublicRawRSAKeyHex(publicKeyDerHex);
   const key = KEYUTIL.getKey(keyResult);

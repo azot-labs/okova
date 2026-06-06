@@ -190,7 +190,7 @@ export class WidevineDeviceCredentials {
 
   async importKey(pkcs1: Uint8Array | string) {
     const pkcs1pem = typeof pkcs1 === 'string' ? pkcs1 : fromBuffer(pkcs1).toText();
-    const pkcs8pem = toPKCS8(pkcs1pem);
+    const pkcs8pem = await toPKCS8(pkcs1pem);
     const pemContents = pkcs8pem.split('\n').slice(1, -2).join('\n');
     const data = fromBase64(pemContents).toBuffer();
     const keyForDecrypt = await crypto.subtle.importKey(
@@ -219,7 +219,7 @@ export class WidevineDeviceCredentials {
     const pemHeader = '-----BEGIN PRIVATE KEY-----';
     const pemFooter = '-----END PRIVATE KEY-----';
     const pem = `${pemHeader}\n${derAsBase64}\n${pemFooter}`;
-    const pkcs1 = toPKCS1(pem).trim();
+    const pkcs1 = (await toPKCS1(pem)).trim();
     return fromText(pkcs1).toBuffer();
   }
 
