@@ -1,14 +1,12 @@
 /*eslint-disable block-scoped-var, id-length, no-control-regex, no-magic-numbers, no-mixed-operators, no-prototype-builtins, no-redeclare, no-shadow, no-var, sort-vars, default-case, jsdoc/require-param*/
-"use strict";
-
-var $protobuf = require("protobufjs/minimal");
+import $protobuf from "protobufjs/minimal.js";
 
 // Common aliases
-var $Reader = $protobuf.Reader, $Writer = $protobuf.Writer, $util = $protobuf.util;
-var $Object = $util.global.Object, $undefined = $util.global.undefined, $Error = $util.global.Error, $TypeError = $util.global.TypeError, $String = $util.global.String, $Array = $util.global.Array, $parseInt = $util.global.parseInt, $Boolean = $util.global.Boolean, $Number = $util.global.Number, $BigInt = $util.global.BigInt;
+const $Reader = $protobuf.Reader, $Writer = $protobuf.Writer, $util = $protobuf.util;
+const $Object = $util.global.Object, $undefined = $util.global.undefined, $Error = $util.global.Error, $TypeError = $util.global.TypeError, $String = $util.global.String, $Array = $util.global.Array, $parseInt = $util.global.parseInt, $Boolean = $util.global.Boolean, $Number = $util.global.Number, $BigInt = $util.global.BigInt;
 
 // Exported root namespace
-var $root = $protobuf.roots["default"] || ($protobuf.roots["default"] = {});
+const $root = $protobuf.roots["default"] || ($protobuf.roots["default"] = {});
 
 /**
  * LicenseType enum.
@@ -18,8 +16,8 @@ var $root = $protobuf.roots["default"] || ($protobuf.roots["default"] = {});
  * @property {number} OFFLINE=2 OFFLINE value
  * @property {number} AUTOMATIC=3 AUTOMATIC value
  */
-$root.LicenseType = (function() {
-    var valuesById = {}, values = $Object.create(valuesById);
+export const LicenseType = $root.LicenseType = (() => {
+    const valuesById = {}, values = $Object.create(valuesById);
     values[valuesById[1] = "STREAMING"] = 1;
     values[valuesById[2] = "OFFLINE"] = 2;
     values[valuesById[3] = "AUTOMATIC"] = 3;
@@ -37,8 +35,8 @@ $root.LicenseType = (function() {
  * @property {number} PLATFORM_NO_VERIFICATION=4 PLATFORM_NO_VERIFICATION value
  * @property {number} PLATFORM_SECURE_STORAGE_SOFTWARE_VERIFIED=5 PLATFORM_SECURE_STORAGE_SOFTWARE_VERIFIED value
  */
-$root.PlatformVerificationStatus = (function() {
-    var valuesById = {}, values = $Object.create(valuesById);
+export const PlatformVerificationStatus = $root.PlatformVerificationStatus = (() => {
+    const valuesById = {}, values = $Object.create(valuesById);
     values[valuesById[0] = "PLATFORM_UNVERIFIED"] = 0;
     values[valuesById[1] = "PLATFORM_TAMPERED"] = 1;
     values[valuesById[2] = "PLATFORM_SOFTWARE_VERIFIED"] = 2;
@@ -48,7 +46,7 @@ $root.PlatformVerificationStatus = (function() {
     return values;
 })();
 
-$root.LicenseIdentification = (function() {
+export const LicenseIdentification = $root.LicenseIdentification = (() => {
 
     /**
      * Properties of a LicenseIdentification.
@@ -83,9 +81,9 @@ $root.LicenseIdentification = (function() {
      * @param {LicenseIdentification.$Properties=} [properties] Properties to set
      * @property {Array.<Uint8Array>} [$unknowns] Unknown fields preserved while decoding
      */
-    var LicenseIdentification = function (properties) {
+    const LicenseIdentification = function (properties) {
         if (properties)
-            for (var keys = $Object.keys(properties), i = 0; i < keys.length; ++i)
+            for (let keys = $Object.keys(properties), i = 0; i < keys.length; ++i)
                 if (properties[keys[i]] != null && keys[i] !== "__proto__")
                     this[keys[i]] = properties[keys[i]];
     };
@@ -183,7 +181,7 @@ $root.LicenseIdentification = (function() {
         if (message.providerSessionToken != null && $Object.hasOwnProperty.call(message, "providerSessionToken"))
             writer.uint32(/* id 6, wireType 2 =*/50).bytes(message.providerSessionToken);
         if (message.$unknowns != null && $Object.hasOwnProperty.call(message, "$unknowns"))
-            for (var i = 0; i < message.$unknowns.length; ++i)
+            for (let i = 0; i < message.$unknowns.length; ++i)
                 writer.raw(message.$unknowns[i]);
         return writer;
     };
@@ -219,15 +217,15 @@ $root.LicenseIdentification = (function() {
             _depth = 0;
         if (_depth > $Reader.recursionLimit)
             throw $Error("max depth exceeded");
-        var end = length === $undefined ? reader.len : reader.pos + length, message = _target || new $root.LicenseIdentification();
+        let end = length === $undefined ? reader.len : reader.pos + length, message = _target || new $root.LicenseIdentification();
         while (reader.pos < end) {
-            var start = reader.pos;
-            var tag = reader.tag();
+            let start = reader.pos;
+            let tag = reader.tag();
             if (tag === _end) {
                 _end = $undefined;
                 break;
             }
-            var wireType = tag & 7;
+            let wireType = tag & 7;
             switch (tag >>>= 3) {
             case 1: {
                     if (wireType !== 2)
@@ -352,7 +350,7 @@ $root.LicenseIdentification = (function() {
             _depth = 0;
         if (_depth > $util.recursionLimit)
             throw $Error("max depth exceeded");
-        var message = new $root.LicenseIdentification();
+        let message = new $root.LicenseIdentification();
         if (object.requestId != null)
             if (typeof object.requestId === "string")
                 $util.base64.decode(object.requestId, message.requestId = $util.newBuffer($util.base64.length(object.requestId)), 0);
@@ -414,7 +412,7 @@ $root.LicenseIdentification = (function() {
             _depth = 0;
         if (_depth > $util.recursionLimit)
             throw $Error("max depth exceeded");
-        var object = {};
+        let object = {};
         if (options.defaults) {
             if (options.bytes === $String)
                 object.requestId = "";
@@ -490,7 +488,7 @@ $root.LicenseIdentification = (function() {
     return LicenseIdentification;
 })();
 
-$root.License = (function() {
+export const License = $root.License = (() => {
 
     /**
      * Properties of a License.
@@ -530,11 +528,11 @@ $root.License = (function() {
      * @param {License.$Properties=} [properties] Properties to set
      * @property {Array.<Uint8Array>} [$unknowns] Unknown fields preserved while decoding
      */
-    var License = function (properties) {
+    const License = function (properties) {
         this.key = [];
         this.groupIds = [];
         if (properties)
-            for (var keys = $Object.keys(properties), i = 0; i < keys.length; ++i)
+            for (let keys = $Object.keys(properties), i = 0; i < keys.length; ++i)
                 if (properties[keys[i]] != null && keys[i] !== "__proto__")
                     this[keys[i]] = properties[keys[i]];
     };
@@ -664,7 +662,7 @@ $root.License = (function() {
         if (message.policy != null && $Object.hasOwnProperty.call(message, "policy"))
             $root.License.Policy.encode(message.policy, writer.uint32(/* id 2, wireType 2 =*/18).fork(), _depth + 1).ldelim();
         if (message.key != null && message.key.length)
-            for (var i = 0; i < message.key.length; ++i)
+            for (let i = 0; i < message.key.length; ++i)
                 $root.License.KeyContainer.encode(message.key[i], writer.uint32(/* id 3, wireType 2 =*/26).fork(), _depth + 1).ldelim();
         if (message.licenseStartTime != null && $Object.hasOwnProperty.call(message, "licenseStartTime"))
             writer.uint32(/* id 4, wireType 0 =*/32).int64(message.licenseStartTime);
@@ -681,10 +679,10 @@ $root.License = (function() {
         if (message.platformVerificationStatus != null && $Object.hasOwnProperty.call(message, "platformVerificationStatus"))
             writer.uint32(/* id 10, wireType 0 =*/80).int32(message.platformVerificationStatus);
         if (message.groupIds != null && message.groupIds.length)
-            for (var i = 0; i < message.groupIds.length; ++i)
+            for (let i = 0; i < message.groupIds.length; ++i)
                 writer.uint32(/* id 11, wireType 2 =*/90).bytes(message.groupIds[i]);
         if (message.$unknowns != null && $Object.hasOwnProperty.call(message, "$unknowns"))
-            for (var i = 0; i < message.$unknowns.length; ++i)
+            for (let i = 0; i < message.$unknowns.length; ++i)
                 writer.raw(message.$unknowns[i]);
         return writer;
     };
@@ -720,15 +718,15 @@ $root.License = (function() {
             _depth = 0;
         if (_depth > $Reader.recursionLimit)
             throw $Error("max depth exceeded");
-        var end = length === $undefined ? reader.len : reader.pos + length, message = _target || new $root.License();
+        let end = length === $undefined ? reader.len : reader.pos + length, message = _target || new $root.License();
         while (reader.pos < end) {
-            var start = reader.pos;
-            var tag = reader.tag();
+            let start = reader.pos;
+            let tag = reader.tag();
             if (tag === _end) {
                 _end = $undefined;
                 break;
             }
-            var wireType = tag & 7;
+            let wireType = tag & 7;
             switch (tag >>>= 3) {
             case 1: {
                     if (wireType !== 2)
@@ -844,20 +842,20 @@ $root.License = (function() {
         if (_depth > $util.recursionLimit)
             return "max depth exceeded";
         if (message.id != null && $Object.hasOwnProperty.call(message, "id")) {
-            var error = $root.LicenseIdentification.verify(message.id, _depth + 1);
+            let error = $root.LicenseIdentification.verify(message.id, _depth + 1);
             if (error)
                 return "id." + error;
         }
         if (message.policy != null && $Object.hasOwnProperty.call(message, "policy")) {
-            var error = $root.License.Policy.verify(message.policy, _depth + 1);
+            let error = $root.License.Policy.verify(message.policy, _depth + 1);
             if (error)
                 return "policy." + error;
         }
         if (message.key != null && $Object.hasOwnProperty.call(message, "key")) {
             if (!$Array.isArray(message.key))
                 return "key: array expected";
-            for (var i = 0; i < message.key.length; ++i) {
-                var error = $root.License.KeyContainer.verify(message.key[i], _depth + 1);
+            for (let i = 0; i < message.key.length; ++i) {
+                let error = $root.License.KeyContainer.verify(message.key[i], _depth + 1);
                 if (error)
                     return "key." + error;
             }
@@ -895,7 +893,7 @@ $root.License = (function() {
         if (message.groupIds != null && $Object.hasOwnProperty.call(message, "groupIds")) {
             if (!$Array.isArray(message.groupIds))
                 return "groupIds: array expected";
-            for (var i = 0; i < message.groupIds.length; ++i)
+            for (let i = 0; i < message.groupIds.length; ++i)
                 if (!(message.groupIds[i] && typeof message.groupIds[i].length === "number" || $util.isString(message.groupIds[i])))
                     return "groupIds: buffer[] expected";
         }
@@ -919,7 +917,7 @@ $root.License = (function() {
             _depth = 0;
         if (_depth > $util.recursionLimit)
             throw $Error("max depth exceeded");
-        var message = new $root.License();
+        let message = new $root.License();
         if (object.id != null) {
             if (!$util.isObject(object.id))
                 throw $TypeError(".License.id: object expected");
@@ -934,7 +932,7 @@ $root.License = (function() {
             if (!$Array.isArray(object.key))
                 throw $TypeError(".License.key: array expected");
             message.key = $Array(object.key.length);
-            for (var i = 0; i < object.key.length; ++i) {
+            for (let i = 0; i < object.key.length; ++i) {
                 if (!$util.isObject(object.key[i]))
                     throw $TypeError(".License.key: object expected");
                 message.key[i] = $root.License.KeyContainer.fromObject(object.key[i], _depth + 1);
@@ -1004,7 +1002,7 @@ $root.License = (function() {
             if (!$Array.isArray(object.groupIds))
                 throw $TypeError(".License.groupIds: array expected");
             message.groupIds = $Array(object.groupIds.length);
-            for (var i = 0; i < object.groupIds.length; ++i)
+            for (let i = 0; i < object.groupIds.length; ++i)
                 if (typeof object.groupIds[i] === "string")
                     $util.base64.decode(object.groupIds[i], message.groupIds[i] = $util.newBuffer($util.base64.length(object.groupIds[i])), 0);
                 else if (object.groupIds[i].length >= 0)
@@ -1029,7 +1027,7 @@ $root.License = (function() {
             _depth = 0;
         if (_depth > $util.recursionLimit)
             throw $Error("max depth exceeded");
-        var object = {};
+        let object = {};
         if (options.arrays || options.defaults) {
             object.key = [];
             object.groupIds = [];
@@ -1038,7 +1036,7 @@ $root.License = (function() {
             object.id = null;
             object.policy = null;
             if ($util.Long) {
-                var long = new $util.Long(0, 0, false);
+                let long = new $util.Long(0, 0, false);
                 object.licenseStartTime = options.longs === $String ? long.toString() : options.longs === $Number ? long.toNumber() : typeof $BigInt !== "undefined" && options.longs === $BigInt ? long.toBigInt() : long;
             } else
                 object.licenseStartTime = options.longs === $String ? "0" : typeof $BigInt !== "undefined" && options.longs === $BigInt ? $BigInt("0") : 0;
@@ -1073,7 +1071,7 @@ $root.License = (function() {
             object.policy = $root.License.Policy.toObject(message.policy, options, _depth + 1);
         if (message.key && message.key.length) {
             object.key = $Array(message.key.length);
-            for (var j = 0; j < message.key.length; ++j)
+            for (let j = 0; j < message.key.length; ++j)
                 object.key[j] = $root.License.KeyContainer.toObject(message.key[j], options, _depth + 1);
         }
         if (message.licenseStartTime != null && $Object.hasOwnProperty.call(message, "licenseStartTime"))
@@ -1097,7 +1095,7 @@ $root.License = (function() {
             object.platformVerificationStatus = options.enums === $String ? $root.PlatformVerificationStatus[message.platformVerificationStatus] === $undefined ? message.platformVerificationStatus : $root.PlatformVerificationStatus[message.platformVerificationStatus] : message.platformVerificationStatus;
         if (message.groupIds && message.groupIds.length) {
             object.groupIds = $Array(message.groupIds.length);
-            for (var j = 0; j < message.groupIds.length; ++j)
+            for (let j = 0; j < message.groupIds.length; ++j)
                 object.groupIds[j] = options.bytes === $String ? $util.base64.encode(message.groupIds[j], 0, message.groupIds[j].length) : options.bytes === $Array ? $Array.prototype.slice.call(message.groupIds[j]) : message.groupIds[j];
         }
         return object;
@@ -1172,9 +1170,9 @@ $root.License = (function() {
          * @param {License.Policy.$Properties=} [properties] Properties to set
          * @property {Array.<Uint8Array>} [$unknowns] Unknown fields preserved while decoding
          */
-        var Policy = function (properties) {
+        const Policy = function (properties) {
             if (properties)
-                for (var keys = $Object.keys(properties), i = 0; i < keys.length; ++i)
+                for (let keys = $Object.keys(properties), i = 0; i < keys.length; ++i)
                     if (properties[keys[i]] != null && keys[i] !== "__proto__")
                         this[keys[i]] = properties[keys[i]];
         };
@@ -1362,7 +1360,7 @@ $root.License = (function() {
             if (message.softEnforceRentalDuration != null && $Object.hasOwnProperty.call(message, "softEnforceRentalDuration"))
                 writer.uint32(/* id 15, wireType 0 =*/120).bool(message.softEnforceRentalDuration);
             if (message.$unknowns != null && $Object.hasOwnProperty.call(message, "$unknowns"))
-                for (var i = 0; i < message.$unknowns.length; ++i)
+                for (let i = 0; i < message.$unknowns.length; ++i)
                     writer.raw(message.$unknowns[i]);
             return writer;
         };
@@ -1398,15 +1396,15 @@ $root.License = (function() {
                 _depth = 0;
             if (_depth > $Reader.recursionLimit)
                 throw $Error("max depth exceeded");
-            var end = length === $undefined ? reader.len : reader.pos + length, message = _target || new $root.License.Policy();
+            let end = length === $undefined ? reader.len : reader.pos + length, message = _target || new $root.License.Policy();
             while (reader.pos < end) {
-                var start = reader.pos;
-                var tag = reader.tag();
+                let start = reader.pos;
+                let tag = reader.tag();
                 if (tag === _end) {
                     _end = $undefined;
                     break;
                 }
-                var wireType = tag & 7;
+                let wireType = tag & 7;
                 switch (tag >>>= 3) {
                 case 1: {
                         if (wireType !== 0)
@@ -1606,7 +1604,7 @@ $root.License = (function() {
                 _depth = 0;
             if (_depth > $util.recursionLimit)
                 throw $Error("max depth exceeded");
-            var message = new $root.License.Policy();
+            let message = new $root.License.Policy();
             if (object.canPlay != null)
                 message.canPlay = $Boolean(object.canPlay);
             if (object.canPersist != null)
@@ -1705,46 +1703,46 @@ $root.License = (function() {
                 _depth = 0;
             if (_depth > $util.recursionLimit)
                 throw $Error("max depth exceeded");
-            var object = {};
+            let object = {};
             if (options.defaults) {
                 object.canPlay = false;
                 object.canPersist = false;
                 object.canRenew = false;
                 if ($util.Long) {
-                    var long = new $util.Long(0, 0, false);
+                    let long = new $util.Long(0, 0, false);
                     object.rentalDurationSeconds = options.longs === $String ? long.toString() : options.longs === $Number ? long.toNumber() : typeof $BigInt !== "undefined" && options.longs === $BigInt ? long.toBigInt() : long;
                 } else
                     object.rentalDurationSeconds = options.longs === $String ? "0" : typeof $BigInt !== "undefined" && options.longs === $BigInt ? $BigInt("0") : 0;
                 if ($util.Long) {
-                    var long = new $util.Long(0, 0, false);
+                    let long = new $util.Long(0, 0, false);
                     object.playbackDurationSeconds = options.longs === $String ? long.toString() : options.longs === $Number ? long.toNumber() : typeof $BigInt !== "undefined" && options.longs === $BigInt ? long.toBigInt() : long;
                 } else
                     object.playbackDurationSeconds = options.longs === $String ? "0" : typeof $BigInt !== "undefined" && options.longs === $BigInt ? $BigInt("0") : 0;
                 if ($util.Long) {
-                    var long = new $util.Long(0, 0, false);
+                    let long = new $util.Long(0, 0, false);
                     object.licenseDurationSeconds = options.longs === $String ? long.toString() : options.longs === $Number ? long.toNumber() : typeof $BigInt !== "undefined" && options.longs === $BigInt ? long.toBigInt() : long;
                 } else
                     object.licenseDurationSeconds = options.longs === $String ? "0" : typeof $BigInt !== "undefined" && options.longs === $BigInt ? $BigInt("0") : 0;
                 if ($util.Long) {
-                    var long = new $util.Long(0, 0, false);
+                    let long = new $util.Long(0, 0, false);
                     object.renewalRecoveryDurationSeconds = options.longs === $String ? long.toString() : options.longs === $Number ? long.toNumber() : typeof $BigInt !== "undefined" && options.longs === $BigInt ? long.toBigInt() : long;
                 } else
                     object.renewalRecoveryDurationSeconds = options.longs === $String ? "0" : typeof $BigInt !== "undefined" && options.longs === $BigInt ? $BigInt("0") : 0;
                 object.renewalServerUrl = "";
                 if ($util.Long) {
-                    var long = new $util.Long(0, 0, false);
+                    let long = new $util.Long(0, 0, false);
                     object.renewalDelaySeconds = options.longs === $String ? long.toString() : options.longs === $Number ? long.toNumber() : typeof $BigInt !== "undefined" && options.longs === $BigInt ? long.toBigInt() : long;
                 } else
                     object.renewalDelaySeconds = options.longs === $String ? "0" : typeof $BigInt !== "undefined" && options.longs === $BigInt ? $BigInt("0") : 0;
                 if ($util.Long) {
-                    var long = new $util.Long(0, 0, false);
+                    let long = new $util.Long(0, 0, false);
                     object.renewalRetryIntervalSeconds = options.longs === $String ? long.toString() : options.longs === $Number ? long.toNumber() : typeof $BigInt !== "undefined" && options.longs === $BigInt ? long.toBigInt() : long;
                 } else
                     object.renewalRetryIntervalSeconds = options.longs === $String ? "0" : typeof $BigInt !== "undefined" && options.longs === $BigInt ? $BigInt("0") : 0;
                 object.renewWithUsage = false;
                 object.alwaysIncludeClientId = false;
                 if ($util.Long) {
-                    var long = new $util.Long(0, 0, false);
+                    let long = new $util.Long(0, 0, false);
                     object.playStartGracePeriodSeconds = options.longs === $String ? long.toString() : options.longs === $Number ? long.toNumber() : typeof $BigInt !== "undefined" && options.longs === $BigInt ? long.toBigInt() : long;
                 } else
                     object.playStartGracePeriodSeconds = options.longs === $String ? "0" : typeof $BigInt !== "undefined" && options.longs === $BigInt ? $BigInt("0") : 0;
@@ -1888,10 +1886,10 @@ $root.License = (function() {
          * @param {License.KeyContainer.$Properties=} [properties] Properties to set
          * @property {Array.<Uint8Array>} [$unknowns] Unknown fields preserved while decoding
          */
-        var KeyContainer = function (properties) {
+        const KeyContainer = function (properties) {
             this.videoResolutionConstraints = [];
             if (properties)
-                for (var keys = $Object.keys(properties), i = 0; i < keys.length; ++i)
+                for (let keys = $Object.keys(properties), i = 0; i < keys.length; ++i)
                     if (properties[keys[i]] != null && keys[i] !== "__proto__")
                         this[keys[i]] = properties[keys[i]];
         };
@@ -2043,14 +2041,14 @@ $root.License = (function() {
             if (message.operatorSessionKeyPermissions != null && $Object.hasOwnProperty.call(message, "operatorSessionKeyPermissions"))
                 $root.License.KeyContainer.OperatorSessionKeyPermissions.encode(message.operatorSessionKeyPermissions, writer.uint32(/* id 9, wireType 2 =*/74).fork(), _depth + 1).ldelim();
             if (message.videoResolutionConstraints != null && message.videoResolutionConstraints.length)
-                for (var i = 0; i < message.videoResolutionConstraints.length; ++i)
+                for (let i = 0; i < message.videoResolutionConstraints.length; ++i)
                     $root.License.KeyContainer.VideoResolutionConstraint.encode(message.videoResolutionConstraints[i], writer.uint32(/* id 10, wireType 2 =*/82).fork(), _depth + 1).ldelim();
             if (message.antiRollbackUsageTable != null && $Object.hasOwnProperty.call(message, "antiRollbackUsageTable"))
                 writer.uint32(/* id 11, wireType 0 =*/88).bool(message.antiRollbackUsageTable);
             if (message.trackLabel != null && $Object.hasOwnProperty.call(message, "trackLabel"))
                 writer.uint32(/* id 12, wireType 2 =*/98).string(message.trackLabel);
             if (message.$unknowns != null && $Object.hasOwnProperty.call(message, "$unknowns"))
-                for (var i = 0; i < message.$unknowns.length; ++i)
+                for (let i = 0; i < message.$unknowns.length; ++i)
                     writer.raw(message.$unknowns[i]);
             return writer;
         };
@@ -2086,15 +2084,15 @@ $root.License = (function() {
                 _depth = 0;
             if (_depth > $Reader.recursionLimit)
                 throw $Error("max depth exceeded");
-            var end = length === $undefined ? reader.len : reader.pos + length, message = _target || new $root.License.KeyContainer();
+            let end = length === $undefined ? reader.len : reader.pos + length, message = _target || new $root.License.KeyContainer();
             while (reader.pos < end) {
-                var start = reader.pos;
-                var tag = reader.tag();
+                let start = reader.pos;
+                let tag = reader.tag();
                 if (tag === _end) {
                     _end = $undefined;
                     break;
                 }
-                var wireType = tag & 7;
+                let wireType = tag & 7;
                 switch (tag >>>= 3) {
                 case 1: {
                         if (wireType !== 2)
@@ -2246,30 +2244,30 @@ $root.License = (function() {
                     break;
                 }
             if (message.requiredProtection != null && $Object.hasOwnProperty.call(message, "requiredProtection")) {
-                var error = $root.License.KeyContainer.OutputProtection.verify(message.requiredProtection, _depth + 1);
+                let error = $root.License.KeyContainer.OutputProtection.verify(message.requiredProtection, _depth + 1);
                 if (error)
                     return "requiredProtection." + error;
             }
             if (message.requestedProtection != null && $Object.hasOwnProperty.call(message, "requestedProtection")) {
-                var error = $root.License.KeyContainer.OutputProtection.verify(message.requestedProtection, _depth + 1);
+                let error = $root.License.KeyContainer.OutputProtection.verify(message.requestedProtection, _depth + 1);
                 if (error)
                     return "requestedProtection." + error;
             }
             if (message.keyControl != null && $Object.hasOwnProperty.call(message, "keyControl")) {
-                var error = $root.License.KeyContainer.KeyControl.verify(message.keyControl, _depth + 1);
+                let error = $root.License.KeyContainer.KeyControl.verify(message.keyControl, _depth + 1);
                 if (error)
                     return "keyControl." + error;
             }
             if (message.operatorSessionKeyPermissions != null && $Object.hasOwnProperty.call(message, "operatorSessionKeyPermissions")) {
-                var error = $root.License.KeyContainer.OperatorSessionKeyPermissions.verify(message.operatorSessionKeyPermissions, _depth + 1);
+                let error = $root.License.KeyContainer.OperatorSessionKeyPermissions.verify(message.operatorSessionKeyPermissions, _depth + 1);
                 if (error)
                     return "operatorSessionKeyPermissions." + error;
             }
             if (message.videoResolutionConstraints != null && $Object.hasOwnProperty.call(message, "videoResolutionConstraints")) {
                 if (!$Array.isArray(message.videoResolutionConstraints))
                     return "videoResolutionConstraints: array expected";
-                for (var i = 0; i < message.videoResolutionConstraints.length; ++i) {
-                    var error = $root.License.KeyContainer.VideoResolutionConstraint.verify(message.videoResolutionConstraints[i], _depth + 1);
+                for (let i = 0; i < message.videoResolutionConstraints.length; ++i) {
+                    let error = $root.License.KeyContainer.VideoResolutionConstraint.verify(message.videoResolutionConstraints[i], _depth + 1);
                     if (error)
                         return "videoResolutionConstraints." + error;
                 }
@@ -2300,7 +2298,7 @@ $root.License = (function() {
                 _depth = 0;
             if (_depth > $util.recursionLimit)
                 throw $Error("max depth exceeded");
-            var message = new $root.License.KeyContainer();
+            let message = new $root.License.KeyContainer();
             if (object.id != null)
                 if (typeof object.id === "string")
                     $util.base64.decode(object.id, message.id = $util.newBuffer($util.base64.length(object.id)), 0);
@@ -2400,7 +2398,7 @@ $root.License = (function() {
                 if (!$Array.isArray(object.videoResolutionConstraints))
                     throw $TypeError(".License.KeyContainer.videoResolutionConstraints: array expected");
                 message.videoResolutionConstraints = $Array(object.videoResolutionConstraints.length);
-                for (var i = 0; i < object.videoResolutionConstraints.length; ++i) {
+                for (let i = 0; i < object.videoResolutionConstraints.length; ++i) {
                     if (!$util.isObject(object.videoResolutionConstraints[i]))
                         throw $TypeError(".License.KeyContainer.videoResolutionConstraints: object expected");
                     message.videoResolutionConstraints[i] = $root.License.KeyContainer.VideoResolutionConstraint.fromObject(object.videoResolutionConstraints[i], _depth + 1);
@@ -2429,7 +2427,7 @@ $root.License = (function() {
                 _depth = 0;
             if (_depth > $util.recursionLimit)
                 throw $Error("max depth exceeded");
-            var object = {};
+            let object = {};
             if (options.arrays || options.defaults)
                 object.videoResolutionConstraints = [];
             if (options.defaults) {
@@ -2483,7 +2481,7 @@ $root.License = (function() {
                 object.operatorSessionKeyPermissions = $root.License.KeyContainer.OperatorSessionKeyPermissions.toObject(message.operatorSessionKeyPermissions, options, _depth + 1);
             if (message.videoResolutionConstraints && message.videoResolutionConstraints.length) {
                 object.videoResolutionConstraints = $Array(message.videoResolutionConstraints.length);
-                for (var j = 0; j < message.videoResolutionConstraints.length; ++j)
+                for (let j = 0; j < message.videoResolutionConstraints.length; ++j)
                     object.videoResolutionConstraints[j] = $root.License.KeyContainer.VideoResolutionConstraint.toObject(message.videoResolutionConstraints[j], options, _depth + 1);
             }
             if (message.antiRollbackUsageTable != null && $Object.hasOwnProperty.call(message, "antiRollbackUsageTable"))
@@ -2530,7 +2528,7 @@ $root.License = (function() {
          * @property {number} OEM_CONTENT=6 OEM_CONTENT value
          */
         KeyContainer.KeyType = (function() {
-            var valuesById = {}, values = $Object.create(valuesById);
+            const valuesById = {}, values = $Object.create(valuesById);
             values[valuesById[1] = "SIGNING"] = 1;
             values[valuesById[2] = "CONTENT"] = 2;
             values[valuesById[3] = "KEY_CONTROL"] = 3;
@@ -2551,7 +2549,7 @@ $root.License = (function() {
          * @property {number} HW_SECURE_ALL=5 HW_SECURE_ALL value
          */
         KeyContainer.SecurityLevel = (function() {
-            var valuesById = {}, values = $Object.create(valuesById);
+            const valuesById = {}, values = $Object.create(valuesById);
             values[valuesById[1] = "SW_SECURE_CRYPTO"] = 1;
             values[valuesById[2] = "SW_SECURE_DECODE"] = 2;
             values[valuesById[3] = "HW_SECURE_CRYPTO"] = 3;
@@ -2591,9 +2589,9 @@ $root.License = (function() {
              * @param {License.KeyContainer.KeyControl.$Properties=} [properties] Properties to set
              * @property {Array.<Uint8Array>} [$unknowns] Unknown fields preserved while decoding
              */
-            var KeyControl = function (properties) {
+            const KeyControl = function (properties) {
                 if (properties)
-                    for (var keys = $Object.keys(properties), i = 0; i < keys.length; ++i)
+                    for (let keys = $Object.keys(properties), i = 0; i < keys.length; ++i)
                         if (properties[keys[i]] != null && keys[i] !== "__proto__")
                             this[keys[i]] = properties[keys[i]];
             };
@@ -2651,7 +2649,7 @@ $root.License = (function() {
                 if (message.iv != null && $Object.hasOwnProperty.call(message, "iv"))
                     writer.uint32(/* id 2, wireType 2 =*/18).bytes(message.iv);
                 if (message.$unknowns != null && $Object.hasOwnProperty.call(message, "$unknowns"))
-                    for (var i = 0; i < message.$unknowns.length; ++i)
+                    for (let i = 0; i < message.$unknowns.length; ++i)
                         writer.raw(message.$unknowns[i]);
                 return writer;
             };
@@ -2687,15 +2685,15 @@ $root.License = (function() {
                     _depth = 0;
                 if (_depth > $Reader.recursionLimit)
                     throw $Error("max depth exceeded");
-                var end = length === $undefined ? reader.len : reader.pos + length, message = _target || new $root.License.KeyContainer.KeyControl();
+                let end = length === $undefined ? reader.len : reader.pos + length, message = _target || new $root.License.KeyContainer.KeyControl();
                 while (reader.pos < end) {
-                    var start = reader.pos;
-                    var tag = reader.tag();
+                    let start = reader.pos;
+                    let tag = reader.tag();
                     if (tag === _end) {
                         _end = $undefined;
                         break;
                     }
-                    var wireType = tag & 7;
+                    let wireType = tag & 7;
                     switch (tag >>>= 3) {
                     case 1: {
                             if (wireType !== 2)
@@ -2778,7 +2776,7 @@ $root.License = (function() {
                     _depth = 0;
                 if (_depth > $util.recursionLimit)
                     throw $Error("max depth exceeded");
-                var message = new $root.License.KeyContainer.KeyControl();
+                let message = new $root.License.KeyContainer.KeyControl();
                 if (object.keyControlBlock != null)
                     if (typeof object.keyControlBlock === "string")
                         $util.base64.decode(object.keyControlBlock, message.keyControlBlock = $util.newBuffer($util.base64.length(object.keyControlBlock)), 0);
@@ -2808,7 +2806,7 @@ $root.License = (function() {
                     _depth = 0;
                 if (_depth > $util.recursionLimit)
                     throw $Error("max depth exceeded");
-                var object = {};
+                let object = {};
                 if (options.defaults) {
                     if (options.bytes === $String)
                         object.keyControlBlock = "";
@@ -2894,9 +2892,9 @@ $root.License = (function() {
              * @param {License.KeyContainer.OutputProtection.$Properties=} [properties] Properties to set
              * @property {Array.<Uint8Array>} [$unknowns] Unknown fields preserved while decoding
              */
-            var OutputProtection = function (properties) {
+            const OutputProtection = function (properties) {
                 if (properties)
-                    for (var keys = $Object.keys(properties), i = 0; i < keys.length; ++i)
+                    for (let keys = $Object.keys(properties), i = 0; i < keys.length; ++i)
                         if (properties[keys[i]] != null && keys[i] !== "__proto__")
                             this[keys[i]] = properties[keys[i]];
             };
@@ -2984,7 +2982,7 @@ $root.License = (function() {
                 if (message.disableDigitalOutput != null && $Object.hasOwnProperty.call(message, "disableDigitalOutput"))
                     writer.uint32(/* id 5, wireType 0 =*/40).bool(message.disableDigitalOutput);
                 if (message.$unknowns != null && $Object.hasOwnProperty.call(message, "$unknowns"))
-                    for (var i = 0; i < message.$unknowns.length; ++i)
+                    for (let i = 0; i < message.$unknowns.length; ++i)
                         writer.raw(message.$unknowns[i]);
                 return writer;
             };
@@ -3020,15 +3018,15 @@ $root.License = (function() {
                     _depth = 0;
                 if (_depth > $Reader.recursionLimit)
                     throw $Error("max depth exceeded");
-                var end = length === $undefined ? reader.len : reader.pos + length, message = _target || new $root.License.KeyContainer.OutputProtection();
+                let end = length === $undefined ? reader.len : reader.pos + length, message = _target || new $root.License.KeyContainer.OutputProtection();
                 while (reader.pos < end) {
-                    var start = reader.pos;
-                    var tag = reader.tag();
+                    let start = reader.pos;
+                    let tag = reader.tag();
                     if (tag === _end) {
                         _end = $undefined;
                         break;
                     }
-                    var wireType = tag & 7;
+                    let wireType = tag & 7;
                     switch (tag >>>= 3) {
                     case 1: {
                             if (wireType !== 0)
@@ -3160,7 +3158,7 @@ $root.License = (function() {
                     _depth = 0;
                 if (_depth > $util.recursionLimit)
                     throw $Error("max depth exceeded");
-                var message = new $root.License.KeyContainer.OutputProtection();
+                let message = new $root.License.KeyContainer.OutputProtection();
                 switch (object.hdcp) {
                 default:
                     if (typeof object.hdcp === "number") {
@@ -3260,7 +3258,7 @@ $root.License = (function() {
                     _depth = 0;
                 if (_depth > $util.recursionLimit)
                     throw $Error("max depth exceeded");
-                var object = {};
+                let object = {};
                 if (options.defaults) {
                     object.hdcp = options.enums === $String ? "HDCP_NONE" : 0;
                     object.cgmsFlags = options.enums === $String ? "CGMS_NONE" : 42;
@@ -3319,7 +3317,7 @@ $root.License = (function() {
              * @property {number} HDCP_NO_DIGITAL_OUTPUT=255 HDCP_NO_DIGITAL_OUTPUT value
              */
             OutputProtection.HDCP = (function() {
-                var valuesById = {}, values = $Object.create(valuesById);
+                const valuesById = {}, values = $Object.create(valuesById);
                 values[valuesById[0] = "HDCP_NONE"] = 0;
                 values[valuesById[1] = "HDCP_V1"] = 1;
                 values[valuesById[2] = "HDCP_V2"] = 2;
@@ -3340,7 +3338,7 @@ $root.License = (function() {
              * @property {number} COPY_NEVER=3 COPY_NEVER value
              */
             OutputProtection.CGMS = (function() {
-                var valuesById = {}, values = $Object.create(valuesById);
+                const valuesById = {}, values = $Object.create(valuesById);
                 values[valuesById[42] = "CGMS_NONE"] = 42;
                 values[valuesById[0] = "COPY_FREE"] = 0;
                 values[valuesById[2] = "COPY_ONCE"] = 2;
@@ -3356,7 +3354,7 @@ $root.License = (function() {
              * @property {number} CURRENT_SRM=1 CURRENT_SRM value
              */
             OutputProtection.HdcpSrmRule = (function() {
-                var valuesById = {}, values = $Object.create(valuesById);
+                const valuesById = {}, values = $Object.create(valuesById);
                 values[valuesById[0] = "HDCP_SRM_RULE_NONE"] = 0;
                 values[valuesById[1] = "CURRENT_SRM"] = 1;
                 return values;
@@ -3397,9 +3395,9 @@ $root.License = (function() {
              * @param {License.KeyContainer.VideoResolutionConstraint.$Properties=} [properties] Properties to set
              * @property {Array.<Uint8Array>} [$unknowns] Unknown fields preserved while decoding
              */
-            var VideoResolutionConstraint = function (properties) {
+            const VideoResolutionConstraint = function (properties) {
                 if (properties)
-                    for (var keys = $Object.keys(properties), i = 0; i < keys.length; ++i)
+                    for (let keys = $Object.keys(properties), i = 0; i < keys.length; ++i)
                         if (properties[keys[i]] != null && keys[i] !== "__proto__")
                             this[keys[i]] = properties[keys[i]];
             };
@@ -3467,7 +3465,7 @@ $root.License = (function() {
                 if (message.requiredProtection != null && $Object.hasOwnProperty.call(message, "requiredProtection"))
                     $root.License.KeyContainer.OutputProtection.encode(message.requiredProtection, writer.uint32(/* id 3, wireType 2 =*/26).fork(), _depth + 1).ldelim();
                 if (message.$unknowns != null && $Object.hasOwnProperty.call(message, "$unknowns"))
-                    for (var i = 0; i < message.$unknowns.length; ++i)
+                    for (let i = 0; i < message.$unknowns.length; ++i)
                         writer.raw(message.$unknowns[i]);
                 return writer;
             };
@@ -3503,15 +3501,15 @@ $root.License = (function() {
                     _depth = 0;
                 if (_depth > $Reader.recursionLimit)
                     throw $Error("max depth exceeded");
-                var end = length === $undefined ? reader.len : reader.pos + length, message = _target || new $root.License.KeyContainer.VideoResolutionConstraint();
+                let end = length === $undefined ? reader.len : reader.pos + length, message = _target || new $root.License.KeyContainer.VideoResolutionConstraint();
                 while (reader.pos < end) {
-                    var start = reader.pos;
-                    var tag = reader.tag();
+                    let start = reader.pos;
+                    let tag = reader.tag();
                     if (tag === _end) {
                         _end = $undefined;
                         break;
                     }
-                    var wireType = tag & 7;
+                    let wireType = tag & 7;
                     switch (tag >>>= 3) {
                     case 1: {
                             if (wireType !== 0)
@@ -3581,7 +3579,7 @@ $root.License = (function() {
                     if (!$util.isInteger(message.maxResolutionPixels))
                         return "maxResolutionPixels: integer expected";
                 if (message.requiredProtection != null && $Object.hasOwnProperty.call(message, "requiredProtection")) {
-                    var error = $root.License.KeyContainer.OutputProtection.verify(message.requiredProtection, _depth + 1);
+                    let error = $root.License.KeyContainer.OutputProtection.verify(message.requiredProtection, _depth + 1);
                     if (error)
                         return "requiredProtection." + error;
                 }
@@ -3605,7 +3603,7 @@ $root.License = (function() {
                     _depth = 0;
                 if (_depth > $util.recursionLimit)
                     throw $Error("max depth exceeded");
-                var message = new $root.License.KeyContainer.VideoResolutionConstraint();
+                let message = new $root.License.KeyContainer.VideoResolutionConstraint();
                 if (object.minResolutionPixels != null)
                     message.minResolutionPixels = object.minResolutionPixels >>> 0;
                 if (object.maxResolutionPixels != null)
@@ -3634,7 +3632,7 @@ $root.License = (function() {
                     _depth = 0;
                 if (_depth > $util.recursionLimit)
                     throw $Error("max depth exceeded");
-                var object = {};
+                let object = {};
                 if (options.defaults) {
                     object.minResolutionPixels = 0;
                     object.maxResolutionPixels = 0;
@@ -3710,9 +3708,9 @@ $root.License = (function() {
              * @param {License.KeyContainer.OperatorSessionKeyPermissions.$Properties=} [properties] Properties to set
              * @property {Array.<Uint8Array>} [$unknowns] Unknown fields preserved while decoding
              */
-            var OperatorSessionKeyPermissions = function (properties) {
+            const OperatorSessionKeyPermissions = function (properties) {
                 if (properties)
-                    for (var keys = $Object.keys(properties), i = 0; i < keys.length; ++i)
+                    for (let keys = $Object.keys(properties), i = 0; i < keys.length; ++i)
                         if (properties[keys[i]] != null && keys[i] !== "__proto__")
                             this[keys[i]] = properties[keys[i]];
             };
@@ -3790,7 +3788,7 @@ $root.License = (function() {
                 if (message.allowSignatureVerify != null && $Object.hasOwnProperty.call(message, "allowSignatureVerify"))
                     writer.uint32(/* id 4, wireType 0 =*/32).bool(message.allowSignatureVerify);
                 if (message.$unknowns != null && $Object.hasOwnProperty.call(message, "$unknowns"))
-                    for (var i = 0; i < message.$unknowns.length; ++i)
+                    for (let i = 0; i < message.$unknowns.length; ++i)
                         writer.raw(message.$unknowns[i]);
                 return writer;
             };
@@ -3826,15 +3824,15 @@ $root.License = (function() {
                     _depth = 0;
                 if (_depth > $Reader.recursionLimit)
                     throw $Error("max depth exceeded");
-                var end = length === $undefined ? reader.len : reader.pos + length, message = _target || new $root.License.KeyContainer.OperatorSessionKeyPermissions();
+                let end = length === $undefined ? reader.len : reader.pos + length, message = _target || new $root.License.KeyContainer.OperatorSessionKeyPermissions();
                 while (reader.pos < end) {
-                    var start = reader.pos;
-                    var tag = reader.tag();
+                    let start = reader.pos;
+                    let tag = reader.tag();
                     if (tag === _end) {
                         _end = $undefined;
                         break;
                     }
-                    var wireType = tag & 7;
+                    let wireType = tag & 7;
                     switch (tag >>>= 3) {
                     case 1: {
                             if (wireType !== 0)
@@ -3935,7 +3933,7 @@ $root.License = (function() {
                     _depth = 0;
                 if (_depth > $util.recursionLimit)
                     throw $Error("max depth exceeded");
-                var message = new $root.License.KeyContainer.OperatorSessionKeyPermissions();
+                let message = new $root.License.KeyContainer.OperatorSessionKeyPermissions();
                 if (object.allowEncrypt != null)
                     message.allowEncrypt = $Boolean(object.allowEncrypt);
                 if (object.allowDecrypt != null)
@@ -3963,7 +3961,7 @@ $root.License = (function() {
                     _depth = 0;
                 if (_depth > $util.recursionLimit)
                     throw $Error("max depth exceeded");
-                var object = {};
+                let object = {};
                 if (options.defaults) {
                     object.allowEncrypt = false;
                     object.allowDecrypt = false;
@@ -4023,15 +4021,15 @@ $root.License = (function() {
  * @property {number} VERSION_2_1=21 VERSION_2_1 value
  * @property {number} VERSION_2_2=22 VERSION_2_2 value
  */
-$root.ProtocolVersion = (function() {
-    var valuesById = {}, values = $Object.create(valuesById);
+export const ProtocolVersion = $root.ProtocolVersion = (() => {
+    const valuesById = {}, values = $Object.create(valuesById);
     values[valuesById[20] = "VERSION_2_0"] = 20;
     values[valuesById[21] = "VERSION_2_1"] = 21;
     values[valuesById[22] = "VERSION_2_2"] = 22;
     return values;
 })();
 
-$root.LicenseRequest = (function() {
+export const LicenseRequest = $root.LicenseRequest = (() => {
 
     /**
      * Properties of a LicenseRequest.
@@ -4078,9 +4076,9 @@ $root.LicenseRequest = (function() {
      * @param {LicenseRequest.$Properties=} [properties] Properties to set
      * @property {Array.<Uint8Array>} [$unknowns] Unknown fields preserved while decoding
      */
-    var LicenseRequest = function (properties) {
+    const LicenseRequest = function (properties) {
         if (properties)
-            for (var keys = $Object.keys(properties), i = 0; i < keys.length; ++i)
+            for (let keys = $Object.keys(properties), i = 0; i < keys.length; ++i)
                 if (properties[keys[i]] != null && keys[i] !== "__proto__")
                     this[keys[i]] = properties[keys[i]];
     };
@@ -4198,7 +4196,7 @@ $root.LicenseRequest = (function() {
         if (message.encryptedClientId != null && $Object.hasOwnProperty.call(message, "encryptedClientId"))
             $root.EncryptedClientIdentification.encode(message.encryptedClientId, writer.uint32(/* id 8, wireType 2 =*/66).fork(), _depth + 1).ldelim();
         if (message.$unknowns != null && $Object.hasOwnProperty.call(message, "$unknowns"))
-            for (var i = 0; i < message.$unknowns.length; ++i)
+            for (let i = 0; i < message.$unknowns.length; ++i)
                 writer.raw(message.$unknowns[i]);
         return writer;
     };
@@ -4234,15 +4232,15 @@ $root.LicenseRequest = (function() {
             _depth = 0;
         if (_depth > $Reader.recursionLimit)
             throw $Error("max depth exceeded");
-        var end = length === $undefined ? reader.len : reader.pos + length, message = _target || new $root.LicenseRequest();
+        let end = length === $undefined ? reader.len : reader.pos + length, message = _target || new $root.LicenseRequest();
         while (reader.pos < end) {
-            var start = reader.pos;
-            var tag = reader.tag();
+            let start = reader.pos;
+            let tag = reader.tag();
             if (tag === _end) {
                 _end = $undefined;
                 break;
             }
-            var wireType = tag & 7;
+            let wireType = tag & 7;
             switch (tag >>>= 3) {
             case 1: {
                     if (wireType !== 2)
@@ -4336,12 +4334,12 @@ $root.LicenseRequest = (function() {
         if (_depth > $util.recursionLimit)
             return "max depth exceeded";
         if (message.clientId != null && $Object.hasOwnProperty.call(message, "clientId")) {
-            var error = $root.ClientIdentification.verify(message.clientId, _depth + 1);
+            let error = $root.ClientIdentification.verify(message.clientId, _depth + 1);
             if (error)
                 return "clientId." + error;
         }
         if (message.contentId != null && $Object.hasOwnProperty.call(message, "contentId")) {
-            var error = $root.LicenseRequest.ContentIdentification.verify(message.contentId, _depth + 1);
+            let error = $root.LicenseRequest.ContentIdentification.verify(message.contentId, _depth + 1);
             if (error)
                 return "contentId." + error;
         }
@@ -4373,7 +4371,7 @@ $root.LicenseRequest = (function() {
             if (!$util.isInteger(message.keyControlNonce))
                 return "keyControlNonce: integer expected";
         if (message.encryptedClientId != null && $Object.hasOwnProperty.call(message, "encryptedClientId")) {
-            var error = $root.EncryptedClientIdentification.verify(message.encryptedClientId, _depth + 1);
+            let error = $root.EncryptedClientIdentification.verify(message.encryptedClientId, _depth + 1);
             if (error)
                 return "encryptedClientId." + error;
         }
@@ -4397,7 +4395,7 @@ $root.LicenseRequest = (function() {
             _depth = 0;
         if (_depth > $util.recursionLimit)
             throw $Error("max depth exceeded");
-        var message = new $root.LicenseRequest();
+        let message = new $root.LicenseRequest();
         if (object.clientId != null) {
             if (!$util.isObject(object.clientId))
                 throw $TypeError(".LicenseRequest.clientId: object expected");
@@ -4488,13 +4486,13 @@ $root.LicenseRequest = (function() {
             _depth = 0;
         if (_depth > $util.recursionLimit)
             throw $Error("max depth exceeded");
-        var object = {};
+        let object = {};
         if (options.defaults) {
             object.clientId = null;
             object.contentId = null;
             object.type = options.enums === $String ? "NEW" : 1;
             if ($util.Long) {
-                var long = new $util.Long(0, 0, false);
+                let long = new $util.Long(0, 0, false);
                 object.requestTime = options.longs === $String ? long.toString() : options.longs === $Number ? long.toNumber() : typeof $BigInt !== "undefined" && options.longs === $BigInt ? long.toBigInt() : long;
             } else
                 object.requestTime = options.longs === $String ? "0" : typeof $BigInt !== "undefined" && options.longs === $BigInt ? $BigInt("0") : 0;
@@ -4600,9 +4598,9 @@ $root.LicenseRequest = (function() {
          * @param {LicenseRequest.ContentIdentification.$Properties=} [properties] Properties to set
          * @property {Array.<Uint8Array>} [$unknowns] Unknown fields preserved while decoding
          */
-        var ContentIdentification = function (properties) {
+        const ContentIdentification = function (properties) {
             if (properties)
-                for (var keys = $Object.keys(properties), i = 0; i < keys.length; ++i)
+                for (let keys = $Object.keys(properties), i = 0; i < keys.length; ++i)
                     if (properties[keys[i]] != null && keys[i] !== "__proto__")
                         this[keys[i]] = properties[keys[i]];
         };
@@ -4640,7 +4638,7 @@ $root.LicenseRequest = (function() {
         ContentIdentification.prototype.initData = null;
 
         // OneOf field names bound to virtual getters and setters
-        var $oneOfFields;
+        let $oneOfFields;
 
         /**
          * ContentIdentification contentIdVariant.
@@ -4694,7 +4692,7 @@ $root.LicenseRequest = (function() {
             if (message.initData != null && $Object.hasOwnProperty.call(message, "initData"))
                 $root.LicenseRequest.ContentIdentification.InitData.encode(message.initData, writer.uint32(/* id 4, wireType 2 =*/34).fork(), _depth + 1).ldelim();
             if (message.$unknowns != null && $Object.hasOwnProperty.call(message, "$unknowns"))
-                for (var i = 0; i < message.$unknowns.length; ++i)
+                for (let i = 0; i < message.$unknowns.length; ++i)
                     writer.raw(message.$unknowns[i]);
             return writer;
         };
@@ -4730,15 +4728,15 @@ $root.LicenseRequest = (function() {
                 _depth = 0;
             if (_depth > $Reader.recursionLimit)
                 throw $Error("max depth exceeded");
-            var end = length === $undefined ? reader.len : reader.pos + length, message = _target || new $root.LicenseRequest.ContentIdentification();
+            let end = length === $undefined ? reader.len : reader.pos + length, message = _target || new $root.LicenseRequest.ContentIdentification();
             while (reader.pos < end) {
-                var start = reader.pos;
-                var tag = reader.tag();
+                let start = reader.pos;
+                let tag = reader.tag();
                 if (tag === _end) {
                     _end = $undefined;
                     break;
                 }
-                var wireType = tag & 7;
+                let wireType = tag & 7;
                 switch (tag >>>= 3) {
                 case 1: {
                         if (wireType !== 2)
@@ -4811,11 +4809,11 @@ $root.LicenseRequest = (function() {
                 _depth = 0;
             if (_depth > $util.recursionLimit)
                 return "max depth exceeded";
-            var properties = {};
+            let properties = {};
             if (message.widevinePsshData != null && $Object.hasOwnProperty.call(message, "widevinePsshData")) {
                 properties.contentIdVariant = 1;
                 {
-                    var error = $root.LicenseRequest.ContentIdentification.WidevinePsshData.verify(message.widevinePsshData, _depth + 1);
+                    let error = $root.LicenseRequest.ContentIdentification.WidevinePsshData.verify(message.widevinePsshData, _depth + 1);
                     if (error)
                         return "widevinePsshData." + error;
                 }
@@ -4825,7 +4823,7 @@ $root.LicenseRequest = (function() {
                     return "contentIdVariant: multiple values";
                 properties.contentIdVariant = 1;
                 {
-                    var error = $root.LicenseRequest.ContentIdentification.WebmKeyId.verify(message.webmKeyId, _depth + 1);
+                    let error = $root.LicenseRequest.ContentIdentification.WebmKeyId.verify(message.webmKeyId, _depth + 1);
                     if (error)
                         return "webmKeyId." + error;
                 }
@@ -4835,7 +4833,7 @@ $root.LicenseRequest = (function() {
                     return "contentIdVariant: multiple values";
                 properties.contentIdVariant = 1;
                 {
-                    var error = $root.LicenseRequest.ContentIdentification.ExistingLicense.verify(message.existingLicense, _depth + 1);
+                    let error = $root.LicenseRequest.ContentIdentification.ExistingLicense.verify(message.existingLicense, _depth + 1);
                     if (error)
                         return "existingLicense." + error;
                 }
@@ -4845,7 +4843,7 @@ $root.LicenseRequest = (function() {
                     return "contentIdVariant: multiple values";
                 properties.contentIdVariant = 1;
                 {
-                    var error = $root.LicenseRequest.ContentIdentification.InitData.verify(message.initData, _depth + 1);
+                    let error = $root.LicenseRequest.ContentIdentification.InitData.verify(message.initData, _depth + 1);
                     if (error)
                         return "initData." + error;
                 }
@@ -4870,7 +4868,7 @@ $root.LicenseRequest = (function() {
                 _depth = 0;
             if (_depth > $util.recursionLimit)
                 throw $Error("max depth exceeded");
-            var message = new $root.LicenseRequest.ContentIdentification();
+            let message = new $root.LicenseRequest.ContentIdentification();
             if (object.widevinePsshData != null) {
                 if (!$util.isObject(object.widevinePsshData))
                     throw $TypeError(".LicenseRequest.ContentIdentification.widevinePsshData: object expected");
@@ -4910,7 +4908,7 @@ $root.LicenseRequest = (function() {
                 _depth = 0;
             if (_depth > $util.recursionLimit)
                 throw $Error("max depth exceeded");
-            var object = {};
+            let object = {};
             if (message.widevinePsshData != null && $Object.hasOwnProperty.call(message, "widevinePsshData")) {
                 object.widevinePsshData = $root.LicenseRequest.ContentIdentification.WidevinePsshData.toObject(message.widevinePsshData, options, _depth + 1);
                 if (options.oneofs)
@@ -4991,10 +4989,10 @@ $root.LicenseRequest = (function() {
              * @param {LicenseRequest.ContentIdentification.WidevinePsshData.$Properties=} [properties] Properties to set
              * @property {Array.<Uint8Array>} [$unknowns] Unknown fields preserved while decoding
              */
-            var WidevinePsshData = function (properties) {
+            const WidevinePsshData = function (properties) {
                 this.psshData = [];
                 if (properties)
-                    for (var keys = $Object.keys(properties), i = 0; i < keys.length; ++i)
+                    for (let keys = $Object.keys(properties), i = 0; i < keys.length; ++i)
                         if (properties[keys[i]] != null && keys[i] !== "__proto__")
                             this[keys[i]] = properties[keys[i]];
             };
@@ -5056,14 +5054,14 @@ $root.LicenseRequest = (function() {
                 if (_depth > $util.recursionLimit)
                     throw $Error("max depth exceeded");
                 if (message.psshData != null && message.psshData.length)
-                    for (var i = 0; i < message.psshData.length; ++i)
+                    for (let i = 0; i < message.psshData.length; ++i)
                         writer.uint32(/* id 1, wireType 2 =*/10).bytes(message.psshData[i]);
                 if (message.licenseType != null && $Object.hasOwnProperty.call(message, "licenseType"))
                     writer.uint32(/* id 2, wireType 0 =*/16).int32(message.licenseType);
                 if (message.requestId != null && $Object.hasOwnProperty.call(message, "requestId"))
                     writer.uint32(/* id 3, wireType 2 =*/26).bytes(message.requestId);
                 if (message.$unknowns != null && $Object.hasOwnProperty.call(message, "$unknowns"))
-                    for (var i = 0; i < message.$unknowns.length; ++i)
+                    for (let i = 0; i < message.$unknowns.length; ++i)
                         writer.raw(message.$unknowns[i]);
                 return writer;
             };
@@ -5099,15 +5097,15 @@ $root.LicenseRequest = (function() {
                     _depth = 0;
                 if (_depth > $Reader.recursionLimit)
                     throw $Error("max depth exceeded");
-                var end = length === $undefined ? reader.len : reader.pos + length, message = _target || new $root.LicenseRequest.ContentIdentification.WidevinePsshData();
+                let end = length === $undefined ? reader.len : reader.pos + length, message = _target || new $root.LicenseRequest.ContentIdentification.WidevinePsshData();
                 while (reader.pos < end) {
-                    var start = reader.pos;
-                    var tag = reader.tag();
+                    let start = reader.pos;
+                    let tag = reader.tag();
                     if (tag === _end) {
                         _end = $undefined;
                         break;
                     }
-                    var wireType = tag & 7;
+                    let wireType = tag & 7;
                     switch (tag >>>= 3) {
                     case 1: {
                             if (wireType !== 2)
@@ -5175,7 +5173,7 @@ $root.LicenseRequest = (function() {
                 if (message.psshData != null && $Object.hasOwnProperty.call(message, "psshData")) {
                     if (!$Array.isArray(message.psshData))
                         return "psshData: array expected";
-                    for (var i = 0; i < message.psshData.length; ++i)
+                    for (let i = 0; i < message.psshData.length; ++i)
                         if (!(message.psshData[i] && typeof message.psshData[i].length === "number" || $util.isString(message.psshData[i])))
                             return "psshData: buffer[] expected";
                 }
@@ -5211,12 +5209,12 @@ $root.LicenseRequest = (function() {
                     _depth = 0;
                 if (_depth > $util.recursionLimit)
                     throw $Error("max depth exceeded");
-                var message = new $root.LicenseRequest.ContentIdentification.WidevinePsshData();
+                let message = new $root.LicenseRequest.ContentIdentification.WidevinePsshData();
                 if (object.psshData) {
                     if (!$Array.isArray(object.psshData))
                         throw $TypeError(".LicenseRequest.ContentIdentification.WidevinePsshData.psshData: array expected");
                     message.psshData = $Array(object.psshData.length);
-                    for (var i = 0; i < object.psshData.length; ++i)
+                    for (let i = 0; i < object.psshData.length; ++i)
                         if (typeof object.psshData[i] === "string")
                             $util.base64.decode(object.psshData[i], message.psshData[i] = $util.newBuffer($util.base64.length(object.psshData[i])), 0);
                         else if (object.psshData[i].length >= 0)
@@ -5266,7 +5264,7 @@ $root.LicenseRequest = (function() {
                     _depth = 0;
                 if (_depth > $util.recursionLimit)
                     throw $Error("max depth exceeded");
-                var object = {};
+                let object = {};
                 if (options.arrays || options.defaults)
                     object.psshData = [];
                 if (options.defaults) {
@@ -5281,7 +5279,7 @@ $root.LicenseRequest = (function() {
                 }
                 if (message.psshData && message.psshData.length) {
                     object.psshData = $Array(message.psshData.length);
-                    for (var j = 0; j < message.psshData.length; ++j)
+                    for (let j = 0; j < message.psshData.length; ++j)
                         object.psshData[j] = options.bytes === $String ? $util.base64.encode(message.psshData[j], 0, message.psshData[j].length) : options.bytes === $Array ? $Array.prototype.slice.call(message.psshData[j]) : message.psshData[j];
                 }
                 if (message.licenseType != null && $Object.hasOwnProperty.call(message, "licenseType"))
@@ -5351,9 +5349,9 @@ $root.LicenseRequest = (function() {
              * @param {LicenseRequest.ContentIdentification.WebmKeyId.$Properties=} [properties] Properties to set
              * @property {Array.<Uint8Array>} [$unknowns] Unknown fields preserved while decoding
              */
-            var WebmKeyId = function (properties) {
+            const WebmKeyId = function (properties) {
                 if (properties)
-                    for (var keys = $Object.keys(properties), i = 0; i < keys.length; ++i)
+                    for (let keys = $Object.keys(properties), i = 0; i < keys.length; ++i)
                         if (properties[keys[i]] != null && keys[i] !== "__proto__")
                             this[keys[i]] = properties[keys[i]];
             };
@@ -5421,7 +5419,7 @@ $root.LicenseRequest = (function() {
                 if (message.requestId != null && $Object.hasOwnProperty.call(message, "requestId"))
                     writer.uint32(/* id 3, wireType 2 =*/26).bytes(message.requestId);
                 if (message.$unknowns != null && $Object.hasOwnProperty.call(message, "$unknowns"))
-                    for (var i = 0; i < message.$unknowns.length; ++i)
+                    for (let i = 0; i < message.$unknowns.length; ++i)
                         writer.raw(message.$unknowns[i]);
                 return writer;
             };
@@ -5457,15 +5455,15 @@ $root.LicenseRequest = (function() {
                     _depth = 0;
                 if (_depth > $Reader.recursionLimit)
                     throw $Error("max depth exceeded");
-                var end = length === $undefined ? reader.len : reader.pos + length, message = _target || new $root.LicenseRequest.ContentIdentification.WebmKeyId();
+                let end = length === $undefined ? reader.len : reader.pos + length, message = _target || new $root.LicenseRequest.ContentIdentification.WebmKeyId();
                 while (reader.pos < end) {
-                    var start = reader.pos;
-                    var tag = reader.tag();
+                    let start = reader.pos;
+                    let tag = reader.tag();
                     if (tag === _end) {
                         _end = $undefined;
                         break;
                     }
-                    var wireType = tag & 7;
+                    let wireType = tag & 7;
                     switch (tag >>>= 3) {
                     case 1: {
                             if (wireType !== 2)
@@ -5563,7 +5561,7 @@ $root.LicenseRequest = (function() {
                     _depth = 0;
                 if (_depth > $util.recursionLimit)
                     throw $Error("max depth exceeded");
-                var message = new $root.LicenseRequest.ContentIdentification.WebmKeyId();
+                let message = new $root.LicenseRequest.ContentIdentification.WebmKeyId();
                 if (object.header != null)
                     if (typeof object.header === "string")
                         $util.base64.decode(object.header, message.header = $util.newBuffer($util.base64.length(object.header)), 0);
@@ -5613,7 +5611,7 @@ $root.LicenseRequest = (function() {
                     _depth = 0;
                 if (_depth > $util.recursionLimit)
                     throw $Error("max depth exceeded");
-                var object = {};
+                let object = {};
                 if (options.defaults) {
                     if (options.bytes === $String)
                         object.header = "";
@@ -5701,9 +5699,9 @@ $root.LicenseRequest = (function() {
              * @param {LicenseRequest.ContentIdentification.ExistingLicense.$Properties=} [properties] Properties to set
              * @property {Array.<Uint8Array>} [$unknowns] Unknown fields preserved while decoding
              */
-            var ExistingLicense = function (properties) {
+            const ExistingLicense = function (properties) {
                 if (properties)
-                    for (var keys = $Object.keys(properties), i = 0; i < keys.length; ++i)
+                    for (let keys = $Object.keys(properties), i = 0; i < keys.length; ++i)
                         if (properties[keys[i]] != null && keys[i] !== "__proto__")
                             this[keys[i]] = properties[keys[i]];
             };
@@ -5781,7 +5779,7 @@ $root.LicenseRequest = (function() {
                 if (message.sessionUsageTableEntry != null && $Object.hasOwnProperty.call(message, "sessionUsageTableEntry"))
                     writer.uint32(/* id 4, wireType 2 =*/34).bytes(message.sessionUsageTableEntry);
                 if (message.$unknowns != null && $Object.hasOwnProperty.call(message, "$unknowns"))
-                    for (var i = 0; i < message.$unknowns.length; ++i)
+                    for (let i = 0; i < message.$unknowns.length; ++i)
                         writer.raw(message.$unknowns[i]);
                 return writer;
             };
@@ -5817,15 +5815,15 @@ $root.LicenseRequest = (function() {
                     _depth = 0;
                 if (_depth > $Reader.recursionLimit)
                     throw $Error("max depth exceeded");
-                var end = length === $undefined ? reader.len : reader.pos + length, message = _target || new $root.LicenseRequest.ContentIdentification.ExistingLicense();
+                let end = length === $undefined ? reader.len : reader.pos + length, message = _target || new $root.LicenseRequest.ContentIdentification.ExistingLicense();
                 while (reader.pos < end) {
-                    var start = reader.pos;
-                    var tag = reader.tag();
+                    let start = reader.pos;
+                    let tag = reader.tag();
                     if (tag === _end) {
                         _end = $undefined;
                         break;
                     }
-                    var wireType = tag & 7;
+                    let wireType = tag & 7;
                     switch (tag >>>= 3) {
                     case 1: {
                             if (wireType !== 2)
@@ -5895,7 +5893,7 @@ $root.LicenseRequest = (function() {
                 if (_depth > $util.recursionLimit)
                     return "max depth exceeded";
                 if (message.licenseId != null && $Object.hasOwnProperty.call(message, "licenseId")) {
-                    var error = $root.LicenseIdentification.verify(message.licenseId, _depth + 1);
+                    let error = $root.LicenseIdentification.verify(message.licenseId, _depth + 1);
                     if (error)
                         return "licenseId." + error;
                 }
@@ -5928,7 +5926,7 @@ $root.LicenseRequest = (function() {
                     _depth = 0;
                 if (_depth > $util.recursionLimit)
                     throw $Error("max depth exceeded");
-                var message = new $root.LicenseRequest.ContentIdentification.ExistingLicense();
+                let message = new $root.LicenseRequest.ContentIdentification.ExistingLicense();
                 if (object.licenseId != null) {
                     if (!$util.isObject(object.licenseId))
                         throw $TypeError(".LicenseRequest.ContentIdentification.ExistingLicense.licenseId: object expected");
@@ -5976,16 +5974,16 @@ $root.LicenseRequest = (function() {
                     _depth = 0;
                 if (_depth > $util.recursionLimit)
                     throw $Error("max depth exceeded");
-                var object = {};
+                let object = {};
                 if (options.defaults) {
                     object.licenseId = null;
                     if ($util.Long) {
-                        var long = new $util.Long(0, 0, false);
+                        let long = new $util.Long(0, 0, false);
                         object.secondsSinceStarted = options.longs === $String ? long.toString() : options.longs === $Number ? long.toNumber() : typeof $BigInt !== "undefined" && options.longs === $BigInt ? long.toBigInt() : long;
                     } else
                         object.secondsSinceStarted = options.longs === $String ? "0" : typeof $BigInt !== "undefined" && options.longs === $BigInt ? $BigInt("0") : 0;
                     if ($util.Long) {
-                        var long = new $util.Long(0, 0, false);
+                        let long = new $util.Long(0, 0, false);
                         object.secondsSinceLastPlayed = options.longs === $String ? long.toString() : options.longs === $Number ? long.toNumber() : typeof $BigInt !== "undefined" && options.longs === $BigInt ? long.toBigInt() : long;
                     } else
                         object.secondsSinceLastPlayed = options.longs === $String ? "0" : typeof $BigInt !== "undefined" && options.longs === $BigInt ? $BigInt("0") : 0;
@@ -6079,9 +6077,9 @@ $root.LicenseRequest = (function() {
              * @param {LicenseRequest.ContentIdentification.InitData.$Properties=} [properties] Properties to set
              * @property {Array.<Uint8Array>} [$unknowns] Unknown fields preserved while decoding
              */
-            var InitData = function (properties) {
+            const InitData = function (properties) {
                 if (properties)
-                    for (var keys = $Object.keys(properties), i = 0; i < keys.length; ++i)
+                    for (let keys = $Object.keys(properties), i = 0; i < keys.length; ++i)
                         if (properties[keys[i]] != null && keys[i] !== "__proto__")
                             this[keys[i]] = properties[keys[i]];
             };
@@ -6159,7 +6157,7 @@ $root.LicenseRequest = (function() {
                 if (message.requestId != null && $Object.hasOwnProperty.call(message, "requestId"))
                     writer.uint32(/* id 4, wireType 2 =*/34).bytes(message.requestId);
                 if (message.$unknowns != null && $Object.hasOwnProperty.call(message, "$unknowns"))
-                    for (var i = 0; i < message.$unknowns.length; ++i)
+                    for (let i = 0; i < message.$unknowns.length; ++i)
                         writer.raw(message.$unknowns[i]);
                 return writer;
             };
@@ -6195,15 +6193,15 @@ $root.LicenseRequest = (function() {
                     _depth = 0;
                 if (_depth > $Reader.recursionLimit)
                     throw $Error("max depth exceeded");
-                var end = length === $undefined ? reader.len : reader.pos + length, message = _target || new $root.LicenseRequest.ContentIdentification.InitData();
+                let end = length === $undefined ? reader.len : reader.pos + length, message = _target || new $root.LicenseRequest.ContentIdentification.InitData();
                 while (reader.pos < end) {
-                    var start = reader.pos;
-                    var tag = reader.tag();
+                    let start = reader.pos;
+                    let tag = reader.tag();
                     if (tag === _end) {
                         _end = $undefined;
                         break;
                     }
-                    var wireType = tag & 7;
+                    let wireType = tag & 7;
                     switch (tag >>>= 3) {
                     case 1: {
                             if (wireType !== 0)
@@ -6315,7 +6313,7 @@ $root.LicenseRequest = (function() {
                     _depth = 0;
                 if (_depth > $util.recursionLimit)
                     throw $Error("max depth exceeded");
-                var message = new $root.LicenseRequest.ContentIdentification.InitData();
+                let message = new $root.LicenseRequest.ContentIdentification.InitData();
                 switch (object.initDataType) {
                 default:
                     if (typeof object.initDataType === "number") {
@@ -6381,7 +6379,7 @@ $root.LicenseRequest = (function() {
                     _depth = 0;
                 if (_depth > $util.recursionLimit)
                     throw $Error("max depth exceeded");
-                var object = {};
+                let object = {};
                 if (options.defaults) {
                     object.initDataType = options.enums === $String ? "CENC" : 1;
                     if (options.bytes === $String)
@@ -6444,7 +6442,7 @@ $root.LicenseRequest = (function() {
              * @property {number} WEBM=2 WEBM value
              */
             InitData.InitDataType = (function() {
-                var valuesById = {}, values = $Object.create(valuesById);
+                const valuesById = {}, values = $Object.create(valuesById);
                 values[valuesById[1] = "CENC"] = 1;
                 values[valuesById[2] = "WEBM"] = 2;
                 return values;
@@ -6465,7 +6463,7 @@ $root.LicenseRequest = (function() {
      * @property {number} RELEASE=3 RELEASE value
      */
     LicenseRequest.RequestType = (function() {
-        var valuesById = {}, values = $Object.create(valuesById);
+        const valuesById = {}, values = $Object.create(valuesById);
         values[valuesById[1] = "NEW"] = 1;
         values[valuesById[2] = "RENEWAL"] = 2;
         values[valuesById[3] = "RELEASE"] = 3;
@@ -6475,7 +6473,7 @@ $root.LicenseRequest = (function() {
     return LicenseRequest;
 })();
 
-$root.MetricData = (function() {
+export const MetricData = $root.MetricData = (() => {
 
     /**
      * Properties of a MetricData.
@@ -6506,10 +6504,10 @@ $root.MetricData = (function() {
      * @param {MetricData.$Properties=} [properties] Properties to set
      * @property {Array.<Uint8Array>} [$unknowns] Unknown fields preserved while decoding
      */
-    var MetricData = function (properties) {
+    const MetricData = function (properties) {
         this.metricData = [];
         if (properties)
-            for (var keys = $Object.keys(properties), i = 0; i < keys.length; ++i)
+            for (let keys = $Object.keys(properties), i = 0; i < keys.length; ++i)
                 if (properties[keys[i]] != null && keys[i] !== "__proto__")
                     this[keys[i]] = properties[keys[i]];
     };
@@ -6565,10 +6563,10 @@ $root.MetricData = (function() {
         if (message.stageName != null && $Object.hasOwnProperty.call(message, "stageName"))
             writer.uint32(/* id 1, wireType 2 =*/10).string(message.stageName);
         if (message.metricData != null && message.metricData.length)
-            for (var i = 0; i < message.metricData.length; ++i)
+            for (let i = 0; i < message.metricData.length; ++i)
                 $root.MetricData.TypeValue.encode(message.metricData[i], writer.uint32(/* id 2, wireType 2 =*/18).fork(), _depth + 1).ldelim();
         if (message.$unknowns != null && $Object.hasOwnProperty.call(message, "$unknowns"))
-            for (var i = 0; i < message.$unknowns.length; ++i)
+            for (let i = 0; i < message.$unknowns.length; ++i)
                 writer.raw(message.$unknowns[i]);
         return writer;
     };
@@ -6604,15 +6602,15 @@ $root.MetricData = (function() {
             _depth = 0;
         if (_depth > $Reader.recursionLimit)
             throw $Error("max depth exceeded");
-        var end = length === $undefined ? reader.len : reader.pos + length, message = _target || new $root.MetricData();
+        let end = length === $undefined ? reader.len : reader.pos + length, message = _target || new $root.MetricData();
         while (reader.pos < end) {
-            var start = reader.pos;
-            var tag = reader.tag();
+            let start = reader.pos;
+            let tag = reader.tag();
             if (tag === _end) {
                 _end = $undefined;
                 break;
             }
-            var wireType = tag & 7;
+            let wireType = tag & 7;
             switch (tag >>>= 3) {
             case 1: {
                     if (wireType !== 2)
@@ -6677,8 +6675,8 @@ $root.MetricData = (function() {
         if (message.metricData != null && $Object.hasOwnProperty.call(message, "metricData")) {
             if (!$Array.isArray(message.metricData))
                 return "metricData: array expected";
-            for (var i = 0; i < message.metricData.length; ++i) {
-                var error = $root.MetricData.TypeValue.verify(message.metricData[i], _depth + 1);
+            for (let i = 0; i < message.metricData.length; ++i) {
+                let error = $root.MetricData.TypeValue.verify(message.metricData[i], _depth + 1);
                 if (error)
                     return "metricData." + error;
             }
@@ -6703,14 +6701,14 @@ $root.MetricData = (function() {
             _depth = 0;
         if (_depth > $util.recursionLimit)
             throw $Error("max depth exceeded");
-        var message = new $root.MetricData();
+        let message = new $root.MetricData();
         if (object.stageName != null)
             message.stageName = $String(object.stageName);
         if (object.metricData) {
             if (!$Array.isArray(object.metricData))
                 throw $TypeError(".MetricData.metricData: array expected");
             message.metricData = $Array(object.metricData.length);
-            for (var i = 0; i < object.metricData.length; ++i) {
+            for (let i = 0; i < object.metricData.length; ++i) {
                 if (!$util.isObject(object.metricData[i]))
                     throw $TypeError(".MetricData.metricData: object expected");
                 message.metricData[i] = $root.MetricData.TypeValue.fromObject(object.metricData[i], _depth + 1);
@@ -6735,7 +6733,7 @@ $root.MetricData = (function() {
             _depth = 0;
         if (_depth > $util.recursionLimit)
             throw $Error("max depth exceeded");
-        var object = {};
+        let object = {};
         if (options.arrays || options.defaults)
             object.metricData = [];
         if (options.defaults)
@@ -6744,7 +6742,7 @@ $root.MetricData = (function() {
             object.stageName = message.stageName;
         if (message.metricData && message.metricData.length) {
             object.metricData = $Array(message.metricData.length);
-            for (var j = 0; j < message.metricData.length; ++j)
+            for (let j = 0; j < message.metricData.length; ++j)
                 object.metricData[j] = $root.MetricData.TypeValue.toObject(message.metricData[j], options, _depth + 1);
         }
         return object;
@@ -6783,7 +6781,7 @@ $root.MetricData = (function() {
      * @property {number} TIMESTAMP=2 TIMESTAMP value
      */
     MetricData.MetricType = (function() {
-        var valuesById = {}, values = $Object.create(valuesById);
+        const valuesById = {}, values = $Object.create(valuesById);
         values[valuesById[1] = "LATENCY"] = 1;
         values[valuesById[2] = "TIMESTAMP"] = 2;
         return values;
@@ -6820,9 +6818,9 @@ $root.MetricData = (function() {
          * @param {MetricData.TypeValue.$Properties=} [properties] Properties to set
          * @property {Array.<Uint8Array>} [$unknowns] Unknown fields preserved while decoding
          */
-        var TypeValue = function (properties) {
+        const TypeValue = function (properties) {
             if (properties)
-                for (var keys = $Object.keys(properties), i = 0; i < keys.length; ++i)
+                for (let keys = $Object.keys(properties), i = 0; i < keys.length; ++i)
                     if (properties[keys[i]] != null && keys[i] !== "__proto__")
                         this[keys[i]] = properties[keys[i]];
         };
@@ -6880,7 +6878,7 @@ $root.MetricData = (function() {
             if (message.value != null && $Object.hasOwnProperty.call(message, "value"))
                 writer.uint32(/* id 2, wireType 0 =*/16).int64(message.value);
             if (message.$unknowns != null && $Object.hasOwnProperty.call(message, "$unknowns"))
-                for (var i = 0; i < message.$unknowns.length; ++i)
+                for (let i = 0; i < message.$unknowns.length; ++i)
                     writer.raw(message.$unknowns[i]);
             return writer;
         };
@@ -6916,15 +6914,15 @@ $root.MetricData = (function() {
                 _depth = 0;
             if (_depth > $Reader.recursionLimit)
                 throw $Error("max depth exceeded");
-            var end = length === $undefined ? reader.len : reader.pos + length, message = _target || new $root.MetricData.TypeValue();
+            let end = length === $undefined ? reader.len : reader.pos + length, message = _target || new $root.MetricData.TypeValue();
             while (reader.pos < end) {
-                var start = reader.pos;
-                var tag = reader.tag();
+                let start = reader.pos;
+                let tag = reader.tag();
                 if (tag === _end) {
                     _end = $undefined;
                     break;
                 }
-                var wireType = tag & 7;
+                let wireType = tag & 7;
                 switch (tag >>>= 3) {
                 case 1: {
                         if (wireType !== 0)
@@ -7012,7 +7010,7 @@ $root.MetricData = (function() {
                 _depth = 0;
             if (_depth > $util.recursionLimit)
                 throw $Error("max depth exceeded");
-            var message = new $root.MetricData.TypeValue();
+            let message = new $root.MetricData.TypeValue();
             switch (object.type) {
             default:
                 if (typeof object.type === "number") {
@@ -7057,11 +7055,11 @@ $root.MetricData = (function() {
                 _depth = 0;
             if (_depth > $util.recursionLimit)
                 throw $Error("max depth exceeded");
-            var object = {};
+            let object = {};
             if (options.defaults) {
                 object.type = options.enums === $String ? "LATENCY" : 1;
                 if ($util.Long) {
-                    var long = new $util.Long(0, 0, false);
+                    let long = new $util.Long(0, 0, false);
                     object.value = options.longs === $String ? long.toString() : options.longs === $Number ? long.toNumber() : typeof $BigInt !== "undefined" && options.longs === $BigInt ? long.toBigInt() : long;
                 } else
                     object.value = options.longs === $String ? "0" : typeof $BigInt !== "undefined" && options.longs === $BigInt ? $BigInt("0") : 0;
@@ -7109,7 +7107,7 @@ $root.MetricData = (function() {
     return MetricData;
 })();
 
-$root.VersionInfo = (function() {
+export const VersionInfo = $root.VersionInfo = (() => {
 
     /**
      * Properties of a VersionInfo.
@@ -7140,9 +7138,9 @@ $root.VersionInfo = (function() {
      * @param {VersionInfo.$Properties=} [properties] Properties to set
      * @property {Array.<Uint8Array>} [$unknowns] Unknown fields preserved while decoding
      */
-    var VersionInfo = function (properties) {
+    const VersionInfo = function (properties) {
         if (properties)
-            for (var keys = $Object.keys(properties), i = 0; i < keys.length; ++i)
+            for (let keys = $Object.keys(properties), i = 0; i < keys.length; ++i)
                 if (properties[keys[i]] != null && keys[i] !== "__proto__")
                     this[keys[i]] = properties[keys[i]];
     };
@@ -7200,7 +7198,7 @@ $root.VersionInfo = (function() {
         if (message.licenseServiceVersion != null && $Object.hasOwnProperty.call(message, "licenseServiceVersion"))
             writer.uint32(/* id 2, wireType 2 =*/18).string(message.licenseServiceVersion);
         if (message.$unknowns != null && $Object.hasOwnProperty.call(message, "$unknowns"))
-            for (var i = 0; i < message.$unknowns.length; ++i)
+            for (let i = 0; i < message.$unknowns.length; ++i)
                 writer.raw(message.$unknowns[i]);
         return writer;
     };
@@ -7236,15 +7234,15 @@ $root.VersionInfo = (function() {
             _depth = 0;
         if (_depth > $Reader.recursionLimit)
             throw $Error("max depth exceeded");
-        var end = length === $undefined ? reader.len : reader.pos + length, message = _target || new $root.VersionInfo();
+        let end = length === $undefined ? reader.len : reader.pos + length, message = _target || new $root.VersionInfo();
         while (reader.pos < end) {
-            var start = reader.pos;
-            var tag = reader.tag();
+            let start = reader.pos;
+            let tag = reader.tag();
             if (tag === _end) {
                 _end = $undefined;
                 break;
             }
-            var wireType = tag & 7;
+            let wireType = tag & 7;
             switch (tag >>>= 3) {
             case 1: {
                     if (wireType !== 2)
@@ -7327,7 +7325,7 @@ $root.VersionInfo = (function() {
             _depth = 0;
         if (_depth > $util.recursionLimit)
             throw $Error("max depth exceeded");
-        var message = new $root.VersionInfo();
+        let message = new $root.VersionInfo();
         if (object.licenseSdkVersion != null)
             message.licenseSdkVersion = $String(object.licenseSdkVersion);
         if (object.licenseServiceVersion != null)
@@ -7351,7 +7349,7 @@ $root.VersionInfo = (function() {
             _depth = 0;
         if (_depth > $util.recursionLimit)
             throw $Error("max depth exceeded");
-        var object = {};
+        let object = {};
         if (options.defaults) {
             object.licenseSdkVersion = "";
             object.licenseServiceVersion = "";
@@ -7391,7 +7389,7 @@ $root.VersionInfo = (function() {
     return VersionInfo;
 })();
 
-$root.SignedMessage = (function() {
+export const SignedMessage = $root.SignedMessage = (() => {
 
     /**
      * Properties of a SignedMessage.
@@ -7429,10 +7427,10 @@ $root.SignedMessage = (function() {
      * @param {SignedMessage.$Properties=} [properties] Properties to set
      * @property {Array.<Uint8Array>} [$unknowns] Unknown fields preserved while decoding
      */
-    var SignedMessage = function (properties) {
+    const SignedMessage = function (properties) {
         this.metricData = [];
         if (properties)
-            for (var keys = $Object.keys(properties), i = 0; i < keys.length; ++i)
+            for (let keys = $Object.keys(properties), i = 0; i < keys.length; ++i)
                 if (properties[keys[i]] != null && keys[i] !== "__proto__")
                     this[keys[i]] = properties[keys[i]];
     };
@@ -7552,7 +7550,7 @@ $root.SignedMessage = (function() {
         if (message.remoteAttestation != null && $Object.hasOwnProperty.call(message, "remoteAttestation"))
             writer.uint32(/* id 5, wireType 2 =*/42).bytes(message.remoteAttestation);
         if (message.metricData != null && message.metricData.length)
-            for (var i = 0; i < message.metricData.length; ++i)
+            for (let i = 0; i < message.metricData.length; ++i)
                 $root.MetricData.encode(message.metricData[i], writer.uint32(/* id 6, wireType 2 =*/50).fork(), _depth + 1).ldelim();
         if (message.serviceVersionInfo != null && $Object.hasOwnProperty.call(message, "serviceVersionInfo"))
             $root.VersionInfo.encode(message.serviceVersionInfo, writer.uint32(/* id 7, wireType 2 =*/58).fork(), _depth + 1).ldelim();
@@ -7561,7 +7559,7 @@ $root.SignedMessage = (function() {
         if (message.oemcryptoCoreMessage != null && $Object.hasOwnProperty.call(message, "oemcryptoCoreMessage"))
             writer.uint32(/* id 9, wireType 2 =*/74).bytes(message.oemcryptoCoreMessage);
         if (message.$unknowns != null && $Object.hasOwnProperty.call(message, "$unknowns"))
-            for (var i = 0; i < message.$unknowns.length; ++i)
+            for (let i = 0; i < message.$unknowns.length; ++i)
                 writer.raw(message.$unknowns[i]);
         return writer;
     };
@@ -7597,15 +7595,15 @@ $root.SignedMessage = (function() {
             _depth = 0;
         if (_depth > $Reader.recursionLimit)
             throw $Error("max depth exceeded");
-        var end = length === $undefined ? reader.len : reader.pos + length, message = _target || new $root.SignedMessage();
+        let end = length === $undefined ? reader.len : reader.pos + length, message = _target || new $root.SignedMessage();
         while (reader.pos < end) {
-            var start = reader.pos;
-            var tag = reader.tag();
+            let start = reader.pos;
+            let tag = reader.tag();
             if (tag === _end) {
                 _end = $undefined;
                 break;
             }
-            var wireType = tag & 7;
+            let wireType = tag & 7;
             switch (tag >>>= 3) {
             case 1: {
                     if (wireType !== 0)
@@ -7737,14 +7735,14 @@ $root.SignedMessage = (function() {
         if (message.metricData != null && $Object.hasOwnProperty.call(message, "metricData")) {
             if (!$Array.isArray(message.metricData))
                 return "metricData: array expected";
-            for (var i = 0; i < message.metricData.length; ++i) {
-                var error = $root.MetricData.verify(message.metricData[i], _depth + 1);
+            for (let i = 0; i < message.metricData.length; ++i) {
+                let error = $root.MetricData.verify(message.metricData[i], _depth + 1);
                 if (error)
                     return "metricData." + error;
             }
         }
         if (message.serviceVersionInfo != null && $Object.hasOwnProperty.call(message, "serviceVersionInfo")) {
-            var error = $root.VersionInfo.verify(message.serviceVersionInfo, _depth + 1);
+            let error = $root.VersionInfo.verify(message.serviceVersionInfo, _depth + 1);
             if (error)
                 return "serviceVersionInfo." + error;
         }
@@ -7780,7 +7778,7 @@ $root.SignedMessage = (function() {
             _depth = 0;
         if (_depth > $util.recursionLimit)
             throw $Error("max depth exceeded");
-        var message = new $root.SignedMessage();
+        let message = new $root.SignedMessage();
         switch (object.type) {
         default:
             if (typeof object.type === "number") {
@@ -7853,7 +7851,7 @@ $root.SignedMessage = (function() {
             if (!$Array.isArray(object.metricData))
                 throw $TypeError(".SignedMessage.metricData: array expected");
             message.metricData = $Array(object.metricData.length);
-            for (var i = 0; i < object.metricData.length; ++i) {
+            for (let i = 0; i < object.metricData.length; ++i) {
                 if (!$util.isObject(object.metricData[i]))
                     throw $TypeError(".SignedMessage.metricData: object expected");
                 message.metricData[i] = $root.MetricData.fromObject(object.metricData[i], _depth + 1);
@@ -7908,7 +7906,7 @@ $root.SignedMessage = (function() {
             _depth = 0;
         if (_depth > $util.recursionLimit)
             throw $Error("max depth exceeded");
-        var object = {};
+        let object = {};
         if (options.arrays || options.defaults)
             object.metricData = [];
         if (options.defaults) {
@@ -7963,7 +7961,7 @@ $root.SignedMessage = (function() {
             object.remoteAttestation = options.bytes === $String ? $util.base64.encode(message.remoteAttestation, 0, message.remoteAttestation.length) : options.bytes === $Array ? $Array.prototype.slice.call(message.remoteAttestation) : message.remoteAttestation;
         if (message.metricData && message.metricData.length) {
             object.metricData = $Array(message.metricData.length);
-            for (var j = 0; j < message.metricData.length; ++j)
+            for (let j = 0; j < message.metricData.length; ++j)
                 object.metricData[j] = $root.MetricData.toObject(message.metricData[j], options, _depth + 1);
         }
         if (message.serviceVersionInfo != null && $Object.hasOwnProperty.call(message, "serviceVersionInfo"))
@@ -8016,7 +8014,7 @@ $root.SignedMessage = (function() {
      * @property {number} EXTERNAL_LICENSE=10 EXTERNAL_LICENSE value
      */
     SignedMessage.MessageType = (function() {
-        var valuesById = {}, values = $Object.create(valuesById);
+        const valuesById = {}, values = $Object.create(valuesById);
         values[valuesById[1] = "LICENSE_REQUEST"] = 1;
         values[valuesById[2] = "LICENSE"] = 2;
         values[valuesById[3] = "ERROR_RESPONSE"] = 3;
@@ -8039,7 +8037,7 @@ $root.SignedMessage = (function() {
      * @property {number} EPHERMERAL_ECC_PUBLIC_KEY=2 EPHERMERAL_ECC_PUBLIC_KEY value
      */
     SignedMessage.SessionKeyType = (function() {
-        var valuesById = {}, values = $Object.create(valuesById);
+        const valuesById = {}, values = $Object.create(valuesById);
         values[valuesById[0] = "UNDEFINED"] = 0;
         values[valuesById[1] = "WRAPPED_AES_KEY"] = 1;
         values[valuesById[2] = "EPHERMERAL_ECC_PUBLIC_KEY"] = 2;
@@ -8058,8 +8056,8 @@ $root.SignedMessage = (function() {
  * @property {number} HASH_ALGORITHM_SHA_256=2 HASH_ALGORITHM_SHA_256 value
  * @property {number} HASH_ALGORITHM_SHA_384=3 HASH_ALGORITHM_SHA_384 value
  */
-$root.HashAlgorithmProto = (function() {
-    var valuesById = {}, values = $Object.create(valuesById);
+export const HashAlgorithmProto = $root.HashAlgorithmProto = (() => {
+    const valuesById = {}, values = $Object.create(valuesById);
     values[valuesById[0] = "HASH_ALGORITHM_UNSPECIFIED"] = 0;
     values[valuesById[1] = "HASH_ALGORITHM_SHA_1"] = 1;
     values[valuesById[2] = "HASH_ALGORITHM_SHA_256"] = 2;
@@ -8067,7 +8065,7 @@ $root.HashAlgorithmProto = (function() {
     return values;
 })();
 
-$root.ClientIdentification = (function() {
+export const ClientIdentification = $root.ClientIdentification = (() => {
 
     /**
      * Properties of a ClientIdentification.
@@ -8104,11 +8102,11 @@ $root.ClientIdentification = (function() {
      * @param {ClientIdentification.$Properties=} [properties] Properties to set
      * @property {Array.<Uint8Array>} [$unknowns] Unknown fields preserved while decoding
      */
-    var ClientIdentification = function (properties) {
+    const ClientIdentification = function (properties) {
         this.clientInfo = [];
         this.deviceCredentials = [];
         if (properties)
-            for (var keys = $Object.keys(properties), i = 0; i < keys.length; ++i)
+            for (let keys = $Object.keys(properties), i = 0; i < keys.length; ++i)
                 if (properties[keys[i]] != null && keys[i] !== "__proto__")
                     this[keys[i]] = properties[keys[i]];
     };
@@ -8214,7 +8212,7 @@ $root.ClientIdentification = (function() {
         if (message.token != null && $Object.hasOwnProperty.call(message, "token"))
             writer.uint32(/* id 2, wireType 2 =*/18).bytes(message.token);
         if (message.clientInfo != null && message.clientInfo.length)
-            for (var i = 0; i < message.clientInfo.length; ++i)
+            for (let i = 0; i < message.clientInfo.length; ++i)
                 $root.ClientIdentification.NameValue.encode(message.clientInfo[i], writer.uint32(/* id 3, wireType 2 =*/26).fork(), _depth + 1).ldelim();
         if (message.providerClientToken != null && $Object.hasOwnProperty.call(message, "providerClientToken"))
             writer.uint32(/* id 4, wireType 2 =*/34).bytes(message.providerClientToken);
@@ -8225,10 +8223,10 @@ $root.ClientIdentification = (function() {
         if (message.vmpData != null && $Object.hasOwnProperty.call(message, "vmpData"))
             writer.uint32(/* id 7, wireType 2 =*/58).bytes(message.vmpData);
         if (message.deviceCredentials != null && message.deviceCredentials.length)
-            for (var i = 0; i < message.deviceCredentials.length; ++i)
+            for (let i = 0; i < message.deviceCredentials.length; ++i)
                 $root.ClientIdentification.ClientCredentials.encode(message.deviceCredentials[i], writer.uint32(/* id 8, wireType 2 =*/66).fork(), _depth + 1).ldelim();
         if (message.$unknowns != null && $Object.hasOwnProperty.call(message, "$unknowns"))
-            for (var i = 0; i < message.$unknowns.length; ++i)
+            for (let i = 0; i < message.$unknowns.length; ++i)
                 writer.raw(message.$unknowns[i]);
         return writer;
     };
@@ -8264,15 +8262,15 @@ $root.ClientIdentification = (function() {
             _depth = 0;
         if (_depth > $Reader.recursionLimit)
             throw $Error("max depth exceeded");
-        var end = length === $undefined ? reader.len : reader.pos + length, message = _target || new $root.ClientIdentification();
+        let end = length === $undefined ? reader.len : reader.pos + length, message = _target || new $root.ClientIdentification();
         while (reader.pos < end) {
-            var start = reader.pos;
-            var tag = reader.tag();
+            let start = reader.pos;
+            let tag = reader.tag();
             if (tag === _end) {
                 _end = $undefined;
                 break;
             }
-            var wireType = tag & 7;
+            let wireType = tag & 7;
             switch (tag >>>= 3) {
             case 1: {
                     if (wireType !== 0)
@@ -8385,8 +8383,8 @@ $root.ClientIdentification = (function() {
         if (message.clientInfo != null && $Object.hasOwnProperty.call(message, "clientInfo")) {
             if (!$Array.isArray(message.clientInfo))
                 return "clientInfo: array expected";
-            for (var i = 0; i < message.clientInfo.length; ++i) {
-                var error = $root.ClientIdentification.NameValue.verify(message.clientInfo[i], _depth + 1);
+            for (let i = 0; i < message.clientInfo.length; ++i) {
+                let error = $root.ClientIdentification.NameValue.verify(message.clientInfo[i], _depth + 1);
                 if (error)
                     return "clientInfo." + error;
             }
@@ -8398,7 +8396,7 @@ $root.ClientIdentification = (function() {
             if (!$util.isInteger(message.licenseCounter))
                 return "licenseCounter: integer expected";
         if (message.clientCapabilities != null && $Object.hasOwnProperty.call(message, "clientCapabilities")) {
-            var error = $root.ClientIdentification.ClientCapabilities.verify(message.clientCapabilities, _depth + 1);
+            let error = $root.ClientIdentification.ClientCapabilities.verify(message.clientCapabilities, _depth + 1);
             if (error)
                 return "clientCapabilities." + error;
         }
@@ -8408,8 +8406,8 @@ $root.ClientIdentification = (function() {
         if (message.deviceCredentials != null && $Object.hasOwnProperty.call(message, "deviceCredentials")) {
             if (!$Array.isArray(message.deviceCredentials))
                 return "deviceCredentials: array expected";
-            for (var i = 0; i < message.deviceCredentials.length; ++i) {
-                var error = $root.ClientIdentification.ClientCredentials.verify(message.deviceCredentials[i], _depth + 1);
+            for (let i = 0; i < message.deviceCredentials.length; ++i) {
+                let error = $root.ClientIdentification.ClientCredentials.verify(message.deviceCredentials[i], _depth + 1);
                 if (error)
                     return "deviceCredentials." + error;
             }
@@ -8434,7 +8432,7 @@ $root.ClientIdentification = (function() {
             _depth = 0;
         if (_depth > $util.recursionLimit)
             throw $Error("max depth exceeded");
-        var message = new $root.ClientIdentification();
+        let message = new $root.ClientIdentification();
         switch (object.type) {
         default:
             if (typeof object.type === "number") {
@@ -8468,7 +8466,7 @@ $root.ClientIdentification = (function() {
             if (!$Array.isArray(object.clientInfo))
                 throw $TypeError(".ClientIdentification.clientInfo: array expected");
             message.clientInfo = $Array(object.clientInfo.length);
-            for (var i = 0; i < object.clientInfo.length; ++i) {
+            for (let i = 0; i < object.clientInfo.length; ++i) {
                 if (!$util.isObject(object.clientInfo[i]))
                     throw $TypeError(".ClientIdentification.clientInfo: object expected");
                 message.clientInfo[i] = $root.ClientIdentification.NameValue.fromObject(object.clientInfo[i], _depth + 1);
@@ -8495,7 +8493,7 @@ $root.ClientIdentification = (function() {
             if (!$Array.isArray(object.deviceCredentials))
                 throw $TypeError(".ClientIdentification.deviceCredentials: array expected");
             message.deviceCredentials = $Array(object.deviceCredentials.length);
-            for (var i = 0; i < object.deviceCredentials.length; ++i) {
+            for (let i = 0; i < object.deviceCredentials.length; ++i) {
                 if (!$util.isObject(object.deviceCredentials[i]))
                     throw $TypeError(".ClientIdentification.deviceCredentials: object expected");
                 message.deviceCredentials[i] = $root.ClientIdentification.ClientCredentials.fromObject(object.deviceCredentials[i], _depth + 1);
@@ -8520,7 +8518,7 @@ $root.ClientIdentification = (function() {
             _depth = 0;
         if (_depth > $util.recursionLimit)
             throw $Error("max depth exceeded");
-        var object = {};
+        let object = {};
         if (options.arrays || options.defaults) {
             object.clientInfo = [];
             object.deviceCredentials = [];
@@ -8557,7 +8555,7 @@ $root.ClientIdentification = (function() {
             object.token = options.bytes === $String ? $util.base64.encode(message.token, 0, message.token.length) : options.bytes === $Array ? $Array.prototype.slice.call(message.token) : message.token;
         if (message.clientInfo && message.clientInfo.length) {
             object.clientInfo = $Array(message.clientInfo.length);
-            for (var j = 0; j < message.clientInfo.length; ++j)
+            for (let j = 0; j < message.clientInfo.length; ++j)
                 object.clientInfo[j] = $root.ClientIdentification.NameValue.toObject(message.clientInfo[j], options, _depth + 1);
         }
         if (message.providerClientToken != null && $Object.hasOwnProperty.call(message, "providerClientToken"))
@@ -8570,7 +8568,7 @@ $root.ClientIdentification = (function() {
             object.vmpData = options.bytes === $String ? $util.base64.encode(message.vmpData, 0, message.vmpData.length) : options.bytes === $Array ? $Array.prototype.slice.call(message.vmpData) : message.vmpData;
         if (message.deviceCredentials && message.deviceCredentials.length) {
             object.deviceCredentials = $Array(message.deviceCredentials.length);
-            for (var j = 0; j < message.deviceCredentials.length; ++j)
+            for (let j = 0; j < message.deviceCredentials.length; ++j)
                 object.deviceCredentials[j] = $root.ClientIdentification.ClientCredentials.toObject(message.deviceCredentials[j], options, _depth + 1);
         }
         return object;
@@ -8611,7 +8609,7 @@ $root.ClientIdentification = (function() {
      * @property {number} OEM_DEVICE_CERTIFICATE=3 OEM_DEVICE_CERTIFICATE value
      */
     ClientIdentification.TokenType = (function() {
-        var valuesById = {}, values = $Object.create(valuesById);
+        const valuesById = {}, values = $Object.create(valuesById);
         values[valuesById[0] = "KEYBOX"] = 0;
         values[valuesById[1] = "DRM_DEVICE_CERTIFICATE"] = 1;
         values[valuesById[2] = "REMOTE_ATTESTATION_CERTIFICATE"] = 2;
@@ -8650,9 +8648,9 @@ $root.ClientIdentification = (function() {
          * @param {ClientIdentification.NameValue.$Properties=} [properties] Properties to set
          * @property {Array.<Uint8Array>} [$unknowns] Unknown fields preserved while decoding
          */
-        var NameValue = function (properties) {
+        const NameValue = function (properties) {
             if (properties)
-                for (var keys = $Object.keys(properties), i = 0; i < keys.length; ++i)
+                for (let keys = $Object.keys(properties), i = 0; i < keys.length; ++i)
                     if (properties[keys[i]] != null && keys[i] !== "__proto__")
                         this[keys[i]] = properties[keys[i]];
         };
@@ -8710,7 +8708,7 @@ $root.ClientIdentification = (function() {
             if (message.value != null && $Object.hasOwnProperty.call(message, "value"))
                 writer.uint32(/* id 2, wireType 2 =*/18).string(message.value);
             if (message.$unknowns != null && $Object.hasOwnProperty.call(message, "$unknowns"))
-                for (var i = 0; i < message.$unknowns.length; ++i)
+                for (let i = 0; i < message.$unknowns.length; ++i)
                     writer.raw(message.$unknowns[i]);
             return writer;
         };
@@ -8746,15 +8744,15 @@ $root.ClientIdentification = (function() {
                 _depth = 0;
             if (_depth > $Reader.recursionLimit)
                 throw $Error("max depth exceeded");
-            var end = length === $undefined ? reader.len : reader.pos + length, message = _target || new $root.ClientIdentification.NameValue();
+            let end = length === $undefined ? reader.len : reader.pos + length, message = _target || new $root.ClientIdentification.NameValue();
             while (reader.pos < end) {
-                var start = reader.pos;
-                var tag = reader.tag();
+                let start = reader.pos;
+                let tag = reader.tag();
                 if (tag === _end) {
                     _end = $undefined;
                     break;
                 }
-                var wireType = tag & 7;
+                let wireType = tag & 7;
                 switch (tag >>>= 3) {
                 case 1: {
                         if (wireType !== 2)
@@ -8837,7 +8835,7 @@ $root.ClientIdentification = (function() {
                 _depth = 0;
             if (_depth > $util.recursionLimit)
                 throw $Error("max depth exceeded");
-            var message = new $root.ClientIdentification.NameValue();
+            let message = new $root.ClientIdentification.NameValue();
             if (object.name != null)
                 message.name = $String(object.name);
             if (object.value != null)
@@ -8861,7 +8859,7 @@ $root.ClientIdentification = (function() {
                 _depth = 0;
             if (_depth > $util.recursionLimit)
                 throw $Error("max depth exceeded");
-            var object = {};
+            let object = {};
             if (options.defaults) {
                 object.name = "";
                 object.value = "";
@@ -8942,10 +8940,10 @@ $root.ClientIdentification = (function() {
          * @param {ClientIdentification.ClientCapabilities.$Properties=} [properties] Properties to set
          * @property {Array.<Uint8Array>} [$unknowns] Unknown fields preserved while decoding
          */
-        var ClientCapabilities = function (properties) {
+        const ClientCapabilities = function (properties) {
             this.supportedCertificateKeyType = [];
             if (properties)
-                for (var keys = $Object.keys(properties), i = 0; i < keys.length; ++i)
+                for (let keys = $Object.keys(properties), i = 0; i < keys.length; ++i)
                     if (properties[keys[i]] != null && keys[i] !== "__proto__")
                         this[keys[i]] = properties[keys[i]];
         };
@@ -9095,7 +9093,7 @@ $root.ClientIdentification = (function() {
             if (message.canUpdateSrm != null && $Object.hasOwnProperty.call(message, "canUpdateSrm"))
                 writer.uint32(/* id 8, wireType 0 =*/64).bool(message.canUpdateSrm);
             if (message.supportedCertificateKeyType != null && message.supportedCertificateKeyType.length)
-                for (var i = 0; i < message.supportedCertificateKeyType.length; ++i)
+                for (let i = 0; i < message.supportedCertificateKeyType.length; ++i)
                     writer.uint32(/* id 9, wireType 0 =*/72).int32(message.supportedCertificateKeyType[i]);
             if (message.analogOutputCapabilities != null && $Object.hasOwnProperty.call(message, "analogOutputCapabilities"))
                 writer.uint32(/* id 10, wireType 0 =*/80).int32(message.analogOutputCapabilities);
@@ -9104,7 +9102,7 @@ $root.ClientIdentification = (function() {
             if (message.resourceRatingTier != null && $Object.hasOwnProperty.call(message, "resourceRatingTier"))
                 writer.uint32(/* id 12, wireType 0 =*/96).uint32(message.resourceRatingTier);
             if (message.$unknowns != null && $Object.hasOwnProperty.call(message, "$unknowns"))
-                for (var i = 0; i < message.$unknowns.length; ++i)
+                for (let i = 0; i < message.$unknowns.length; ++i)
                     writer.raw(message.$unknowns[i]);
             return writer;
         };
@@ -9140,15 +9138,15 @@ $root.ClientIdentification = (function() {
                 _depth = 0;
             if (_depth > $Reader.recursionLimit)
                 throw $Error("max depth exceeded");
-            var end = length === $undefined ? reader.len : reader.pos + length, message = _target || new $root.ClientIdentification.ClientCapabilities();
+            let end = length === $undefined ? reader.len : reader.pos + length, message = _target || new $root.ClientIdentification.ClientCapabilities();
             while (reader.pos < end) {
-                var start = reader.pos;
-                var tag = reader.tag();
+                let start = reader.pos;
+                let tag = reader.tag();
                 if (tag === _end) {
                     _end = $undefined;
                     break;
                 }
-                var wireType = tag & 7;
+                let wireType = tag & 7;
                 switch (tag >>>= 3) {
                 case 1: {
                         if (wireType !== 0)
@@ -9202,7 +9200,7 @@ $root.ClientIdentification = (function() {
                         if (wireType === 2) {
                             if (!(message.supportedCertificateKeyType && message.supportedCertificateKeyType.length))
                                 message.supportedCertificateKeyType = [];
-                            var end2 = reader.uint32() + reader.pos;
+                            let end2 = reader.uint32() + reader.pos;
                             while (reader.pos < end2)
                                 message.supportedCertificateKeyType.push(reader.int32());
                             continue;
@@ -9312,7 +9310,7 @@ $root.ClientIdentification = (function() {
             if (message.supportedCertificateKeyType != null && $Object.hasOwnProperty.call(message, "supportedCertificateKeyType")) {
                 if (!$Array.isArray(message.supportedCertificateKeyType))
                     return "supportedCertificateKeyType: array expected";
-                for (var i = 0; i < message.supportedCertificateKeyType.length; ++i)
+                for (let i = 0; i < message.supportedCertificateKeyType.length; ++i)
                     switch (message.supportedCertificateKeyType[i]) {
                     default:
                         return "supportedCertificateKeyType: enum value[] expected";
@@ -9360,7 +9358,7 @@ $root.ClientIdentification = (function() {
                 _depth = 0;
             if (_depth > $util.recursionLimit)
                 throw $Error("max depth exceeded");
-            var message = new $root.ClientIdentification.ClientCapabilities();
+            let message = new $root.ClientIdentification.ClientCapabilities();
             if (object.clientToken != null)
                 message.clientToken = $Boolean(object.clientToken);
             if (object.sessionToken != null)
@@ -9415,7 +9413,7 @@ $root.ClientIdentification = (function() {
                 if (!$Array.isArray(object.supportedCertificateKeyType))
                     throw $TypeError(".ClientIdentification.ClientCapabilities.supportedCertificateKeyType: array expected");
                 message.supportedCertificateKeyType = $Array(object.supportedCertificateKeyType.length);
-                for (var i = 0; i < object.supportedCertificateKeyType.length; ++i)
+                for (let i = 0; i < object.supportedCertificateKeyType.length; ++i)
                     switch (object.supportedCertificateKeyType[i]) {
                     default:
                         if (typeof object.supportedCertificateKeyType[i] === "number") {
@@ -9491,7 +9489,7 @@ $root.ClientIdentification = (function() {
                 _depth = 0;
             if (_depth > $util.recursionLimit)
                 throw $Error("max depth exceeded");
-            var object = {};
+            let object = {};
             if (options.arrays || options.defaults)
                 object.supportedCertificateKeyType = [];
             if (options.defaults) {
@@ -9525,7 +9523,7 @@ $root.ClientIdentification = (function() {
                 object.canUpdateSrm = message.canUpdateSrm;
             if (message.supportedCertificateKeyType && message.supportedCertificateKeyType.length) {
                 object.supportedCertificateKeyType = $Array(message.supportedCertificateKeyType.length);
-                for (var j = 0; j < message.supportedCertificateKeyType.length; ++j)
+                for (let j = 0; j < message.supportedCertificateKeyType.length; ++j)
                     object.supportedCertificateKeyType[j] = options.enums === $String ? $root.ClientIdentification.ClientCapabilities.CertificateKeyType[message.supportedCertificateKeyType[j]] === $undefined ? message.supportedCertificateKeyType[j] : $root.ClientIdentification.ClientCapabilities.CertificateKeyType[message.supportedCertificateKeyType[j]] : message.supportedCertificateKeyType[j];
             }
             if (message.analogOutputCapabilities != null && $Object.hasOwnProperty.call(message, "analogOutputCapabilities"))
@@ -9575,7 +9573,7 @@ $root.ClientIdentification = (function() {
          * @property {number} HDCP_NO_DIGITAL_OUTPUT=255 HDCP_NO_DIGITAL_OUTPUT value
          */
         ClientCapabilities.HdcpVersion = (function() {
-            var valuesById = {}, values = $Object.create(valuesById);
+            const valuesById = {}, values = $Object.create(valuesById);
             values[valuesById[0] = "HDCP_NONE"] = 0;
             values[valuesById[1] = "HDCP_V1"] = 1;
             values[valuesById[2] = "HDCP_V2"] = 2;
@@ -9597,7 +9595,7 @@ $root.ClientIdentification = (function() {
          * @property {number} ECC_SECP521R1=4 ECC_SECP521R1 value
          */
         ClientCapabilities.CertificateKeyType = (function() {
-            var valuesById = {}, values = $Object.create(valuesById);
+            const valuesById = {}, values = $Object.create(valuesById);
             values[valuesById[0] = "RSA_2048"] = 0;
             values[valuesById[1] = "RSA_3072"] = 1;
             values[valuesById[2] = "ECC_SECP256R1"] = 2;
@@ -9616,7 +9614,7 @@ $root.ClientIdentification = (function() {
          * @property {number} ANALOG_OUTPUT_SUPPORTS_CGMS_A=3 ANALOG_OUTPUT_SUPPORTS_CGMS_A value
          */
         ClientCapabilities.AnalogOutputCapabilities = (function() {
-            var valuesById = {}, values = $Object.create(valuesById);
+            const valuesById = {}, values = $Object.create(valuesById);
             values[valuesById[0] = "ANALOG_OUTPUT_UNKNOWN"] = 0;
             values[valuesById[1] = "ANALOG_OUTPUT_NONE"] = 1;
             values[valuesById[2] = "ANALOG_OUTPUT_SUPPORTED"] = 2;
@@ -9658,9 +9656,9 @@ $root.ClientIdentification = (function() {
          * @param {ClientIdentification.ClientCredentials.$Properties=} [properties] Properties to set
          * @property {Array.<Uint8Array>} [$unknowns] Unknown fields preserved while decoding
          */
-        var ClientCredentials = function (properties) {
+        const ClientCredentials = function (properties) {
             if (properties)
-                for (var keys = $Object.keys(properties), i = 0; i < keys.length; ++i)
+                for (let keys = $Object.keys(properties), i = 0; i < keys.length; ++i)
                     if (properties[keys[i]] != null && keys[i] !== "__proto__")
                         this[keys[i]] = properties[keys[i]];
         };
@@ -9718,7 +9716,7 @@ $root.ClientIdentification = (function() {
             if (message.token != null && $Object.hasOwnProperty.call(message, "token"))
                 writer.uint32(/* id 2, wireType 2 =*/18).bytes(message.token);
             if (message.$unknowns != null && $Object.hasOwnProperty.call(message, "$unknowns"))
-                for (var i = 0; i < message.$unknowns.length; ++i)
+                for (let i = 0; i < message.$unknowns.length; ++i)
                     writer.raw(message.$unknowns[i]);
             return writer;
         };
@@ -9754,15 +9752,15 @@ $root.ClientIdentification = (function() {
                 _depth = 0;
             if (_depth > $Reader.recursionLimit)
                 throw $Error("max depth exceeded");
-            var end = length === $undefined ? reader.len : reader.pos + length, message = _target || new $root.ClientIdentification.ClientCredentials();
+            let end = length === $undefined ? reader.len : reader.pos + length, message = _target || new $root.ClientIdentification.ClientCredentials();
             while (reader.pos < end) {
-                var start = reader.pos;
-                var tag = reader.tag();
+                let start = reader.pos;
+                let tag = reader.tag();
                 if (tag === _end) {
                     _end = $undefined;
                     break;
                 }
-                var wireType = tag & 7;
+                let wireType = tag & 7;
                 switch (tag >>>= 3) {
                 case 1: {
                         if (wireType !== 0)
@@ -9852,7 +9850,7 @@ $root.ClientIdentification = (function() {
                 _depth = 0;
             if (_depth > $util.recursionLimit)
                 throw $Error("max depth exceeded");
-            var message = new $root.ClientIdentification.ClientCredentials();
+            let message = new $root.ClientIdentification.ClientCredentials();
             switch (object.type) {
             default:
                 if (typeof object.type === "number") {
@@ -9901,7 +9899,7 @@ $root.ClientIdentification = (function() {
                 _depth = 0;
             if (_depth > $util.recursionLimit)
                 throw $Error("max depth exceeded");
-            var object = {};
+            let object = {};
             if (options.defaults) {
                 object.type = options.enums === $String ? "KEYBOX" : 0;
                 if (options.bytes === $String)
@@ -9950,7 +9948,7 @@ $root.ClientIdentification = (function() {
     return ClientIdentification;
 })();
 
-$root.EncryptedClientIdentification = (function() {
+export const EncryptedClientIdentification = $root.EncryptedClientIdentification = (() => {
 
     /**
      * Properties of an EncryptedClientIdentification.
@@ -9984,9 +9982,9 @@ $root.EncryptedClientIdentification = (function() {
      * @param {EncryptedClientIdentification.$Properties=} [properties] Properties to set
      * @property {Array.<Uint8Array>} [$unknowns] Unknown fields preserved while decoding
      */
-    var EncryptedClientIdentification = function (properties) {
+    const EncryptedClientIdentification = function (properties) {
         if (properties)
-            for (var keys = $Object.keys(properties), i = 0; i < keys.length; ++i)
+            for (let keys = $Object.keys(properties), i = 0; i < keys.length; ++i)
                 if (properties[keys[i]] != null && keys[i] !== "__proto__")
                     this[keys[i]] = properties[keys[i]];
     };
@@ -10074,7 +10072,7 @@ $root.EncryptedClientIdentification = (function() {
         if (message.encryptedPrivacyKey != null && $Object.hasOwnProperty.call(message, "encryptedPrivacyKey"))
             writer.uint32(/* id 5, wireType 2 =*/42).bytes(message.encryptedPrivacyKey);
         if (message.$unknowns != null && $Object.hasOwnProperty.call(message, "$unknowns"))
-            for (var i = 0; i < message.$unknowns.length; ++i)
+            for (let i = 0; i < message.$unknowns.length; ++i)
                 writer.raw(message.$unknowns[i]);
         return writer;
     };
@@ -10110,15 +10108,15 @@ $root.EncryptedClientIdentification = (function() {
             _depth = 0;
         if (_depth > $Reader.recursionLimit)
             throw $Error("max depth exceeded");
-        var end = length === $undefined ? reader.len : reader.pos + length, message = _target || new $root.EncryptedClientIdentification();
+        let end = length === $undefined ? reader.len : reader.pos + length, message = _target || new $root.EncryptedClientIdentification();
         while (reader.pos < end) {
-            var start = reader.pos;
-            var tag = reader.tag();
+            let start = reader.pos;
+            let tag = reader.tag();
             if (tag === _end) {
                 _end = $undefined;
                 break;
             }
-            var wireType = tag & 7;
+            let wireType = tag & 7;
             switch (tag >>>= 3) {
             case 1: {
                     if (wireType !== 2)
@@ -10228,7 +10226,7 @@ $root.EncryptedClientIdentification = (function() {
             _depth = 0;
         if (_depth > $util.recursionLimit)
             throw $Error("max depth exceeded");
-        var message = new $root.EncryptedClientIdentification();
+        let message = new $root.EncryptedClientIdentification();
         if (object.providerId != null)
             message.providerId = $String(object.providerId);
         if (object.serviceCertificateSerialNumber != null)
@@ -10270,7 +10268,7 @@ $root.EncryptedClientIdentification = (function() {
             _depth = 0;
         if (_depth > $util.recursionLimit)
             throw $Error("max depth exceeded");
-        var object = {};
+        let object = {};
         if (options.defaults) {
             object.providerId = "";
             if (options.bytes === $String)
@@ -10343,7 +10341,7 @@ $root.EncryptedClientIdentification = (function() {
     return EncryptedClientIdentification;
 })();
 
-$root.LicenseError = (function() {
+export const LicenseError = $root.LicenseError = (() => {
 
     /**
      * Properties of a LicenseError.
@@ -10373,9 +10371,9 @@ $root.LicenseError = (function() {
      * @param {LicenseError.$Properties=} [properties] Properties to set
      * @property {Array.<Uint8Array>} [$unknowns] Unknown fields preserved while decoding
      */
-    var LicenseError = function (properties) {
+    const LicenseError = function (properties) {
         if (properties)
-            for (var keys = $Object.keys(properties), i = 0; i < keys.length; ++i)
+            for (let keys = $Object.keys(properties), i = 0; i < keys.length; ++i)
                 if (properties[keys[i]] != null && keys[i] !== "__proto__")
                     this[keys[i]] = properties[keys[i]];
     };
@@ -10423,7 +10421,7 @@ $root.LicenseError = (function() {
         if (message.errorCode != null && $Object.hasOwnProperty.call(message, "errorCode"))
             writer.uint32(/* id 1, wireType 0 =*/8).int32(message.errorCode);
         if (message.$unknowns != null && $Object.hasOwnProperty.call(message, "$unknowns"))
-            for (var i = 0; i < message.$unknowns.length; ++i)
+            for (let i = 0; i < message.$unknowns.length; ++i)
                 writer.raw(message.$unknowns[i]);
         return writer;
     };
@@ -10459,15 +10457,15 @@ $root.LicenseError = (function() {
             _depth = 0;
         if (_depth > $Reader.recursionLimit)
             throw $Error("max depth exceeded");
-        var end = length === $undefined ? reader.len : reader.pos + length, message = _target || new $root.LicenseError();
+        let end = length === $undefined ? reader.len : reader.pos + length, message = _target || new $root.LicenseError();
         while (reader.pos < end) {
-            var start = reader.pos;
-            var tag = reader.tag();
+            let start = reader.pos;
+            let tag = reader.tag();
             if (tag === _end) {
                 _end = $undefined;
                 break;
             }
-            var wireType = tag & 7;
+            let wireType = tag & 7;
             switch (tag >>>= 3) {
             case 1: {
                     if (wireType !== 0)
@@ -10547,7 +10545,7 @@ $root.LicenseError = (function() {
             _depth = 0;
         if (_depth > $util.recursionLimit)
             throw $Error("max depth exceeded");
-        var message = new $root.LicenseError();
+        let message = new $root.LicenseError();
         switch (object.errorCode) {
         default:
             if (typeof object.errorCode === "number") {
@@ -10587,7 +10585,7 @@ $root.LicenseError = (function() {
             _depth = 0;
         if (_depth > $util.recursionLimit)
             throw $Error("max depth exceeded");
-        var object = {};
+        let object = {};
         if (options.defaults)
             object.errorCode = options.enums === $String ? "INVALID_DEVICE_CERTIFICATE" : 1;
         if (message.errorCode != null && $Object.hasOwnProperty.call(message, "errorCode"))
@@ -10629,7 +10627,7 @@ $root.LicenseError = (function() {
      * @property {number} SERVICE_UNAVAILABLE=3 SERVICE_UNAVAILABLE value
      */
     LicenseError.Error = (function() {
-        var valuesById = {}, values = $Object.create(valuesById);
+        const valuesById = {}, values = $Object.create(valuesById);
         values[valuesById[1] = "INVALID_DEVICE_CERTIFICATE"] = 1;
         values[valuesById[2] = "REVOKED_DEVICE_CERTIFICATE"] = 2;
         values[valuesById[3] = "SERVICE_UNAVAILABLE"] = 3;
@@ -10639,7 +10637,7 @@ $root.LicenseError = (function() {
     return LicenseError;
 })();
 
-$root.DrmCertificate = (function() {
+export const DrmCertificate = $root.DrmCertificate = (() => {
 
     /**
      * Properties of a DrmCertificate.
@@ -10680,10 +10678,10 @@ $root.DrmCertificate = (function() {
      * @param {DrmCertificate.$Properties=} [properties] Properties to set
      * @property {Array.<Uint8Array>} [$unknowns] Unknown fields preserved while decoding
      */
-    var DrmCertificate = function (properties) {
+    const DrmCertificate = function (properties) {
         this.serviceTypes = [];
         if (properties)
-            for (var keys = $Object.keys(properties), i = 0; i < keys.length; ++i)
+            for (let keys = $Object.keys(properties), i = 0; i < keys.length; ++i)
                 if (properties[keys[i]] != null && keys[i] !== "__proto__")
                     this[keys[i]] = properties[keys[i]];
     };
@@ -10831,7 +10829,7 @@ $root.DrmCertificate = (function() {
         if (message.providerId != null && $Object.hasOwnProperty.call(message, "providerId"))
             writer.uint32(/* id 7, wireType 2 =*/58).string(message.providerId);
         if (message.serviceTypes != null && message.serviceTypes.length)
-            for (var i = 0; i < message.serviceTypes.length; ++i)
+            for (let i = 0; i < message.serviceTypes.length; ++i)
                 writer.uint32(/* id 8, wireType 0 =*/64).int32(message.serviceTypes[i]);
         if (message.algorithm != null && $Object.hasOwnProperty.call(message, "algorithm"))
             writer.uint32(/* id 9, wireType 0 =*/72).int32(message.algorithm);
@@ -10842,7 +10840,7 @@ $root.DrmCertificate = (function() {
         if (message.expirationTimeSeconds != null && $Object.hasOwnProperty.call(message, "expirationTimeSeconds"))
             writer.uint32(/* id 12, wireType 0 =*/96).uint32(message.expirationTimeSeconds);
         if (message.$unknowns != null && $Object.hasOwnProperty.call(message, "$unknowns"))
-            for (var i = 0; i < message.$unknowns.length; ++i)
+            for (let i = 0; i < message.$unknowns.length; ++i)
                 writer.raw(message.$unknowns[i]);
         return writer;
     };
@@ -10878,15 +10876,15 @@ $root.DrmCertificate = (function() {
             _depth = 0;
         if (_depth > $Reader.recursionLimit)
             throw $Error("max depth exceeded");
-        var end = length === $undefined ? reader.len : reader.pos + length, message = _target || new $root.DrmCertificate();
+        let end = length === $undefined ? reader.len : reader.pos + length, message = _target || new $root.DrmCertificate();
         while (reader.pos < end) {
-            var start = reader.pos;
-            var tag = reader.tag();
+            let start = reader.pos;
+            let tag = reader.tag();
             if (tag === _end) {
                 _end = $undefined;
                 break;
             }
-            var wireType = tag & 7;
+            let wireType = tag & 7;
             switch (tag >>>= 3) {
             case 1: {
                     if (wireType !== 0)
@@ -10940,7 +10938,7 @@ $root.DrmCertificate = (function() {
                     if (wireType === 2) {
                         if (!(message.serviceTypes && message.serviceTypes.length))
                             message.serviceTypes = [];
-                        var end2 = reader.uint32() + reader.pos;
+                        let end2 = reader.uint32() + reader.pos;
                         while (reader.pos < end2)
                             message.serviceTypes.push(reader.int32());
                         continue;
@@ -11048,7 +11046,7 @@ $root.DrmCertificate = (function() {
         if (message.serviceTypes != null && $Object.hasOwnProperty.call(message, "serviceTypes")) {
             if (!$Array.isArray(message.serviceTypes))
                 return "serviceTypes: array expected";
-            for (var i = 0; i < message.serviceTypes.length; ++i)
+            for (let i = 0; i < message.serviceTypes.length; ++i)
                 switch (message.serviceTypes[i]) {
                 default:
                     return "serviceTypes: enum value[] expected";
@@ -11075,7 +11073,7 @@ $root.DrmCertificate = (function() {
             if (!(message.rotId && typeof message.rotId.length === "number" || $util.isString(message.rotId)))
                 return "rotId: buffer expected";
         if (message.encryptionKey != null && $Object.hasOwnProperty.call(message, "encryptionKey")) {
-            var error = $root.DrmCertificate.EncryptionKey.verify(message.encryptionKey, _depth + 1);
+            let error = $root.DrmCertificate.EncryptionKey.verify(message.encryptionKey, _depth + 1);
             if (error)
                 return "encryptionKey." + error;
         }
@@ -11099,7 +11097,7 @@ $root.DrmCertificate = (function() {
             _depth = 0;
         if (_depth > $util.recursionLimit)
             throw $Error("max depth exceeded");
-        var message = new $root.DrmCertificate();
+        let message = new $root.DrmCertificate();
         switch (object.type) {
         default:
             if (typeof object.type === "number") {
@@ -11152,7 +11150,7 @@ $root.DrmCertificate = (function() {
             if (!$Array.isArray(object.serviceTypes))
                 throw $TypeError(".DrmCertificate.serviceTypes: array expected");
             message.serviceTypes = $Array(object.serviceTypes.length);
-            for (var i = 0; i < object.serviceTypes.length; ++i)
+            for (let i = 0; i < object.serviceTypes.length; ++i)
                 switch (object.serviceTypes[i]) {
                 default:
                     if (typeof object.serviceTypes[i] === "number") {
@@ -11238,7 +11236,7 @@ $root.DrmCertificate = (function() {
             _depth = 0;
         if (_depth > $util.recursionLimit)
             throw $Error("max depth exceeded");
-        var object = {};
+        let object = {};
         if (options.arrays || options.defaults)
             object.serviceTypes = [];
         if (options.defaults) {
@@ -11288,7 +11286,7 @@ $root.DrmCertificate = (function() {
             object.providerId = message.providerId;
         if (message.serviceTypes && message.serviceTypes.length) {
             object.serviceTypes = $Array(message.serviceTypes.length);
-            for (var j = 0; j < message.serviceTypes.length; ++j)
+            for (let j = 0; j < message.serviceTypes.length; ++j)
                 object.serviceTypes[j] = options.enums === $String ? $root.DrmCertificate.ServiceType[message.serviceTypes[j]] === $undefined ? message.serviceTypes[j] : $root.DrmCertificate.ServiceType[message.serviceTypes[j]] : message.serviceTypes[j];
         }
         if (message.algorithm != null && $Object.hasOwnProperty.call(message, "algorithm"))
@@ -11338,7 +11336,7 @@ $root.DrmCertificate = (function() {
      * @property {number} PROVISIONER=4 PROVISIONER value
      */
     DrmCertificate.Type = (function() {
-        var valuesById = {}, values = $Object.create(valuesById);
+        const valuesById = {}, values = $Object.create(valuesById);
         values[valuesById[0] = "ROOT"] = 0;
         values[valuesById[1] = "DEVICE_MODEL"] = 1;
         values[valuesById[2] = "DEVICE"] = 2;
@@ -11358,7 +11356,7 @@ $root.DrmCertificate = (function() {
      * @property {number} CAS_PROXY_SDK=4 CAS_PROXY_SDK value
      */
     DrmCertificate.ServiceType = (function() {
-        var valuesById = {}, values = $Object.create(valuesById);
+        const valuesById = {}, values = $Object.create(valuesById);
         values[valuesById[0] = "UNKNOWN_SERVICE_TYPE"] = 0;
         values[valuesById[1] = "LICENSE_SERVER_SDK"] = 1;
         values[valuesById[2] = "LICENSE_SERVER_PROXY_SDK"] = 2;
@@ -11378,7 +11376,7 @@ $root.DrmCertificate = (function() {
      * @property {number} ECC_SECP521R1=4 ECC_SECP521R1 value
      */
     DrmCertificate.Algorithm = (function() {
-        var valuesById = {}, values = $Object.create(valuesById);
+        const valuesById = {}, values = $Object.create(valuesById);
         values[valuesById[0] = "UNKNOWN_ALGORITHM"] = 0;
         values[valuesById[1] = "RSA"] = 1;
         values[valuesById[2] = "ECC_SECP256R1"] = 2;
@@ -11418,9 +11416,9 @@ $root.DrmCertificate = (function() {
          * @param {DrmCertificate.EncryptionKey.$Properties=} [properties] Properties to set
          * @property {Array.<Uint8Array>} [$unknowns] Unknown fields preserved while decoding
          */
-        var EncryptionKey = function (properties) {
+        const EncryptionKey = function (properties) {
             if (properties)
-                for (var keys = $Object.keys(properties), i = 0; i < keys.length; ++i)
+                for (let keys = $Object.keys(properties), i = 0; i < keys.length; ++i)
                     if (properties[keys[i]] != null && keys[i] !== "__proto__")
                         this[keys[i]] = properties[keys[i]];
         };
@@ -11478,7 +11476,7 @@ $root.DrmCertificate = (function() {
             if (message.algorithm != null && $Object.hasOwnProperty.call(message, "algorithm"))
                 writer.uint32(/* id 2, wireType 0 =*/16).int32(message.algorithm);
             if (message.$unknowns != null && $Object.hasOwnProperty.call(message, "$unknowns"))
-                for (var i = 0; i < message.$unknowns.length; ++i)
+                for (let i = 0; i < message.$unknowns.length; ++i)
                     writer.raw(message.$unknowns[i]);
             return writer;
         };
@@ -11514,15 +11512,15 @@ $root.DrmCertificate = (function() {
                 _depth = 0;
             if (_depth > $Reader.recursionLimit)
                 throw $Error("max depth exceeded");
-            var end = length === $undefined ? reader.len : reader.pos + length, message = _target || new $root.DrmCertificate.EncryptionKey();
+            let end = length === $undefined ? reader.len : reader.pos + length, message = _target || new $root.DrmCertificate.EncryptionKey();
             while (reader.pos < end) {
-                var start = reader.pos;
-                var tag = reader.tag();
+                let start = reader.pos;
+                let tag = reader.tag();
                 if (tag === _end) {
                     _end = $undefined;
                     break;
                 }
-                var wireType = tag & 7;
+                let wireType = tag & 7;
                 switch (tag >>>= 3) {
                 case 1: {
                         if (wireType !== 2)
@@ -11613,7 +11611,7 @@ $root.DrmCertificate = (function() {
                 _depth = 0;
             if (_depth > $util.recursionLimit)
                 throw $Error("max depth exceeded");
-            var message = new $root.DrmCertificate.EncryptionKey();
+            let message = new $root.DrmCertificate.EncryptionKey();
             if (object.publicKey != null)
                 if (typeof object.publicKey === "string")
                     $util.base64.decode(object.publicKey, message.publicKey = $util.newBuffer($util.base64.length(object.publicKey)), 0);
@@ -11666,7 +11664,7 @@ $root.DrmCertificate = (function() {
                 _depth = 0;
             if (_depth > $util.recursionLimit)
                 throw $Error("max depth exceeded");
-            var object = {};
+            let object = {};
             if (options.defaults) {
                 if (options.bytes === $String)
                     object.publicKey = "";
@@ -11715,7 +11713,7 @@ $root.DrmCertificate = (function() {
     return DrmCertificate;
 })();
 
-$root.SignedDrmCertificate = (function() {
+export const SignedDrmCertificate = $root.SignedDrmCertificate = (() => {
 
     /**
      * Properties of a SignedDrmCertificate.
@@ -11748,9 +11746,9 @@ $root.SignedDrmCertificate = (function() {
      * @param {SignedDrmCertificate.$Properties=} [properties] Properties to set
      * @property {Array.<Uint8Array>} [$unknowns] Unknown fields preserved while decoding
      */
-    var SignedDrmCertificate = function (properties) {
+    const SignedDrmCertificate = function (properties) {
         if (properties)
-            for (var keys = $Object.keys(properties), i = 0; i < keys.length; ++i)
+            for (let keys = $Object.keys(properties), i = 0; i < keys.length; ++i)
                 if (properties[keys[i]] != null && keys[i] !== "__proto__")
                     this[keys[i]] = properties[keys[i]];
     };
@@ -11828,7 +11826,7 @@ $root.SignedDrmCertificate = (function() {
         if (message.hashAlgorithm != null && $Object.hasOwnProperty.call(message, "hashAlgorithm"))
             writer.uint32(/* id 4, wireType 0 =*/32).int32(message.hashAlgorithm);
         if (message.$unknowns != null && $Object.hasOwnProperty.call(message, "$unknowns"))
-            for (var i = 0; i < message.$unknowns.length; ++i)
+            for (let i = 0; i < message.$unknowns.length; ++i)
                 writer.raw(message.$unknowns[i]);
         return writer;
     };
@@ -11864,15 +11862,15 @@ $root.SignedDrmCertificate = (function() {
             _depth = 0;
         if (_depth > $Reader.recursionLimit)
             throw $Error("max depth exceeded");
-        var end = length === $undefined ? reader.len : reader.pos + length, message = _target || new $root.SignedDrmCertificate();
+        let end = length === $undefined ? reader.len : reader.pos + length, message = _target || new $root.SignedDrmCertificate();
         while (reader.pos < end) {
-            var start = reader.pos;
-            var tag = reader.tag();
+            let start = reader.pos;
+            let tag = reader.tag();
             if (tag === _end) {
                 _end = $undefined;
                 break;
             }
-            var wireType = tag & 7;
+            let wireType = tag & 7;
             switch (tag >>>= 3) {
             case 1: {
                     if (wireType !== 2)
@@ -11948,7 +11946,7 @@ $root.SignedDrmCertificate = (function() {
             if (!(message.signature && typeof message.signature.length === "number" || $util.isString(message.signature)))
                 return "signature: buffer expected";
         if (message.signer != null && $Object.hasOwnProperty.call(message, "signer")) {
-            var error = $root.SignedDrmCertificate.verify(message.signer, _depth + 1);
+            let error = $root.SignedDrmCertificate.verify(message.signer, _depth + 1);
             if (error)
                 return "signer." + error;
         }
@@ -11982,7 +11980,7 @@ $root.SignedDrmCertificate = (function() {
             _depth = 0;
         if (_depth > $util.recursionLimit)
             throw $Error("max depth exceeded");
-        var message = new $root.SignedDrmCertificate();
+        let message = new $root.SignedDrmCertificate();
         if (object.drmCertificate != null)
             if (typeof object.drmCertificate === "string")
                 $util.base64.decode(object.drmCertificate, message.drmCertificate = $util.newBuffer($util.base64.length(object.drmCertificate)), 0);
@@ -12041,7 +12039,7 @@ $root.SignedDrmCertificate = (function() {
             _depth = 0;
         if (_depth > $util.recursionLimit)
             throw $Error("max depth exceeded");
-        var object = {};
+        let object = {};
         if (options.defaults) {
             if (options.bytes === $String)
                 object.drmCertificate = "";
@@ -12099,7 +12097,7 @@ $root.SignedDrmCertificate = (function() {
     return SignedDrmCertificate;
 })();
 
-$root.WidevinePsshData = (function() {
+export const WidevinePsshData = $root.WidevinePsshData = (() => {
 
     /**
      * Properties of a WidevinePsshData.
@@ -12143,12 +12141,12 @@ $root.WidevinePsshData = (function() {
      * @param {WidevinePsshData.$Properties=} [properties] Properties to set
      * @property {Array.<Uint8Array>} [$unknowns] Unknown fields preserved while decoding
      */
-    var WidevinePsshData = function (properties) {
+    const WidevinePsshData = function (properties) {
         this.keyIds = [];
         this.groupIds = [];
         this.entitledKeys = [];
         if (properties)
-            for (var keys = $Object.keys(properties), i = 0; i < keys.length; ++i)
+            for (let keys = $Object.keys(properties), i = 0; i < keys.length; ++i)
                 if (properties[keys[i]] != null && keys[i] !== "__proto__")
                     this[keys[i]] = properties[keys[i]];
     };
@@ -12308,7 +12306,7 @@ $root.WidevinePsshData = (function() {
         if (message.algorithm != null && $Object.hasOwnProperty.call(message, "algorithm"))
             writer.uint32(/* id 1, wireType 0 =*/8).int32(message.algorithm);
         if (message.keyIds != null && message.keyIds.length)
-            for (var i = 0; i < message.keyIds.length; ++i)
+            for (let i = 0; i < message.keyIds.length; ++i)
                 writer.uint32(/* id 2, wireType 2 =*/18).bytes(message.keyIds[i]);
         if (message.provider != null && $Object.hasOwnProperty.call(message, "provider"))
             writer.uint32(/* id 3, wireType 2 =*/26).string(message.provider);
@@ -12331,15 +12329,15 @@ $root.WidevinePsshData = (function() {
         if (message.keySequence != null && $Object.hasOwnProperty.call(message, "keySequence"))
             writer.uint32(/* id 12, wireType 0 =*/96).uint32(message.keySequence);
         if (message.groupIds != null && message.groupIds.length)
-            for (var i = 0; i < message.groupIds.length; ++i)
+            for (let i = 0; i < message.groupIds.length; ++i)
                 writer.uint32(/* id 13, wireType 2 =*/106).bytes(message.groupIds[i]);
         if (message.entitledKeys != null && message.entitledKeys.length)
-            for (var i = 0; i < message.entitledKeys.length; ++i)
+            for (let i = 0; i < message.entitledKeys.length; ++i)
                 $root.WidevinePsshData.EntitledKey.encode(message.entitledKeys[i], writer.uint32(/* id 14, wireType 2 =*/114).fork(), _depth + 1).ldelim();
         if (message.videoFeature != null && $Object.hasOwnProperty.call(message, "videoFeature"))
             writer.uint32(/* id 15, wireType 2 =*/122).string(message.videoFeature);
         if (message.$unknowns != null && $Object.hasOwnProperty.call(message, "$unknowns"))
-            for (var i = 0; i < message.$unknowns.length; ++i)
+            for (let i = 0; i < message.$unknowns.length; ++i)
                 writer.raw(message.$unknowns[i]);
         return writer;
     };
@@ -12375,15 +12373,15 @@ $root.WidevinePsshData = (function() {
             _depth = 0;
         if (_depth > $Reader.recursionLimit)
             throw $Error("max depth exceeded");
-        var end = length === $undefined ? reader.len : reader.pos + length, message = _target || new $root.WidevinePsshData();
+        let end = length === $undefined ? reader.len : reader.pos + length, message = _target || new $root.WidevinePsshData();
         while (reader.pos < end) {
-            var start = reader.pos;
-            var tag = reader.tag();
+            let start = reader.pos;
+            let tag = reader.tag();
             if (tag === _end) {
                 _end = $undefined;
                 break;
             }
-            var wireType = tag & 7;
+            let wireType = tag & 7;
             switch (tag >>>= 3) {
             case 2: {
                     if (wireType !== 2)
@@ -12527,7 +12525,7 @@ $root.WidevinePsshData = (function() {
         if (message.keyIds != null && $Object.hasOwnProperty.call(message, "keyIds")) {
             if (!$Array.isArray(message.keyIds))
                 return "keyIds: array expected";
-            for (var i = 0; i < message.keyIds.length; ++i)
+            for (let i = 0; i < message.keyIds.length; ++i)
                 if (!(message.keyIds[i] && typeof message.keyIds[i].length === "number" || $util.isString(message.keyIds[i])))
                     return "keyIds: buffer[] expected";
         }
@@ -12558,15 +12556,15 @@ $root.WidevinePsshData = (function() {
         if (message.groupIds != null && $Object.hasOwnProperty.call(message, "groupIds")) {
             if (!$Array.isArray(message.groupIds))
                 return "groupIds: array expected";
-            for (var i = 0; i < message.groupIds.length; ++i)
+            for (let i = 0; i < message.groupIds.length; ++i)
                 if (!(message.groupIds[i] && typeof message.groupIds[i].length === "number" || $util.isString(message.groupIds[i])))
                     return "groupIds: buffer[] expected";
         }
         if (message.entitledKeys != null && $Object.hasOwnProperty.call(message, "entitledKeys")) {
             if (!$Array.isArray(message.entitledKeys))
                 return "entitledKeys: array expected";
-            for (var i = 0; i < message.entitledKeys.length; ++i) {
-                var error = $root.WidevinePsshData.EntitledKey.verify(message.entitledKeys[i], _depth + 1);
+            for (let i = 0; i < message.entitledKeys.length; ++i) {
+                let error = $root.WidevinePsshData.EntitledKey.verify(message.entitledKeys[i], _depth + 1);
                 if (error)
                     return "entitledKeys." + error;
             }
@@ -12614,12 +12612,12 @@ $root.WidevinePsshData = (function() {
             _depth = 0;
         if (_depth > $util.recursionLimit)
             throw $Error("max depth exceeded");
-        var message = new $root.WidevinePsshData();
+        let message = new $root.WidevinePsshData();
         if (object.keyIds) {
             if (!$Array.isArray(object.keyIds))
                 throw $TypeError(".WidevinePsshData.keyIds: array expected");
             message.keyIds = $Array(object.keyIds.length);
-            for (var i = 0; i < object.keyIds.length; ++i)
+            for (let i = 0; i < object.keyIds.length; ++i)
                 if (typeof object.keyIds[i] === "string")
                     $util.base64.decode(object.keyIds[i], message.keyIds[i] = $util.newBuffer($util.base64.length(object.keyIds[i])), 0);
                 else if (object.keyIds[i].length >= 0)
@@ -12662,7 +12660,7 @@ $root.WidevinePsshData = (function() {
             if (!$Array.isArray(object.groupIds))
                 throw $TypeError(".WidevinePsshData.groupIds: array expected");
             message.groupIds = $Array(object.groupIds.length);
-            for (var i = 0; i < object.groupIds.length; ++i)
+            for (let i = 0; i < object.groupIds.length; ++i)
                 if (typeof object.groupIds[i] === "string")
                     $util.base64.decode(object.groupIds[i], message.groupIds[i] = $util.newBuffer($util.base64.length(object.groupIds[i])), 0);
                 else if (object.groupIds[i].length >= 0)
@@ -12672,7 +12670,7 @@ $root.WidevinePsshData = (function() {
             if (!$Array.isArray(object.entitledKeys))
                 throw $TypeError(".WidevinePsshData.entitledKeys: array expected");
             message.entitledKeys = $Array(object.entitledKeys.length);
-            for (var i = 0; i < object.entitledKeys.length; ++i) {
+            for (let i = 0; i < object.entitledKeys.length; ++i) {
                 if (!$util.isObject(object.entitledKeys[i]))
                     throw $TypeError(".WidevinePsshData.entitledKeys: object expected");
                 message.entitledKeys[i] = $root.WidevinePsshData.EntitledKey.fromObject(object.entitledKeys[i], _depth + 1);
@@ -12726,7 +12724,7 @@ $root.WidevinePsshData = (function() {
             _depth = 0;
         if (_depth > $util.recursionLimit)
             throw $Error("max depth exceeded");
-        var object = {};
+        let object = {};
         if (options.arrays || options.defaults) {
             object.keyIds = [];
             object.groupIds = [];
@@ -12762,7 +12760,7 @@ $root.WidevinePsshData = (function() {
             object.algorithm = options.enums === $String ? $root.WidevinePsshData.Algorithm[message.algorithm] === $undefined ? message.algorithm : $root.WidevinePsshData.Algorithm[message.algorithm] : message.algorithm;
         if (message.keyIds && message.keyIds.length) {
             object.keyIds = $Array(message.keyIds.length);
-            for (var j = 0; j < message.keyIds.length; ++j)
+            for (let j = 0; j < message.keyIds.length; ++j)
                 object.keyIds[j] = options.bytes === $String ? $util.base64.encode(message.keyIds[j], 0, message.keyIds[j].length) : options.bytes === $Array ? $Array.prototype.slice.call(message.keyIds[j]) : message.keyIds[j];
         }
         if (message.provider != null && $Object.hasOwnProperty.call(message, "provider"))
@@ -12787,12 +12785,12 @@ $root.WidevinePsshData = (function() {
             object.keySequence = message.keySequence;
         if (message.groupIds && message.groupIds.length) {
             object.groupIds = $Array(message.groupIds.length);
-            for (var j = 0; j < message.groupIds.length; ++j)
+            for (let j = 0; j < message.groupIds.length; ++j)
                 object.groupIds[j] = options.bytes === $String ? $util.base64.encode(message.groupIds[j], 0, message.groupIds[j].length) : options.bytes === $Array ? $Array.prototype.slice.call(message.groupIds[j]) : message.groupIds[j];
         }
         if (message.entitledKeys && message.entitledKeys.length) {
             object.entitledKeys = $Array(message.entitledKeys.length);
-            for (var j = 0; j < message.entitledKeys.length; ++j)
+            for (let j = 0; j < message.entitledKeys.length; ++j)
                 object.entitledKeys[j] = $root.WidevinePsshData.EntitledKey.toObject(message.entitledKeys[j], options, _depth + 1);
         }
         if (message.videoFeature != null && $Object.hasOwnProperty.call(message, "videoFeature"))
@@ -12834,7 +12832,7 @@ $root.WidevinePsshData = (function() {
      * @property {number} ENTITLED_KEY=2 ENTITLED_KEY value
      */
     WidevinePsshData.Type = (function() {
-        var valuesById = {}, values = $Object.create(valuesById);
+        const valuesById = {}, values = $Object.create(valuesById);
         values[valuesById[0] = "SINGLE"] = 0;
         values[valuesById[1] = "ENTITLEMENT"] = 1;
         values[valuesById[2] = "ENTITLED_KEY"] = 2;
@@ -12875,9 +12873,9 @@ $root.WidevinePsshData = (function() {
          * @param {WidevinePsshData.EntitledKey.$Properties=} [properties] Properties to set
          * @property {Array.<Uint8Array>} [$unknowns] Unknown fields preserved while decoding
          */
-        var EntitledKey = function (properties) {
+        const EntitledKey = function (properties) {
             if (properties)
-                for (var keys = $Object.keys(properties), i = 0; i < keys.length; ++i)
+                for (let keys = $Object.keys(properties), i = 0; i < keys.length; ++i)
                     if (properties[keys[i]] != null && keys[i] !== "__proto__")
                         this[keys[i]] = properties[keys[i]];
         };
@@ -12965,7 +12963,7 @@ $root.WidevinePsshData = (function() {
             if (message.entitlementKeySizeBytes != null && $Object.hasOwnProperty.call(message, "entitlementKeySizeBytes"))
                 writer.uint32(/* id 5, wireType 0 =*/40).uint32(message.entitlementKeySizeBytes);
             if (message.$unknowns != null && $Object.hasOwnProperty.call(message, "$unknowns"))
-                for (var i = 0; i < message.$unknowns.length; ++i)
+                for (let i = 0; i < message.$unknowns.length; ++i)
                     writer.raw(message.$unknowns[i]);
             return writer;
         };
@@ -13001,15 +12999,15 @@ $root.WidevinePsshData = (function() {
                 _depth = 0;
             if (_depth > $Reader.recursionLimit)
                 throw $Error("max depth exceeded");
-            var end = length === $undefined ? reader.len : reader.pos + length, message = _target || new $root.WidevinePsshData.EntitledKey();
+            let end = length === $undefined ? reader.len : reader.pos + length, message = _target || new $root.WidevinePsshData.EntitledKey();
             while (reader.pos < end) {
-                var start = reader.pos;
-                var tag = reader.tag();
+                let start = reader.pos;
+                let tag = reader.tag();
                 if (tag === _end) {
                     _end = $undefined;
                     break;
                 }
-                var wireType = tag & 7;
+                let wireType = tag & 7;
                 switch (tag >>>= 3) {
                 case 1: {
                         if (wireType !== 2)
@@ -13119,7 +13117,7 @@ $root.WidevinePsshData = (function() {
                 _depth = 0;
             if (_depth > $util.recursionLimit)
                 throw $Error("max depth exceeded");
-            var message = new $root.WidevinePsshData.EntitledKey();
+            let message = new $root.WidevinePsshData.EntitledKey();
             if (object.entitlementKeyId != null)
                 if (typeof object.entitlementKeyId === "string")
                     $util.base64.decode(object.entitlementKeyId, message.entitlementKeyId = $util.newBuffer($util.base64.length(object.entitlementKeyId)), 0);
@@ -13161,7 +13159,7 @@ $root.WidevinePsshData = (function() {
                 _depth = 0;
             if (_depth > $util.recursionLimit)
                 throw $Error("max depth exceeded");
-            var object = {};
+            let object = {};
             if (options.defaults) {
                 if (options.bytes === $String)
                     object.entitlementKeyId = "";
@@ -13242,7 +13240,7 @@ $root.WidevinePsshData = (function() {
      * @property {number} AESCTR=1 AESCTR value
      */
     WidevinePsshData.Algorithm = (function() {
-        var valuesById = {}, values = $Object.create(valuesById);
+        const valuesById = {}, values = $Object.create(valuesById);
         values[valuesById[0] = "UNENCRYPTED"] = 0;
         values[valuesById[1] = "AESCTR"] = 1;
         return values;
@@ -13251,7 +13249,7 @@ $root.WidevinePsshData = (function() {
     return WidevinePsshData;
 })();
 
-$root.FileHashes = (function() {
+export const FileHashes = $root.FileHashes = (() => {
 
     /**
      * Properties of a FileHashes.
@@ -13282,10 +13280,10 @@ $root.FileHashes = (function() {
      * @param {FileHashes.$Properties=} [properties] Properties to set
      * @property {Array.<Uint8Array>} [$unknowns] Unknown fields preserved while decoding
      */
-    var FileHashes = function (properties) {
+    const FileHashes = function (properties) {
         this.signatures = [];
         if (properties)
-            for (var keys = $Object.keys(properties), i = 0; i < keys.length; ++i)
+            for (let keys = $Object.keys(properties), i = 0; i < keys.length; ++i)
                 if (properties[keys[i]] != null && keys[i] !== "__proto__")
                     this[keys[i]] = properties[keys[i]];
     };
@@ -13341,10 +13339,10 @@ $root.FileHashes = (function() {
         if (message.signer != null && $Object.hasOwnProperty.call(message, "signer"))
             writer.uint32(/* id 1, wireType 2 =*/10).bytes(message.signer);
         if (message.signatures != null && message.signatures.length)
-            for (var i = 0; i < message.signatures.length; ++i)
+            for (let i = 0; i < message.signatures.length; ++i)
                 $root.FileHashes.Signature.encode(message.signatures[i], writer.uint32(/* id 2, wireType 2 =*/18).fork(), _depth + 1).ldelim();
         if (message.$unknowns != null && $Object.hasOwnProperty.call(message, "$unknowns"))
-            for (var i = 0; i < message.$unknowns.length; ++i)
+            for (let i = 0; i < message.$unknowns.length; ++i)
                 writer.raw(message.$unknowns[i]);
         return writer;
     };
@@ -13380,15 +13378,15 @@ $root.FileHashes = (function() {
             _depth = 0;
         if (_depth > $Reader.recursionLimit)
             throw $Error("max depth exceeded");
-        var end = length === $undefined ? reader.len : reader.pos + length, message = _target || new $root.FileHashes();
+        let end = length === $undefined ? reader.len : reader.pos + length, message = _target || new $root.FileHashes();
         while (reader.pos < end) {
-            var start = reader.pos;
-            var tag = reader.tag();
+            let start = reader.pos;
+            let tag = reader.tag();
             if (tag === _end) {
                 _end = $undefined;
                 break;
             }
-            var wireType = tag & 7;
+            let wireType = tag & 7;
             switch (tag >>>= 3) {
             case 1: {
                     if (wireType !== 2)
@@ -13453,8 +13451,8 @@ $root.FileHashes = (function() {
         if (message.signatures != null && $Object.hasOwnProperty.call(message, "signatures")) {
             if (!$Array.isArray(message.signatures))
                 return "signatures: array expected";
-            for (var i = 0; i < message.signatures.length; ++i) {
-                var error = $root.FileHashes.Signature.verify(message.signatures[i], _depth + 1);
+            for (let i = 0; i < message.signatures.length; ++i) {
+                let error = $root.FileHashes.Signature.verify(message.signatures[i], _depth + 1);
                 if (error)
                     return "signatures." + error;
             }
@@ -13479,7 +13477,7 @@ $root.FileHashes = (function() {
             _depth = 0;
         if (_depth > $util.recursionLimit)
             throw $Error("max depth exceeded");
-        var message = new $root.FileHashes();
+        let message = new $root.FileHashes();
         if (object.signer != null)
             if (typeof object.signer === "string")
                 $util.base64.decode(object.signer, message.signer = $util.newBuffer($util.base64.length(object.signer)), 0);
@@ -13489,7 +13487,7 @@ $root.FileHashes = (function() {
             if (!$Array.isArray(object.signatures))
                 throw $TypeError(".FileHashes.signatures: array expected");
             message.signatures = $Array(object.signatures.length);
-            for (var i = 0; i < object.signatures.length; ++i) {
+            for (let i = 0; i < object.signatures.length; ++i) {
                 if (!$util.isObject(object.signatures[i]))
                     throw $TypeError(".FileHashes.signatures: object expected");
                 message.signatures[i] = $root.FileHashes.Signature.fromObject(object.signatures[i], _depth + 1);
@@ -13514,7 +13512,7 @@ $root.FileHashes = (function() {
             _depth = 0;
         if (_depth > $util.recursionLimit)
             throw $Error("max depth exceeded");
-        var object = {};
+        let object = {};
         if (options.arrays || options.defaults)
             object.signatures = [];
         if (options.defaults)
@@ -13529,7 +13527,7 @@ $root.FileHashes = (function() {
             object.signer = options.bytes === $String ? $util.base64.encode(message.signer, 0, message.signer.length) : options.bytes === $Array ? $Array.prototype.slice.call(message.signer) : message.signer;
         if (message.signatures && message.signatures.length) {
             object.signatures = $Array(message.signatures.length);
-            for (var j = 0; j < message.signatures.length; ++j)
+            for (let j = 0; j < message.signatures.length; ++j)
                 object.signatures[j] = $root.FileHashes.Signature.toObject(message.signatures[j], options, _depth + 1);
         }
         return object;
@@ -13594,9 +13592,9 @@ $root.FileHashes = (function() {
          * @param {FileHashes.Signature.$Properties=} [properties] Properties to set
          * @property {Array.<Uint8Array>} [$unknowns] Unknown fields preserved while decoding
          */
-        var Signature = function (properties) {
+        const Signature = function (properties) {
             if (properties)
-                for (var keys = $Object.keys(properties), i = 0; i < keys.length; ++i)
+                for (let keys = $Object.keys(properties), i = 0; i < keys.length; ++i)
                     if (properties[keys[i]] != null && keys[i] !== "__proto__")
                         this[keys[i]] = properties[keys[i]];
         };
@@ -13684,7 +13682,7 @@ $root.FileHashes = (function() {
             if (message.signature != null && $Object.hasOwnProperty.call(message, "signature"))
                 writer.uint32(/* id 5, wireType 2 =*/42).bytes(message.signature);
             if (message.$unknowns != null && $Object.hasOwnProperty.call(message, "$unknowns"))
-                for (var i = 0; i < message.$unknowns.length; ++i)
+                for (let i = 0; i < message.$unknowns.length; ++i)
                     writer.raw(message.$unknowns[i]);
             return writer;
         };
@@ -13720,15 +13718,15 @@ $root.FileHashes = (function() {
                 _depth = 0;
             if (_depth > $Reader.recursionLimit)
                 throw $Error("max depth exceeded");
-            var end = length === $undefined ? reader.len : reader.pos + length, message = _target || new $root.FileHashes.Signature();
+            let end = length === $undefined ? reader.len : reader.pos + length, message = _target || new $root.FileHashes.Signature();
             while (reader.pos < end) {
-                var start = reader.pos;
-                var tag = reader.tag();
+                let start = reader.pos;
+                let tag = reader.tag();
                 if (tag === _end) {
                     _end = $undefined;
                     break;
                 }
-                var wireType = tag & 7;
+                let wireType = tag & 7;
                 switch (tag >>>= 3) {
                 case 1: {
                         if (wireType !== 2)
@@ -13838,7 +13836,7 @@ $root.FileHashes = (function() {
                 _depth = 0;
             if (_depth > $util.recursionLimit)
                 throw $Error("max depth exceeded");
-            var message = new $root.FileHashes.Signature();
+            let message = new $root.FileHashes.Signature();
             if (object.filename != null)
                 message.filename = $String(object.filename);
             if (object.testSigning != null)
@@ -13874,7 +13872,7 @@ $root.FileHashes = (function() {
                 _depth = 0;
             if (_depth > $util.recursionLimit)
                 throw $Error("max depth exceeded");
-            var object = {};
+            let object = {};
             if (options.defaults) {
                 object.filename = "";
                 object.testSigning = false;
@@ -13938,7 +13936,7 @@ $root.FileHashes = (function() {
     return FileHashes;
 })();
 
-$root.RemoteAttestation = (function() {
+export const RemoteAttestation = $root.RemoteAttestation = (() => {
 
     /**
      * Properties of a RemoteAttestation.
@@ -13970,9 +13968,9 @@ $root.RemoteAttestation = (function() {
      * @param {RemoteAttestation.$Properties=} [properties] Properties to set
      * @property {Array.<Uint8Array>} [$unknowns] Unknown fields preserved while decoding
      */
-    var RemoteAttestation = function (properties) {
+    const RemoteAttestation = function (properties) {
         if (properties)
-            for (var keys = $Object.keys(properties), i = 0; i < keys.length; ++i)
+            for (let keys = $Object.keys(properties), i = 0; i < keys.length; ++i)
                 if (properties[keys[i]] != null && keys[i] !== "__proto__")
                     this[keys[i]] = properties[keys[i]];
     };
@@ -14040,7 +14038,7 @@ $root.RemoteAttestation = (function() {
         if (message.signature != null && $Object.hasOwnProperty.call(message, "signature"))
             writer.uint32(/* id 3, wireType 2 =*/26).bytes(message.signature);
         if (message.$unknowns != null && $Object.hasOwnProperty.call(message, "$unknowns"))
-            for (var i = 0; i < message.$unknowns.length; ++i)
+            for (let i = 0; i < message.$unknowns.length; ++i)
                 writer.raw(message.$unknowns[i]);
         return writer;
     };
@@ -14076,15 +14074,15 @@ $root.RemoteAttestation = (function() {
             _depth = 0;
         if (_depth > $Reader.recursionLimit)
             throw $Error("max depth exceeded");
-        var end = length === $undefined ? reader.len : reader.pos + length, message = _target || new $root.RemoteAttestation();
+        let end = length === $undefined ? reader.len : reader.pos + length, message = _target || new $root.RemoteAttestation();
         while (reader.pos < end) {
-            var start = reader.pos;
-            var tag = reader.tag();
+            let start = reader.pos;
+            let tag = reader.tag();
             if (tag === _end) {
                 _end = $undefined;
                 break;
             }
-            var wireType = tag & 7;
+            let wireType = tag & 7;
             switch (tag >>>= 3) {
             case 1: {
                     if (wireType !== 2)
@@ -14148,7 +14146,7 @@ $root.RemoteAttestation = (function() {
         if (_depth > $util.recursionLimit)
             return "max depth exceeded";
         if (message.certificate != null && $Object.hasOwnProperty.call(message, "certificate")) {
-            var error = $root.EncryptedClientIdentification.verify(message.certificate, _depth + 1);
+            let error = $root.EncryptedClientIdentification.verify(message.certificate, _depth + 1);
             if (error)
                 return "certificate." + error;
         }
@@ -14178,7 +14176,7 @@ $root.RemoteAttestation = (function() {
             _depth = 0;
         if (_depth > $util.recursionLimit)
             throw $Error("max depth exceeded");
-        var message = new $root.RemoteAttestation();
+        let message = new $root.RemoteAttestation();
         if (object.certificate != null) {
             if (!$util.isObject(object.certificate))
                 throw $TypeError(".RemoteAttestation.certificate: object expected");
@@ -14213,7 +14211,7 @@ $root.RemoteAttestation = (function() {
             _depth = 0;
         if (_depth > $util.recursionLimit)
             throw $Error("max depth exceeded");
-        var object = {};
+        let object = {};
         if (options.defaults) {
             object.certificate = null;
             if (options.bytes === $String)
@@ -14268,4 +14266,6 @@ $root.RemoteAttestation = (function() {
     return RemoteAttestation;
 })();
 
-module.exports = $root;
+export {
+  $root as default
+};
