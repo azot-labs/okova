@@ -14,7 +14,7 @@ import {
   FileHashes,
   SignedDrmCertificate,
 } from './proto';
-import { createProtoWriter, type ProtobufWriter } from './protobuf';
+import { decodeExactly } from './protobuf';
 import { buildWvd, parseWvd, WVD_DEVICE_TYPES } from './wvd';
 import { importCertificateKey } from './certificate';
 import { requestMediaKeySystemAccess as requestAccess, setSupportedEngines } from '../api';
@@ -32,30 +32,6 @@ const types = new Map<number, ClientType>([
 
 const isSecurityLevel = (value: unknown): value is SecurityLevel =>
   value === 1 || value === 2 || value === 3;
-
-const areUint8ArraysEqual = (a: Uint8Array, b: Uint8Array) =>
-  a.length === b.length && a.every((value, index) => value === b[index]);
-
-const decodeExactly = <T extends object>(
-  data: Uint8Array,
-  codec: {
-    decode(buffer: Uint8Array): T;
-    encode(message: T, writer?: ProtobufWriter): { finish(): Uint8Array };
-  },
-  label: string,
-) => {
-  try {
-    const decoded = codec.decode(data);
-    const encoded = codec.encode(decoded, createProtoWriter()).finish();
-    if (!areUint8ArraysEqual(encoded, data)) {
-      throw new Error(`${label} did not parse exactly`);
-    }
-    return decoded;
-  } catch (error) {
-    const message = error instanceof Error ? error.message : String(error);
-    throw new Error(`Invalid ${label}: ${message}`);
-  }
-};
 
 export class WidevineDeviceCredentials {
   id: ClientIdentification;
@@ -121,11 +97,17 @@ export class WidevineDeviceCredentials {
     this.id = ArrayBuffer.isView(id)
       ? decodeExactly(id, ClientIdentification, 'Widevine client ID')
       : id;
+    if (!this.id.token) {
+      throw new Error('Invalid Widevine client ID: missing signed DRM certificate');
+    }
     this.signedDrmCertificate = decodeExactly(
       this.id.token,
       SignedDrmCertificate,
       'Widevine signed DRM certificate',
     );
+    if (!this.signedDrmCertificate.drmCertificate) {
+      throw new Error('Invalid Widevine signed DRM certificate: missing DRM certificate');
+    }
     this.drmCertificate = decodeExactly(
       this.signedDrmCertificate.drmCertificate,
       DrmCertificate,
@@ -154,7 +136,7 @@ export class WidevineDeviceCredentials {
   }
 
   async unpack() {
-    const id = ClientIdentification.encode(this.id, createProtoWriter()).finish();
+    const id = ClientIdentification.encode(this.id).finish();
     const key = await this.exportKey();
     return {
       device_client_id_blob: id,
@@ -164,7 +146,7 @@ export class WidevineDeviceCredentials {
 
   async pack(format: 'wvd' = 'wvd') {
     if (format === 'wvd') {
-      const id = ClientIdentification.encode(this.id, createProtoWriter()).finish();
+      const id = ClientIdentification.encode(this.id).finish();
       const key = await this.exportKey();
       const keyDer = fromBuffer(key)
         .toText()
@@ -246,7 +228,7 @@ export class WidevineDeviceCredentials {
   async encryptId(certificate: SignedDrmCertificate) {
     if (!certificate.drmCertificate) throw Error('Service certificate not found');
     const serviceCertificate = DrmCertificate.decode(certificate.drmCertificate);
-    const id = ClientIdentification.encode(this.id, createProtoWriter()).finish();
+    const id = ClientIdentification.encode(this.id).finish();
     const privacyKey = await generateAesCbcKey();
     const encryptedClientIdIv = getRandomBytes(16);
     const encryptedClientId = await encryptWithAesCbc(

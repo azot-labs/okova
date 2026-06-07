@@ -5,26 +5,7 @@ import {
   parseSpkiFromCertificateKey,
 } from '../crypto/common';
 import { DrmCertificate, SignedDrmCertificate, SignedMessage } from './proto';
-import { createProtoWriter, type ProtobufWriter } from './protobuf';
-
-const areUint8ArraysEqual = (a: Uint8Array, b: Uint8Array) =>
-  a.length === b.length && a.every((value, index) => value === b[index]);
-
-const tryDecodeExactly = <T extends object>(
-  data: Uint8Array,
-  codec: {
-    decode(buffer: Uint8Array): T;
-    encode(message: T, writer?: ProtobufWriter): { finish(): Uint8Array };
-  },
-) => {
-  try {
-    const decoded = codec.decode(data);
-    const encoded = codec.encode(decoded, createProtoWriter()).finish();
-    return areUint8ArraysEqual(encoded, data) ? decoded : null;
-  } catch {
-    return null;
-  }
-};
+import { tryDecodeExactly } from './protobuf';
 
 export const getRootCertificate = () => {
   const signedDrmCertificateBase64 = `
@@ -68,6 +49,9 @@ export const verifyCertificate = async (signedDrmCertificate: SignedDrmCertifica
   const publicKey = getRootCertificate().drmCertificate.publicKey;
   const signature = signedDrmCertificate.signature;
   const data = signedDrmCertificate.drmCertificate;
+  if (!publicKey || !signature || !data) {
+    throw new Error('Certificate invalid: missing required certificate fields');
+  }
   const key = await importCertificateKey(publicKey, 'verify');
   const isValid = await crypto.subtle.verify(
     { name: 'RSA-PSS', saltLength: 20 },
@@ -83,13 +67,15 @@ export const parseCertificate = async (data: Uint8Array | string) => {
 
   const signedMessage = tryDecodeExactly(certificate, SignedMessage);
   const signedDrmCertificate =
-    (signedMessage && tryDecodeExactly(signedMessage.msg, SignedDrmCertificate)) ||
+    (signedMessage?.msg && tryDecodeExactly(signedMessage.msg, SignedDrmCertificate)) ||
     tryDecodeExactly(certificate, SignedDrmCertificate);
   if (!signedDrmCertificate) {
     throw new Error('Failed to parse service certificate as SignedDrmCertificate');
   }
 
-  const drmCertificate = tryDecodeExactly(signedDrmCertificate.drmCertificate, DrmCertificate);
+  const drmCertificate =
+    signedDrmCertificate.drmCertificate &&
+    tryDecodeExactly(signedDrmCertificate.drmCertificate, DrmCertificate);
   if (!drmCertificate) {
     throw new Error('Failed to parse service certificate payload as DrmCertificate');
   }
