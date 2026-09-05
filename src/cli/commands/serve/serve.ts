@@ -35,6 +35,20 @@ export const serve = async (options: ServeOptions = {}) => {
   }
 
   const app = new Hono();
+  const pendingRequests = new Set<Promise<void>>();
+  let isShuttingDown = false;
+
+  app.use(async (c, next) => {
+    if (isShuttingDown) return c.json({ error: 'Server is shutting down' }, 503);
+    const completed = Promise.withResolvers<void>();
+    pendingRequests.add(completed.promise);
+    try {
+      await next();
+    } finally {
+      pendingRequests.delete(completed.promise);
+      completed.resolve();
+    }
+  });
 
   app.use(logger());
   app.use(secureHeaders());
@@ -50,16 +64,22 @@ export const serve = async (options: ServeOptions = {}) => {
   });
 
   const shutdown = () => {
+    if (isShuttingDown) return;
+    isShuttingDown = true;
     const disconnected = new Promise<void>((resolve, reject) => {
       server.close((error) => (error ? reject(error) : resolve()));
     });
-    void Promise.all([disconnected, sessions.clear()]).then(
-      () => process.exit(0),
-      (error: unknown) => {
-        console.error('Failed to shut down server', error);
-        process.exit(1);
-      },
-    );
+    // Release key waiters first, then close sessions created by requests still draining.
+    // Track handlers too: a pending device load can outlive its disconnected socket.
+    void Promise.all([disconnected, sessions.clear(), ...pendingRequests])
+      .then(() => sessions.clear())
+      .then(
+        () => process.exit(0),
+        (error: unknown) => {
+          console.error('Failed to shut down server', error);
+          process.exit(1);
+        },
+      );
   };
   process.once('SIGINT', shutdown);
   process.once('SIGTERM', shutdown);
