@@ -1,4 +1,4 @@
-import { appStorage, Client, getRecentKeysForUrl } from '@/utils/storage';
+import { appStorage, Client, getRecentKeysForUrl, isCapturedKey } from '@/utils/storage';
 import type { KeyInfo } from '@/utils/storage';
 import {
   fromBase64,
@@ -153,7 +153,9 @@ export default defineBackground({
 
         const { initData } = message;
         const allKeys = await appStorage.allKeys.raw.getValue();
-        const keys = allKeys?.filter((keyInfo) => keyInfo.pssh === initData);
+        const keys = allKeys?.filter(
+          (keyInfo) => keyInfo.pssh === initData && isCapturedKey(keyInfo),
+        );
         const hasKey = !!keys?.length;
         if (hasKey) {
           const currentSiteKeys = keys.map((keyInfo: KeyInfo) => ({
