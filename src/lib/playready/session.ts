@@ -200,6 +200,7 @@ export class PlayReadySession extends BaseMediaKeysEngineSession {
   ) {
     const clientTime = Math.floor(Date.now() / 1000);
     const revocationListsXml = revLists ?? '';
+    // Emit canonical XML text because laContent is hashed without a canonicalization pass.
     const customDataXml =
       customData === undefined
         ? ''
@@ -207,8 +208,7 @@ export class PlayReadySession extends BaseMediaKeysEngineSession {
             .replaceAll('&', '&amp;')
             .replaceAll('<', '&lt;')
             .replaceAll('>', '&gt;')
-            .replaceAll('"', '&quot;')
-            .replaceAll("'", '&#x27;')}</CustomData>`;
+            .replaceAll('\r', '&#xD;')}</CustomData>`;
 
     return (
       `<LA xmlns="http://schemas.microsoft.com/DRM/2007/03/protocols" Id="SignedData" xml:space="preserve">` +

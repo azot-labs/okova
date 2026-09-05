@@ -130,3 +130,30 @@ test('remote API keeps custom data separate for sessions sharing credentials', a
   });
   expect(response.status).toBe(400);
 });
+
+test.each([
+  [applicationData, '&lt;app token="a&amp;b"&gt;Привет \'world\'&lt;/app&gt;'],
+  ['line 1\r\nline 2\rline 3\n\t&amp;', 'line 1&#xD;\nline 2&#xD;line 3\n\t&amp;amp;'],
+])('custom data preserves canonical XML text: %s', async (customData, canonicalText) => {
+  const engine = new PlayReady({ deviceCredentials, customData });
+  const session = engine.createSession();
+  assert(session instanceof PlayReadySession);
+  try {
+    const challenge = await session.getLicenseChallenge(header);
+    const la = challenge.match(/<LA .*?<\/LA>/s)?.[0];
+    assert(la);
+    // Use the expected canonical text, rather than hashing the emitted XML unchanged.
+    const canonicalLa = la.replace(
+      /<CustomData>.*?<\/CustomData>/s,
+      () => `<CustomData>${canonicalText}</CustomData>`,
+    );
+    const digest = await createSha256(new TextEncoder().encode(canonicalLa));
+    const document = new DOMParser().parseFromString(challenge, 'application/xml');
+    expect(document.getElementsByTagName('DigestValue')[0]?.textContent).toBe(
+      Buffer.from(digest).toString('base64'),
+    );
+    await checkChallenge(challenge, customData);
+  } finally {
+    await session.close();
+  }
+});
