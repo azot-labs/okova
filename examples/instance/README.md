@@ -17,3 +17,10 @@ Run server:
 ```shell
 pnpm start
 ```
+
+`--host` and `--port` override the corresponding config values.
+
+Session requests can select a configured client by its exact path, filename, or filename without
+the extension. For `clients/client.wvd`, both `client.wvd` and `client` work. Partial names and
+ambiguous names are rejected. Omit `client` to select the first configured device. User allowlists
+use the same identifiers; use an exact path when filenames or extensionless names collide.
