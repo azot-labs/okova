@@ -2,6 +2,7 @@ import { afterEach, beforeEach, expect, test, vi } from 'vitest';
 import { browser, type Browser } from 'wxt/browser';
 import { fakeBrowser } from 'wxt/testing';
 import background from '../src/extension/entrypoints/background';
+import { getBadgeStorage } from '../src/extension/utils/badge';
 import { appStorage, getDrmFailureStorage } from '../src/extension/utils/storage';
 import * as certificateUtils from '../src/lib/widevine/certificate';
 import { fromBase64, fromBuffer } from '../src/lib/utils';
@@ -55,6 +56,9 @@ beforeEach(async () => {
   );
   vi.spyOn(browser.tabs, 'query').mockImplementation(async () => []);
   vi.spyOn(browser.action, 'setBadgeText').mockResolvedValue();
+  vi.spyOn(browser.action, 'setBadgeBackgroundColor').mockResolvedValue();
+  vi.spyOn(browser.action, 'setBadgeTextColor').mockResolvedValue();
+  vi.spyOn(browser.action, 'setTitle').mockResolvedValue();
   sessions.length = 0;
   vi.spyOn(Session.prototype, 'generateRequest').mockImplementation(async function (this: Session) {
     sessions.push(this);
@@ -428,6 +432,8 @@ test.each(['deadline', 'removal', 'navigation', 'close'])(
         error: 'DRM request timed out after 25000ms',
       });
       await getDrmFailureStorage(1).removeValue();
+      expect(await getBadgeStorage(1).getValue()).toMatchObject([{ kind: 'failure', system: 'W' }]);
+      await getBadgeStorage(1).removeValue();
     }
     if (action === 'close') expect(await getDrmFailureStorage(1).getValue()).toBeNull();
     expect(await browser.storage.session.get(null)).toEqual({});
@@ -717,6 +723,7 @@ test.each(['https://example.com/video', 'https://other.example/video'])(
     );
     expect(readHistory).not.toHaveBeenCalled();
     const captured = {
+      drmSystem: 'W',
       ...oldKey,
       value: 'ffeeddccbbaa99887766554433221100',
       url,
@@ -830,4 +837,65 @@ test('a queued request responds by its own deadline while earlier cleanup is sti
   expect(Session.prototype.generateRequest).toHaveBeenCalledOnce();
   expect(Session.prototype.close).toHaveBeenCalledOnce();
   expect(vi.getTimerCount()).toBe(0);
+});
+
+test('badge changes from observed to fresh, saved on navigation, and failed until retrieval succeeds', async () => {
+  const updated = vi.spyOn(browser.tabs.onUpdated, 'addListener');
+  const sender = { tab: { ...tab(1), url: 'https://example.com/video' } };
+  const send = startBackground();
+  const expectBadge = async (text: string, color: string) => {
+    await vi.advanceTimersByTimeAsync(0);
+    expect(browser.action.setBadgeText).toHaveBeenLastCalledWith({ tabId: 1, text });
+    expect(browser.action.setBadgeBackgroundColor).toHaveBeenLastCalledWith({ tabId: 1, color });
+  };
+  await appStorage.settings.setValue({
+    spoofing: false,
+    emeInterception: true,
+    requestInterception: false,
+    theme: 'auto',
+  });
+  await send('keystatuseschange', 'observed', sender, { keyStatuses: { AAECAw: 'usable' } });
+  await expectBadge('W1', '#666666');
+
+  const context = {
+    keySystem: 'org.w3.clearkey',
+    message: new TextEncoder().encode(
+      JSON.stringify({
+        keys: [{ kty: 'oct', kid: 'AAECAwQFBgcICQoLDA0ODw', k: 'tQ0bJVWb6b0KPL6KtZIy_A' }],
+      }),
+    ),
+  };
+  await send('update', 'clear', sender, context);
+  await expectBadge('C1', '#16803C');
+  updated.mock.calls[0]![0](1, { status: 'loading' }, sender.tab);
+  await expectBadge('C1', '#2169EB');
+  expect(await getBadgeStorage(1).getValue()).toBeNull();
+  await send('update', 'clear', sender, context);
+  await expectBadge('C1', '#16803C');
+  updated.mock.calls[0]![0](
+    1,
+    { url: 'https://example.com/next' },
+    { ...sender.tab, url: 'https://example.com/next' },
+  );
+  await expectBadge('C1', '#2169EB');
+
+  await appStorage.settings.setValue({
+    spoofing: true,
+    emeInterception: true,
+    requestInterception: false,
+    theme: 'auto',
+  });
+  vi.mocked(appStorage.clients.active.getValue).mockResolvedValue(null);
+  await send('generateRequest', 'failure', sender);
+  await expectBadge('W!', '#C75300');
+  await send('keystatuseschange', 'observed', sender, { keyStatuses: { AAECAw: 'usable' } });
+  await expectBadge('W!', '#C75300');
+  await send('update', 'clear', sender, context);
+  await expectBadge('C1', '#16803C');
+  updated.mock.calls[0]![0](
+    1,
+    { status: 'loading' },
+    { ...sender.tab, url: 'https://unrelated.example' },
+  );
+  await expectBadge('', '#666666');
 });

@@ -1,3 +1,10 @@
+import {
+  getBadgeAppearance,
+  getBadgeDrmSystem,
+  getBadgeKey,
+  getBadgeStorage,
+  type BadgeResult,
+} from '@/utils/badge';
 import { appStorage, getRecentKeysForUrl, isCapturedKey } from '@/utils/storage';
 import { getDrmFailureStorage } from '@/utils/storage';
 import type { DrmStage, KeyInfo } from '@/utils/storage';
@@ -201,7 +208,13 @@ export default defineBackground({
         }
       }
     };
-    browser.tabs.onRemoved.addListener(closeTabSessions);
+    browser.tabs.onRemoved.addListener((tabId) => {
+      closeTabSessions(tabId);
+      void (badgeUpdates.get(tabId) ?? Promise.resolve())
+        .catch(() => {})
+        .then(() => getBadgeStorage(tabId).removeValue())
+        .catch((error: unknown) => console.warn('[okova] Unable to clear badge', error));
+    });
 
     const loadClient = async () => {
       console.log('[okova] Loading DRM client...');
@@ -227,28 +240,41 @@ export default defineBackground({
       }
     };
 
-    const getBadgeText = (count: number) => {
-      if (count === 0) return '';
-      if (count > 99) return '99+';
-      return String(count);
-    };
-
-    const getKeysCountForUrl = async (url?: string | null) => {
-      const [recentKeys, recentKeysByDomain] = await Promise.all([
-        appStorage.recentKeys.getValue(),
-        appStorage.recentKeysByDomain.getValue(),
-      ]);
-      return getRecentKeysForUrl(url, recentKeysByDomain, recentKeys).length;
-    };
-
-    const updateBadgeForTab = async (tab?: Browser.tabs.Tab | null) => {
-      if (typeof tab?.id !== 'number') return;
-
-      const count = await getKeysCountForUrl(tab.url);
-      await browser.action.setBadgeText({
-        tabId: tab.id,
-        text: getBadgeText(count),
-      });
+    // Serialize badge writes so an older refresh cannot overwrite a newer result or navigation.
+    const badgeUpdates = new Map<number, Promise<void>>();
+    const updateBadgeForTab = (tab?: Browser.tabs.Tab | null, result?: BadgeResult | null) => {
+      const tabId = tab?.id;
+      if (typeof tabId !== 'number') return Promise.resolve();
+      const update = (badgeUpdates.get(tabId) ?? Promise.resolve())
+        .catch(() => {})
+        .then(async () => {
+          const badgeStorage = getBadgeStorage(tabId);
+          if (result === null) await badgeStorage.removeValue();
+          else if (result) {
+            const previous = (await badgeStorage.getValue()) ?? [];
+            await badgeStorage.setValue([
+              ...previous.filter((entry) => entry.system !== result.system),
+              result,
+            ]);
+          }
+          const [recentKeys, recentKeysByDomain, storedResult] = await Promise.all([
+            appStorage.recentKeys.getValue(),
+            appStorage.recentKeysByDomain.getValue(),
+            badgeStorage.getValue(),
+          ]);
+          const keys = getRecentKeysForUrl(tab?.url, recentKeysByDomain, recentKeys);
+          const badge = getBadgeAppearance(keys, storedResult);
+          await browser.action.setBadgeBackgroundColor({ tabId, color: badge.color });
+          await browser.action.setBadgeTextColor({ tabId, color: '#FFFFFF' });
+          await browser.action.setTitle({ tabId, title: badge.title });
+          await browser.action.setBadgeText({ tabId, text: badge.text });
+        });
+      badgeUpdates.set(tabId, update);
+      const cleanup = () => {
+        if (badgeUpdates.get(tabId) === update) badgeUpdates.delete(tabId);
+      };
+      void update.then(cleanup, cleanup);
+      return update;
     };
 
     const updateBadgeForTabInBackground = (tab?: Browser.tabs.Tab | null) => {
@@ -268,7 +294,7 @@ export default defineBackground({
 
     const updateActiveTabBadges = async () => {
       const activeTabs = await browser.tabs.query({ active: true });
-      const results = await Promise.allSettled(activeTabs.map(updateBadgeForTab));
+      const results = await Promise.allSettled(activeTabs.map((tab) => updateBadgeForTab(tab)));
       for (const result of results) {
         if (result.status === 'rejected') {
           console.warn('[okova] Unable to update extension badge', result.reason);
@@ -298,6 +324,11 @@ export default defineBackground({
 
     browser.tabs.onUpdated.addListener((tabId, changeInfo, tab) => {
       if (changeInfo.status === 'loading') closeTabSessions(tabId);
+      if (changeInfo.status === 'loading' || changeInfo.url) {
+        void updateBadgeForTab(tab, null).catch((error: unknown) => {
+          console.warn('[okova] Unable to reset badge', error);
+        });
+      }
       if (changeInfo.url || changeInfo.status === 'complete') {
         updateBadgeForTabInBackground(tab);
       }
@@ -341,6 +372,15 @@ export default defineBackground({
       let stage: DrmStage = 'setup';
       const tabId = sender.tab?.id;
       const tabGeneration = tabId === undefined ? 0 : (tabGenerations.get(tabId) ?? 0);
+      const system = getBadgeDrmSystem(message.keySystem);
+      const recordBadgeResult = async (result: BadgeResult) => {
+        if (tabId === undefined || tabGeneration !== (tabGenerations.get(tabId) ?? 0)) return;
+        try {
+          await updateBadgeForTab(sender.tab, result);
+        } catch (error) {
+          console.warn('[okova] Unable to update badge result', error);
+        }
+      };
       const clearFailure = async () => {
         if (tabId === undefined || tabGeneration !== (tabGenerations.get(tabId) ?? 0)) return;
         try {
@@ -389,6 +429,7 @@ export default defineBackground({
           if (clearKeys?.length) {
             const results = clearKeys.map((key) => ({
               ...key,
+              drmSystem: system,
               url: message.url,
               mpd: message.mpd,
               pssh: message.initData,
@@ -398,6 +439,7 @@ export default defineBackground({
             await setRecentKeys(results);
             await run(appStorage.allKeys.add(...results));
             await run(clearFailure());
+            await recordBadgeResult({ kind: 'success', system, keys: results.map(getBadgeKey) });
             stage = 'close';
             if (sessionKey) await closeSession(sessionKey);
             respond({ keys: results });
@@ -410,6 +452,7 @@ export default defineBackground({
         if (settings?.emeInterception && message.action === 'keystatuseschange') {
           const keyStatuses = message.keyStatuses as Record<string, string>;
           const keys = Object.entries(keyStatuses).map(([id, status]) => ({
+            drmSystem: system,
             id: fromBase64(id).toHex(),
             value: status,
             url: message.url,
@@ -563,6 +606,7 @@ export default defineBackground({
           const keys = new Map(session.keys);
           if (!keys.size) throw new NoContentKeysError();
           const results = Array.from(keys, ([id, value]) => ({
+            drmSystem: system,
             id,
             value,
             url: message.url,
@@ -574,6 +618,7 @@ export default defineBackground({
           await setRecentKeys(results);
           await run(appStorage.allKeys.add(...results));
           await run(clearFailure());
+          await recordBadgeResult({ kind: 'success', system, keys: results.map(getBadgeKey) });
           stage = 'close';
           await closeSession(sessionKey);
           respond({ keys: results });
@@ -605,6 +650,11 @@ export default defineBackground({
                 error: error instanceof Error ? error.message : String(error),
                 url: sender.tab?.url ?? message.url ?? '',
                 createdAt: Date.now(),
+              });
+              await recordBadgeResult({
+                kind: 'failure',
+                system,
+                error: error instanceof Error ? error.message : String(error),
               });
             }
           } catch (diagnosticError) {
