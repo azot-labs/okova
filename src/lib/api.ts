@@ -432,14 +432,20 @@ export class Session extends EventTarget implements MediaKeySession {
     });
   }
 
-  async waitForKeyStatusesChange() {
+  async waitForKeyStatusesChange(options: Pick<WaitForKeysOptions, 'signal'> = {}) {
     if (this.#closed) throw new Error('Session closed');
+    options.signal?.throwIfAborted();
     if (this.keys.size) return new Map(this.keys);
 
     return new Promise<MediaKeysMap>((resolve, reject) => {
       const cleanup = () => {
         this.removeEventListener('keystatuseschange', handler);
         this.removeEventListener('closed', handleClosed);
+        options.signal?.removeEventListener('abort', handleAbort);
+      };
+      const handleAbort = () => {
+        cleanup();
+        reject(options.signal?.reason ?? new Error('Aborted while waiting for keys'));
       };
       const handleClosed = () => {
         cleanup();
@@ -452,6 +458,7 @@ export class Session extends EventTarget implements MediaKeySession {
 
       this.addEventListener('keystatuseschange', handler);
       this.addEventListener('closed', handleClosed);
+      options.signal?.addEventListener('abort', handleAbort, { once: true });
     });
   }
 

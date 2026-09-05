@@ -6,7 +6,7 @@ import { secureHeaders } from 'hono/secure-headers';
 import { showRoutes } from 'hono/dev';
 import { serve as nodeServe } from '@hono/node-server';
 import { help } from './help';
-import { config, loadConfig } from './state';
+import { config, loadConfig, sessions } from './state';
 import session from './api/session';
 
 type ServeOptions = {
@@ -49,20 +49,20 @@ export const serve = async (options: ServeOptions = {}) => {
     hostname: options.host ?? config.host ?? '0.0.0.0',
   });
 
-  process.on('SIGINT', () => {
-    server.close();
-    process.exit(0);
-  });
-
-  process.on('SIGTERM', () => {
-    server.close((err) => {
-      if (err) {
-        console.error(err);
-        process.exit(1);
-      }
-      process.exit(0);
+  const shutdown = () => {
+    const disconnected = new Promise<void>((resolve, reject) => {
+      server.close((error) => (error ? reject(error) : resolve()));
     });
-  });
+    void Promise.all([disconnected, sessions.clear()]).then(
+      () => process.exit(0),
+      (error: unknown) => {
+        console.error('Failed to shut down server', error);
+        process.exit(1);
+      },
+    );
+  };
+  process.once('SIGINT', shutdown);
+  process.once('SIGTERM', shutdown);
 };
 
 serve.help = help;

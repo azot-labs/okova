@@ -28,6 +28,7 @@ test.each([true, false])('binds using CLI overrides when supplied: %s', async (h
       host: hasOverrides ? '192.0.2.1' : '127.0.0.1',
       port: hasOverrides ? 1 : 0,
       clients: ['clients/client.wvd'],
+      sessionLimits: { maxSessions: 3 },
       users: {},
     }),
   );
@@ -37,6 +38,7 @@ test.each([true, false])('binds using CLI overrides when supplied: %s', async (h
       config: configPath,
       ...(hasOverrides ? { host: '127.0.0.1', port: 0 } : {}),
     });
+    expect(config.sessionLimits).toMatchObject({ maxSessions: 3, keyWaitTimeoutMs: 30_000 });
     const server = startServer.mock.results[0]?.value;
     expect(server).toBeDefined();
     if (!server) return;

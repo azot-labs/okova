@@ -65,8 +65,8 @@ const createSession = (kind: string) => {
   return { native, engine, session: new Session('temporary', engine, native) };
 };
 
-afterEach(() => {
-  sessions.clear();
+afterEach(async () => {
+  await sessions.clear();
   vi.restoreAllMocks();
 });
 

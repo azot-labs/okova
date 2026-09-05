@@ -42,8 +42,7 @@ beforeEach(() => {
 
 afterEach(async () => {
   vi.restoreAllMocks();
-  for (const session of sessions.values()) await session.close();
-  sessions.clear();
+  await sessions.clear();
   Object.assign(config, originalConfig);
 });
 

@@ -170,6 +170,31 @@ certificate changes, updates, close, or delete requests return HTTP 409. Wait fo
 the active request to finish before retrying. Requests for different sessions
 can run concurrently; key retrieval remains available during mutations.
 
+The server limits sessions and concurrent requests across all users and devices.
+In `okova.config.json`, optional `sessionLimits` fields override these defaults:
+
+```json
+{
+  "sessionLimits": {
+    "maxSessions": 64,
+    "maxConcurrentRequests": 64,
+    "idleTimeoutMs": 300000,
+    "keyWaitTimeoutMs": 30000
+  }
+}
+```
+
+Limits must be positive integers. Excess session opens or concurrent requests
+return HTTP 503; clients can retry after existing work finishes or sessions close.
+Session capacity includes opens still loading a device. Each request for an
+existing session refreshes its idle timer. Idle expiry closes the native session,
+clears its keys, and releases waiting requests. Keep sessions active while using
+them and create a new one after expiry. Server shutdown also closes sessions.
+
+`GET /sessions/:id/keys` returns HTTP 504 if no key-status event arrives before
+`keyWaitTimeoutMs`. Disconnecting cancels that request's wait without closing the
+session. Each session keeps its own certificates and custom PlayReady data.
+
 ### Inspect, edit, and convert PSSH boxes
 
 ```ts
