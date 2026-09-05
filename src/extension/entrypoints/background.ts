@@ -13,6 +13,8 @@ import { WidevineDeviceCredentials } from '@okova/lib/widevine/device-credential
 import { PlayReadyDeviceCredentials } from '@okova/lib/playready/device-credentials';
 import { Session } from '@okova/lib/api';
 
+const SESSION_IDLE_TIMEOUT_MS = 5 * 60_000;
+
 export default defineBackground({
   type: 'module',
   main: () => {
@@ -174,6 +176,11 @@ export default defineBackground({
           sendResponse();
           return;
         }
+        const entry = sessionKey ? state.sessions.get(sessionKey) : undefined;
+        if (sessionKey && entry) {
+          clearTimeout(entry.timer);
+          entry.timer = setTimeout(() => void closeSession(sessionKey), SESSION_IDLE_TIMEOUT_MS);
+        }
         console.log('[okova] Received message', message);
 
         const settings = await appStorage.settings.getValue();
@@ -241,8 +248,8 @@ export default defineBackground({
           const keySystemAccess = requestMediaKeySystemAccess(cdm.keySystem, []);
           const mediaKeys = await keySystemAccess.createMediaKeys();
           const session = mediaKeys.createSession();
-          // Bound abandoned requests, including frames removed without closing their sessions.
-          const timer = setTimeout(() => void closeSession(sessionKey), 5 * 60_000);
+          // Close after five minutes of inactivity, including silently removed frames.
+          const timer = setTimeout(() => void closeSession(sessionKey), SESSION_IDLE_TIMEOUT_MS);
           state.sessions.set(sessionKey, { session, tabId: sender.tab?.id, timer });
           await session.generateRequest(message.initDataType, fromBase64(initData).toBuffer());
           sendResponse();

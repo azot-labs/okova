@@ -144,6 +144,37 @@ test('cleans up failed generation, explicit close and abandoned sessions', async
   expect(vi.getTimerCount()).toBe(0);
 });
 
+test.each(['license-request', 'update', 'keystatuseschange'])(
+  'refreshes only the active session timeout on %s',
+  async (action) => {
+    const send = startBackground();
+    await send('generateRequest', 'active');
+    await send('generateRequest', 'idle');
+    await vi.advanceTimersByTimeAsync(4 * 60_000);
+    await send(
+      action,
+      'active',
+      {},
+      {
+        message: { 0: 8, 1: 5 }, // A service certificate keeps the license flow open.
+        keyStatuses: {},
+      },
+    );
+
+    await vi.advanceTimersByTimeAsync(60_000);
+    expect(Session.prototype.close).toHaveBeenCalledOnce();
+    expect(vi.mocked(Session.prototype.close).mock.contexts[0]).toBe(sessions[1]);
+    expect(vi.getTimerCount()).toBe(1);
+
+    await vi.advanceTimersByTimeAsync(4 * 60_000 - 1);
+    expect(Session.prototype.close).toHaveBeenCalledOnce();
+    await vi.advanceTimersByTimeAsync(1);
+    expect(Session.prototype.close).toHaveBeenCalledTimes(2);
+    expect(vi.mocked(Session.prototype.close).mock.contexts[1]).toBe(sessions[0]);
+    expect(vi.getTimerCount()).toBe(0);
+  },
+);
+
 test.each(['navigation', 'removal'])('cleans up only the affected tab on %s', async (action) => {
   const updated = vi.spyOn(browser.tabs.onUpdated, 'addListener');
   const removed = vi.spyOn(browser.tabs.onRemoved, 'addListener');
