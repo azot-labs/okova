@@ -15,6 +15,9 @@ export type KeyInfo = {
 
 export type RecentKeysByDomain = Record<string, KeyInfo[]>;
 
+// History also contains EME statuses, which cannot be reused as content keys.
+export const isCapturedKey = (key: KeyInfo) => /^[0-9a-f]{32}$/i.test(key.value);
+
 export const getWebsiteDomain = (url?: string | null) => {
   if (!url) return null;
 
@@ -115,9 +118,12 @@ export const appStorage = {
     add: async (...newKeys: KeyInfo[]) => {
       const keys = (await appStorage.allKeys.getValue()) || [];
       for (const newKey of newKeys) {
-        const added = keys.some((key) => key.id === newKey.id);
-        if (added) continue;
-        keys.push(newKey);
+        const index = keys.findIndex((key) => key.id === newKey.id);
+        if (index === -1) {
+          keys.push(newKey);
+        } else if (!isCapturedKey(keys[index]!) && isCapturedKey(newKey)) {
+          keys[index] = newKey;
+        }
       }
       await appStorage.allKeys.setValue(keys);
     },
