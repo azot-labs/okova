@@ -329,6 +329,7 @@ export class Session extends EventTarget implements MediaKeySession {
   };
 
   #handleKeysChange = () => {
+    if (this.#engineSession) this.#syncFromEngineSession(this.#engineSession);
     const keysChangeEvent = new Event('keyschange');
     this.dispatchEvent(keysChangeEvent);
     this.onkeyschange?.call(this as unknown as MediaKeySession, keysChangeEvent);

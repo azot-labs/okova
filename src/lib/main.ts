@@ -17,6 +17,23 @@ interface FetchDecryptionKeysParams {
   logger?: Logger;
 }
 
+export class LicenseHttpError extends Error {
+  readonly status: number;
+  readonly endpoint: string;
+
+  constructor(status: number, url: string) {
+    const endpoint = new URL(url);
+    endpoint.username = '';
+    endpoint.password = '';
+    endpoint.search = '';
+    endpoint.hash = '';
+    super(`License request failed with HTTP ${status} at ${endpoint.href}`);
+    this.name = 'LicenseHttpError';
+    this.status = status;
+    this.endpoint = endpoint.href;
+  }
+}
+
 const fetchDecryptionKeys = async (params: FetchDecryptionKeysParams) => {
   const { pssh, cdm, transformRequest, transformResponse } = params;
   const initDataType = 'cenc';
@@ -25,16 +42,23 @@ const fetchDecryptionKeys = async (params: FetchDecryptionKeysParams) => {
   const session = await cdm.createSession();
   const fetchImpl = params.fetch ?? globalThis.fetch;
   const sendRequest = async (server: string, body: Uint8Array) => {
+    const headers = new Headers(params.headers);
+    if (cdm.keySystem.startsWith('com.microsoft.playready') && !headers.has('Content-Type')) {
+      headers.set('Content-Type', 'text/xml; charset=utf-8');
+    }
     const request = new Request(server, {
       body: toBufferSource(body),
       method: 'POST',
-      headers: params.headers,
+      headers,
     });
 
-    return fetchImpl((await transformRequest?.(request)) || request)
-      .then((r) => transformResponse?.(r) || r)
-      .then((r) => r.arrayBuffer())
-      .then((buffer) => new Uint8Array(buffer));
+    const transformedRequest = (await transformRequest?.(request)) || request;
+    const response = await fetchImpl(transformedRequest);
+    const transformedResponse = (await transformResponse?.(response)) || response;
+    if (!transformedResponse.ok) {
+      throw new LicenseHttpError(transformedResponse.status, transformedRequest.url);
+    }
+    return new Uint8Array(await transformedResponse.arrayBuffer());
   };
 
   let rejectFlow: ((error: unknown) => void) | null = null;

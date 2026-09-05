@@ -293,7 +293,13 @@ export class PlayReadySession extends BaseMediaKeysEngineSession {
     this.assertOpen();
     const keys = await this.parseLicense(fromBuffer(response).toText());
     this.assertOpen();
-    if (keys) this.#contentKeys = keys;
+    if (keys) {
+      const contentKeys = new Map(
+        this.#contentKeys.map((key) => [fromBuffer(key.keyId).toHex(), key]),
+      );
+      for (const key of keys) contentKeys.set(fromBuffer(key.keyId).toHex(), key);
+      this.#contentKeys = [...contentKeys.values()];
+    }
     this.#syncKeys();
     this.emitKeysChange();
     this.emitKeyStatusesChange();
