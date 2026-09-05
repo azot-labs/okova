@@ -148,6 +148,7 @@ const startBackground = () => {
       listener(
         {
           sessionToken: 'test-session',
+          keySystem: 'com.widevine.alpha',
           url: key.url,
           mpd: key.mpd,
           initData: key.pssh,
@@ -174,7 +175,9 @@ test('captures keys after logging a status with spoofing disabled', async () => 
   const generateRequest = vi.spyOn(Session.prototype, 'generateRequest').mockResolvedValue();
   vi.spyOn(Session.prototype, 'pause').mockReturnValue('{}');
   vi.spyOn(Session.prototype, 'waitForLicenseRequest').mockResolvedValue(new Uint8Array());
-  vi.spyOn(Session.prototype, 'update').mockResolvedValue();
+  vi.spyOn(Session.prototype, 'update').mockImplementation(async function (this: Session) {
+    this.keys.set(key.id, key.value);
+  });
   vi.spyOn(Session.prototype, 'waitForKeyStatusesChange').mockResolvedValue(
     new Map([[key.id, key.value]]),
   );

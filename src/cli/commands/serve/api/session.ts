@@ -9,6 +9,7 @@ import { fromBuffer, MediaKeyMessageEvent, PlayReady, Widevine, Session } from '
 import { WidevineDeviceCredentials } from '../../../../lib/widevine/device-credentials';
 import { PlayReadyDeviceCredentials } from '../../../../lib/playready/device-credentials';
 import { clients, config, resolveClient, sessions } from '../state';
+import { normalizeKeySystem } from '../../../../lib/key-system';
 import { WidevineSession } from '../../../../lib/widevine/session';
 
 const app = new Hono();
@@ -73,59 +74,83 @@ app.post(
   zValidator(
     'json',
     z.object({
-      sessionType: z.string().optional(),
+      sessionType: z.enum(['temporary', 'persistent-license']).optional(),
+      keySystem: z.string().optional(),
       client: z.string().optional(),
       customData: z.string().optional(),
     }),
   ),
   async (c) => {
-    const clientName = c.req.valid('json').client;
-    const defaultPath = config.clients[0];
-    const clientPath =
-      clientName === undefined ? defaultPath && resolve(defaultPath) : resolveClient(clientName);
-
+    const { client: clientName, keySystem, sessionType, customData } = c.req.valid('json');
+    let requestedSystem: ReturnType<typeof normalizeKeySystem> | undefined;
+    try {
+      requestedSystem = keySystem === undefined ? undefined : normalizeKeySystem(keySystem);
+    } catch (error) {
+      return c.json({ error: error instanceof Error ? error.message : 'Invalid key system' }, 400);
+    }
     const secretKey = c.req.header('x-secret-key');
-    if (secretKey) {
-      const user = config.users[secretKey];
-      const clientAllowed =
-        clientPath && user?.clients.some((identifier) => resolveClient(identifier) === clientPath);
-      if (!clientAllowed) {
-        return c.json({ error: 'Client is not found or you are not authorized to use it.' }, 403);
+    const user = secretKey ? config.users[secretKey] : undefined;
+    const isAllowed = (path: string) =>
+      !secretKey || user?.clients.some((identifier) => resolveClient(identifier) === path);
+    const defaultPath = config.clients[0];
+    const explicitPath = clientName === undefined ? undefined : resolveClient(clientName);
+    // Preserve the legacy default only when the caller omits its DRM system.
+    let candidates: string[];
+    if (clientName !== undefined) {
+      candidates = explicitPath ? [explicitPath] : [];
+    } else if (requestedSystem) {
+      candidates = config.clients.map((path) => resolve(path)).filter(isAllowed);
+    } else {
+      candidates = defaultPath ? [resolve(defaultPath)] : [];
+    }
+    if (secretKey && (!candidates.length || !candidates.some(isAllowed))) {
+      return c.json({ error: 'Client is not found or you are not authorized to use it.' }, 403);
+    }
+
+    let selected: { path: string; engine: Widevine | PlayReady } | null = null;
+    for (const path of candidates) {
+      if (!isAllowed(path)) continue;
+      let client = clients.get(path);
+      if (!client) {
+        const clientData = await readFile(path);
+        const magic = fromBuffer(clientData.subarray(0, 3)).toText();
+        if (magic === 'WVD') {
+          client = await WidevineDeviceCredentials.from({ wvd: clientData });
+        } else if (magic === 'PRD') {
+          client = await PlayReadyDeviceCredentials.from({ prd: clientData });
+        } else {
+          return c.json({ error: 'Client is not a valid WVD or PRD file' }, 400);
+        }
+        clients.set(path, client);
+      }
+      const engine =
+        client instanceof WidevineDeviceCredentials
+          ? new Widevine({ deviceCredentials: client })
+          : new PlayReady({ deviceCredentials: client, customData });
+      if (!requestedSystem || engine.keySystem === requestedSystem) {
+        selected = { path, engine };
+        break;
       }
     }
-
-    if (!clientPath) {
-      return c.json({ error: 'Client not found' }, 400);
+    if (!selected) {
+      return c.json(
+        {
+          error: requestedSystem
+            ? `No configured, authorized client matches ${requestedSystem}`
+            : 'Client not found',
+        },
+        400,
+      );
     }
-
-    if (!clients.has(clientPath)) {
-      const clientData = await readFile(clientPath);
-      const isWvd = fromBuffer(clientData.subarray(0, 3)).toText() == 'WVD';
-      const isPrd = fromBuffer(clientData.subarray(0, 3)).toText() == 'PRD';
-      if (isWvd) {
-        const client = await WidevineDeviceCredentials.from({ wvd: clientData });
-        clients.set(clientPath, client);
-      } else if (isPrd) {
-        const client = await PlayReadyDeviceCredentials.from({ prd: clientData });
-        clients.set(clientPath, client);
-      } else {
-        return c.json({ error: 'Client is not a valid WVD or PRD file' }, 403);
-      }
-    }
-
-    const client = clients.get(clientPath)!;
-
-    const cdm =
-      client instanceof WidevineDeviceCredentials
-        ? new Widevine({ deviceCredentials: client })
-        : new PlayReady({ deviceCredentials: client, customData: c.req.valid('json').customData });
-
-    const sessionType = c.req.valid('json').sessionType as MediaKeySessionType | undefined;
-    const session = new Session(sessionType, cdm);
+    const session = new Session(sessionType, selected.engine);
 
     const sessionKey = `${secretKey ?? ''}:${session.sessionId}`;
     sessions.set(sessionKey, session);
-    return c.json({ id: session.sessionId });
+    return c.json({
+      id: session.sessionId,
+      client: selected.path,
+      keySystem: selected.engine.keySystem,
+    });
   },
 );
 

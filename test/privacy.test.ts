@@ -29,11 +29,11 @@ afterEach(async () => {
   vi.unstubAllGlobals();
 });
 
-const connect = () => {
+const connect = (keySystem = 'com.widevine.alpha') => {
   vi.stubGlobal('fetch', (input: string | URL | Request, init?: RequestInit) =>
     app.request(input, init),
   );
-  return new Remote({ keySystem: 'com.widevine.alpha', baseUrl: 'http://remote.test' });
+  return new Remote({ keySystem, baseUrl: 'http://remote.test' });
 };
 
 const decodeChallenge = (message: Uint8Array) =>
@@ -151,7 +151,7 @@ test('PlayReady rejects server certificates, forced privacy, and CLI encrypt', a
   const engine = new PlayReady({ deviceCredentials });
   await expect(engine.setServerCertificate()).rejects.toThrow('unsupported');
   clients.set(resolve('test.wvd'), deviceCredentials);
-  const session = await connect().createSession();
+  const session = await connect('com.microsoft.playready').createSession();
   await expect(session.generateRequest(initData)).rejects.toThrow(
     'Forced privacy mode is unsupported',
   );

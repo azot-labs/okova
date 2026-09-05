@@ -61,7 +61,9 @@ beforeEach(async () => {
   });
   vi.spyOn(Session.prototype, 'pause').mockReturnValue('{}');
   vi.spyOn(Session.prototype, 'close').mockResolvedValue();
-  vi.spyOn(Session.prototype, 'update').mockResolvedValue();
+  vi.spyOn(Session.prototype, 'update').mockImplementation(async function (this: Session) {
+    this.keys.set('00112233445566778899aabbccddeeff', 'ffeeddccbbaa99887766554433221100');
+  });
   vi.spyOn(Session.prototype, 'waitForLicenseRequest').mockImplementation(
     async function (this: Session) {
       return new TextEncoder().encode(this.sessionId);
@@ -92,6 +94,7 @@ const startBackground = () => {
       listener(
         {
           action,
+          keySystem: 'com.widevine.alpha',
           sessionToken,
           initData: 'cHNzaA==',
           initDataType: 'cenc',
@@ -392,20 +395,15 @@ test.each([
   },
 );
 
-test.each(['expiry', 'removal', 'navigation'])(
-  'a lifecycle %s closes an update waiting for key statuses',
+test.each(['deadline', 'removal', 'navigation', 'close'])(
+  '%s cancels a stalled license update',
   async (action) => {
     vi.mocked(Session.prototype.close).mockRestore();
-    vi.mocked(Session.prototype.waitForKeyStatusesChange).mockRestore();
     const waiting = Promise.withResolvers<void>();
-    const waitForKeys = Session.prototype.waitForKeyStatusesChange;
-    vi.spyOn(Session.prototype, 'waitForKeyStatusesChange').mockImplementation(
-      function (this: Session) {
-        const result = waitForKeys.call(this);
-        waiting.resolve();
-        return result;
-      },
-    );
+    vi.mocked(Session.prototype.update).mockImplementation(() => {
+      waiting.resolve();
+      return new Promise<void>(() => {});
+    });
     const removed = vi.spyOn(browser.tabs.onRemoved, 'addListener');
     const updated = vi.spyOn(browser.tabs.onUpdated, 'addListener');
     const send = startBackground();
@@ -413,22 +411,25 @@ test.each(['expiry', 'removal', 'navigation'])(
     await send('generateRequest', 'waiting', sender);
     const update = send('update', 'waiting', sender);
     await waiting.promise;
-    if (action === 'expiry') {
-      await vi.advanceTimersByTimeAsync(5 * 60_000);
+    if (action === 'deadline') {
+      await vi.advanceTimersByTimeAsync(25_000);
     } else if (action === 'removal') {
       removed.mock.calls[0]![0](1, { windowId: 1, isWindowClosing: false });
+    } else if (action === 'close') {
+      await send('close', 'waiting', sender);
     } else {
       updated.mock.calls[0]![0](1, { status: 'loading' }, tab(1));
     }
     await expect(update).resolves.toBeUndefined();
     await expect(send('license-request', 'waiting', sender)).resolves.toBeUndefined();
-    if (action === 'expiry') {
+    if (action === 'deadline') {
       expect(await getDrmFailureStorage(1).getValue()).toMatchObject({
-        stage: 'keys',
-        error: 'Session closed',
+        stage: 'license',
+        error: 'DRM request timed out after 25000ms',
       });
       await getDrmFailureStorage(1).removeValue();
     }
+    if (action === 'close') await getDrmFailureStorage(1).removeValue();
     expect(await browser.storage.session.get(null)).toEqual({});
     expect(vi.getTimerCount()).toBe(0);
   },
@@ -742,3 +743,48 @@ test.each(['https://example.com/video', 'https://other.example/video'])(
     expect(vi.getTimerCount()).toBe(0);
   },
 );
+
+test.each([
+  'com.microsoft.playready',
+  'com.microsoft.playready.recommendation',
+  'com.widevine.alpha.extra',
+  undefined,
+])('rejects a selected Widevine client for %s before creating a session', async (keySystem) => {
+  const send = startBackground();
+  await send('generateRequest', 'mismatch', { tab: tab(1) }, { keySystem });
+  expect(Session.prototype.generateRequest).not.toHaveBeenCalled();
+  expect(await getDrmFailureStorage(1).getValue()).toMatchObject({ stage: 'client' });
+  expect(vi.getTimerCount()).toBe(0);
+});
+
+test('reports an empty license and cleans up without waiting for another status event', async () => {
+  vi.mocked(Session.prototype.update).mockImplementation(async function (this: Session) {
+    this.dispatchEvent(new Event('keystatuseschange'));
+  });
+  const send = startBackground();
+  const sender = { tab: tab(1) };
+  await send('generateRequest', 'empty', sender);
+  await expect(send('update', 'empty', sender)).resolves.toBeUndefined();
+  expect(await getDrmFailureStorage(1).getValue()).toMatchObject({
+    stage: 'keys',
+    error: 'License completed without content keys',
+  });
+  expect(Session.prototype.waitForKeyStatusesChange).not.toHaveBeenCalled();
+  expect(Session.prototype.close).toHaveBeenCalledOnce();
+  expect(await appStorage.allKeys.getValue()).toBeNull();
+  expect(vi.getTimerCount()).toBe(0);
+});
+
+test('a timed-out client load cannot create a session when it later resolves', async () => {
+  const loading = Promise.withResolvers<WidevineDeviceCredentials>();
+  vi.mocked(appStorage.clients.active.getValue).mockReturnValue(loading.promise);
+  const send = startBackground();
+  const result = send('generateRequest', 'slow', { tab: tab(1) });
+  await vi.advanceTimersByTimeAsync(25_000);
+  await result;
+  loading.resolve(new WidevineDeviceCredentials(new Uint8Array()));
+  await vi.advanceTimersByTimeAsync(0);
+  expect(Session.prototype.generateRequest).not.toHaveBeenCalled();
+  expect(await getDrmFailureStorage(1).getValue()).toMatchObject({ stage: 'client' });
+  expect(vi.getTimerCount()).toBe(0);
+});
