@@ -8,6 +8,7 @@ import { Section } from '../components/section';
 import { Cell } from '../components/cell';
 import { copyKey } from '../utils/key';
 import { formatRelativeTime } from '../utils/date';
+import { buildDownloadCommand } from '../utils/command';
 
 type KeySettingsProps = {
   key: KeyInfo;
@@ -15,9 +16,7 @@ type KeySettingsProps = {
 };
 
 export const KeySettings: Component<KeySettingsProps> = (props) => {
-  const [command, setCommand] = createSignal<string>(
-    ['N_m3u8DL-RE', props.key.mpd, '--key', `${props.key.id}:${props.key.value}`].join(' '),
-  );
+  const [command, setCommand] = createSignal(buildDownloadCommand(props.key));
 
   const getMainLayoutElement = () => {
     return document.querySelector<HTMLDivElement>('#root > main');
@@ -62,7 +61,7 @@ export const KeySettings: Component<KeySettingsProps> = (props) => {
             Added
           </Cell>
         </Section>
-        <Section header="Command builder">
+        <Section header="Command builder (Bash / Zsh)">
           <Cell class="w-full">
             <textarea
               class="font-mono outline-none bg-transparent border-none w-full"
