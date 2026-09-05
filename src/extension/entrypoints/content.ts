@@ -36,15 +36,25 @@ export default defineContentScript({
     // Listen for event from injected script
     window.addEventListener(
       'message',
-      (event) => {
-        if (event.source != window) return;
-        if (event.data.type !== 'drm-message') return;
+      async (event) => {
+        if (event.source !== window) return;
+        if (event.data?.type !== 'drm-message') return;
+        if (typeof event.data.requestId !== 'string') return;
         if (!event.data.log) return;
-        const message = event.data.log;
-        message.url = window.location.href;
-        browser.runtime.sendMessage(message).then((response) => {
-          window.dispatchEvent(new CustomEvent('drm-message-response', { detail: response }));
-        });
+        const { requestId, log } = event.data;
+        const message = { ...log, url: window.location.href };
+        try {
+          const body = await browser.runtime.sendMessage(message);
+          window.dispatchEvent(
+            new CustomEvent('drm-message-response', { detail: { requestId, body } }),
+          );
+        } catch (error) {
+          window.dispatchEvent(
+            new CustomEvent('drm-message-response', {
+              detail: { requestId, error: error instanceof Error ? error.message : String(error) },
+            }),
+          );
+        }
       },
       false,
     );
