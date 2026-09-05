@@ -284,6 +284,7 @@ app.post('/:id/close', zValidator('param', z.object({ id: z.string() })), async 
     return c.json({ error: 'No session has been opened yet. No session to close.' }, 400);
   }
   await session.close();
+  sessions.delete(sessionKey);
   return c.json({ success: true });
 });
 

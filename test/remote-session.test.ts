@@ -2,6 +2,7 @@ import { afterEach, expect, test, vi } from 'vitest';
 import {
   fromBase64,
   Remote,
+  Session,
   requestMediaKeySystemAccess,
   setSupportedEngines,
   toBufferSource,
@@ -128,3 +129,74 @@ test('remote requests time out', async () => {
   await vi.advanceTimersByTimeAsync(100);
   await expectation;
 });
+
+test.each(['close', 'remove'] as const)(
+  'remote %s clears local keys and rejects later work',
+  async (operation) => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (url: string | URL | Request) => {
+        const route = String(url);
+        const body = route.endsWith('/sessions')
+          ? { id: 'session-close' }
+          : route.endsWith('/update')
+            ? { keys: { '00112233445566778899aabbccddeeff': 'ffeeddccbbaa99887766554433221100' } }
+            : { success: true };
+        return Response.json(body);
+      }),
+    );
+    const cdm = new Remote({ keySystem: 'com.widevine.alpha', baseUrl: 'https://remote.example' });
+    const session = await cdm.createSession();
+    await session.update(new Uint8Array([1]));
+    expect(session.keys.size).toBe(1);
+    await session[operation]();
+    expect(session.keys.size).toBe(0);
+    expect(session.keyStatuses.size).toBe(0);
+    await expect(session.waitForKeys()).rejects.toThrow('Session closed');
+    await expect(session.update(new Uint8Array([1]))).rejects.toThrow('Session closed');
+    await expect(session.generateRequest(new Uint8Array([1]))).rejects.toThrow('Session closed');
+  },
+);
+
+test.each(['close', 'remove'] as const)(
+  'remote %s preserves state on failure and permits retry',
+  async (operation) => {
+    const fetch = vi.fn<typeof globalThis.fetch>();
+    vi.stubGlobal('fetch', fetch);
+    fetch.mockResolvedValueOnce(Response.json({ id: 'retry-session' }));
+    const cdm = new Remote({ keySystem: 'com.widevine.alpha', baseUrl: 'https://remote.example' });
+    const native = await cdm.createSession();
+    const session = new Session('temporary', cdm, native);
+    fetch.mockResolvedValueOnce(
+      Response.json({
+        keys: { '00112233445566778899aabbccddeeff': 'ffeeddccbbaa99887766554433221100' },
+      }),
+    );
+    await session.update(new Uint8Array([1]));
+    const keys = new Map(native.keys);
+    const statuses = new Map(native.keyStatuses);
+    const closed = vi.fn();
+    native.addEventListener('closed', closed);
+    const pendingMessage = expect(session.waitForLicenseRequest()).rejects.toThrow(
+      'Session closed',
+    );
+
+    fetch.mockRejectedValueOnce(new Error('Connection failed'));
+    await expect(session[operation]()).rejects.toThrow('Connection failed');
+    expect(native.keys).toEqual(keys);
+    expect(native.keyStatuses).toEqual(statuses);
+    expect(cdm.sessions.get(native.sessionId)).toBe(native);
+    expect(closed).not.toHaveBeenCalled();
+
+    fetch.mockResolvedValueOnce(Response.json({ success: true }));
+    await session[operation]();
+    expect(fetch).toHaveBeenCalledTimes(4);
+    expect(native.keys.size).toBe(0);
+    expect(session.keys.size).toBe(0);
+    expect(native.keyStatuses.size).toBe(0);
+    expect(cdm.sessions.size).toBe(0);
+    expect(closed).toHaveBeenCalledTimes(1);
+    await expect(session.closed).resolves.toBe('closed-by-application');
+    await pendingMessage;
+  },
+);

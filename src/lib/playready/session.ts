@@ -107,7 +107,6 @@ export class PlayReadySession extends BaseMediaKeysEngineSession {
 
   #contentKeys: Key[];
   #dispose: (sessionId: string) => void;
-  #closed: boolean;
   #options: PlayReadySessionOptions;
 
   constructor(
@@ -149,7 +148,6 @@ export class PlayReadySession extends BaseMediaKeysEngineSession {
     this.serializer = new XMLSerializer();
     this.#contentKeys = [];
     this.#dispose = dispose;
-    this.#closed = false;
     this.#options = options;
   }
 
@@ -268,11 +266,13 @@ export class PlayReadySession extends BaseMediaKeysEngineSession {
   }
 
   async generateRequest(initData: Uint8Array, initDataType: string = 'cenc') {
+    this.assertOpen();
     this.initData = initData;
     this.initDataType = initDataType;
     const pssh = new Pssh(initData);
     const wrmHeader = pssh.wrmHeaders[0];
     const challenge = await this.getLicenseChallenge(wrmHeader);
+    this.assertOpen();
     this.emitMessage({
       message: fromText(challenge).toBuffer(),
       messageType: 'license-request',
@@ -280,7 +280,9 @@ export class PlayReadySession extends BaseMediaKeysEngineSession {
   }
 
   async update(response: Uint8Array) {
+    this.assertOpen();
     const keys = await this.parseLicense(fromBuffer(response).toText());
+    this.assertOpen();
     if (keys) this.#contentKeys = keys;
     this.#syncKeys();
     this.emitKeysChange();
@@ -288,6 +290,7 @@ export class PlayReadySession extends BaseMediaKeysEngineSession {
   }
 
   async getLicenseChallenge(wrm_header: string | WrmHeader, rev_lists?: string) {
+    this.assertOpen();
     const wrmHeader = wrm_header instanceof WrmHeader ? wrm_header : new WrmHeader(wrm_header);
     const xml_key = new XmlKey();
     const protocol_version = wrmHeader.getProtocolVersion();
@@ -315,6 +318,7 @@ export class PlayReadySession extends BaseMediaKeysEngineSession {
 
     const singing_key = this.signingKey.publicBytes();
 
+    this.assertOpen();
     return this.#buildMainBody(
       laContent,
       signedInfo,
@@ -324,9 +328,11 @@ export class PlayReadySession extends BaseMediaKeysEngineSession {
   }
 
   async parseLicense(rawLicense: string) {
+    this.assertOpen();
     const xmlDoc = this.parser.parseFromString(rawLicense, 'application/xml');
     this.#throwIfSoapFault(xmlDoc);
     await this.#verifySignedLicenseResponse(xmlDoc);
+    this.assertOpen();
     this.#mergeRevocationInfo(xmlDoc);
     const licenseElements = findDescendantsByLocalName(xmlDoc, 'License');
 
@@ -406,6 +412,7 @@ export class PlayReadySession extends BaseMediaKeysEngineSession {
         );
       }
     }
+    this.assertOpen();
     return keys;
   }
 
@@ -485,8 +492,13 @@ export class PlayReadySession extends BaseMediaKeysEngineSession {
   }
 
   async close() {
-    if (this.#closed) return;
-    this.#closed = true;
+    if (this.isClosed) return;
+    this.isClosed = true;
+    this.keys.clear();
+    this.keyStatuses.clear();
+    this.initData = undefined;
+    this.initDataType = undefined;
+    this.#contentKeys.length = 0;
     this.#dispose(this.sessionId);
     this.dispatchEvent(new Event('closed'));
   }
@@ -504,6 +516,7 @@ export class PlayReadySession extends BaseMediaKeysEngineSession {
   }
 
   pause() {
+    this.assertOpen();
     const values = {
       sessionId: this.sessionId,
       sessionType: this.sessionType,

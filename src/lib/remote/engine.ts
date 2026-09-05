@@ -120,7 +120,6 @@ const createHttpClient = ({ baseUrl, secret, ...params }: RemoteParams) => {
 class RemoteSession extends BaseMediaKeysEngineSession {
   #http: ReturnType<typeof createHttpClient>;
   #dispose: (sessionId: string) => void;
-  #closed: boolean;
   #getServerCertificate: () => string | undefined;
 
   constructor(
@@ -134,18 +133,18 @@ class RemoteSession extends BaseMediaKeysEngineSession {
     this.sessionId = sessionId;
     this.#http = http;
     this.#dispose = dispose;
-    this.#closed = false;
     this.#getServerCertificate = getServerCertificate;
   }
 
   async generateRequest(initData: Uint8Array, initDataType: string = 'cenc') {
-    if (this.#closed) throw new Error('session closed');
+    this.assertOpen();
     const serverCertificate = this.#getServerCertificate();
     const data = await this.#http.post(`/sessions/${this.sessionId}/generate-request`, {
       initDataType,
       serverCertificate,
       initData: fromBuffer(initData).toBase64(),
     });
+    this.assertOpen();
     if (serverCertificate !== undefined && data?.serverCertificateAccepted !== true) {
       throw new Error(
         'Remote server did not acknowledge the server certificate; privacy mode may be unsupported',
@@ -159,10 +158,11 @@ class RemoteSession extends BaseMediaKeysEngineSession {
   }
 
   async update(response: Uint8Array) {
-    if (this.#closed) throw new Error('session closed');
+    this.assertOpen();
     const data = await this.#http.post(`/sessions/${this.sessionId}/update`, {
       response: fromBuffer(response).toBase64(),
     });
+    this.assertOpen();
     if (data?.message) {
       this.emitMessage({
         message: fromBase64(data.message).toBuffer(),
@@ -179,6 +179,7 @@ class RemoteSession extends BaseMediaKeysEngineSession {
     }
 
     const keys = await this.#getKeys();
+    this.assertOpen();
     if (keys.size) {
       this.#syncKeys(keys);
       this.emitKeysChange();
@@ -187,16 +188,25 @@ class RemoteSession extends BaseMediaKeysEngineSession {
   }
 
   async close() {
-    this.#closed = true;
+    if (this.isClosed) return;
     await this.#http.post(`/sessions/${this.sessionId}/close`);
+    if (this.isClosed) return;
+    this.isClosed = true;
+    this.keys.clear();
+    this.keyStatuses.clear();
     this.#dispose(this.sessionId);
     this.dispatchEvent(new Event('closed'));
   }
 
   async remove() {
-    this.#closed = true;
+    if (this.isClosed) return;
     await this.#http.delete(`/sessions/${this.sessionId}`);
+    if (this.isClosed) return;
+    this.isClosed = true;
+    this.keys.clear();
+    this.keyStatuses.clear();
     this.#dispose(this.sessionId);
+    this.dispatchEvent(new Event('closed'));
     this.dispatchEvent(new Event('removed'));
   }
 

@@ -88,7 +88,6 @@ export class WidevineSession extends BaseMediaKeysEngineSession {
   #contentKeys: Map<string, Key>;
   #dispose: (sessionId: string) => void;
   #getServiceCertificate: ServiceCertificateProvider;
-  #closed: boolean;
 
   constructor(
     sessionType: SessionType = 'temporary',
@@ -111,7 +110,6 @@ export class WidevineSession extends BaseMediaKeysEngineSession {
     this.#contentKeys = new Map();
     this.#dispose = dispose;
     this.#getServiceCertificate = getServiceCertificate;
-    this.#closed = false;
   }
 
   setLogger(logger: Logger) {
@@ -124,6 +122,7 @@ export class WidevineSession extends BaseMediaKeysEngineSession {
     first: Uint8Array | string,
     second?: string | BufferSource,
   ): Promise<Uint8Array | void> {
+    this.assertOpen();
     const initData = typeof first === 'string' ? parseBufferSource(second as BufferSource) : first;
     const resolvedInitDataType =
       typeof first === 'string' ? first : typeof second === 'string' ? second : 'cenc';
@@ -134,6 +133,7 @@ export class WidevineSession extends BaseMediaKeysEngineSession {
       licenseRequest.bytes,
       SignedMessage.MessageType.LICENSE_REQUEST,
     );
+    this.assertOpen();
     this.initData = initData;
     this.initDataType = resolvedInitDataType;
     this.contexts.set(
@@ -148,15 +148,25 @@ export class WidevineSession extends BaseMediaKeysEngineSession {
   }
 
   async waitForLicenseRequest() {
-    return new Promise<Uint8Array>((resolve) => {
+    this.assertOpen();
+    return new Promise<Uint8Array>((resolve, reject) => {
+      const cleanup = () => {
+        this.removeEventListener('message', handler);
+        this.removeEventListener('closed', handleClosed);
+      };
+      const handleClosed = () => {
+        cleanup();
+        reject(new Error('Session closed'));
+      };
       const handler = (event: Event) => {
         const detail = (event as CustomEvent<MediaKeyMessageEventInit>).detail;
         if (detail.messageType !== 'license-request') return;
-        this.removeEventListener('message', handler);
+        cleanup();
         resolve(detail.message);
       };
 
       this.addEventListener('message', handler);
+      this.addEventListener('closed', handleClosed);
     });
   }
 
@@ -202,12 +212,14 @@ export class WidevineSession extends BaseMediaKeysEngineSession {
     return { entity, bytes };
   }
 
-  load(sessionId: string): Promise<boolean> {
+  async load(sessionId: string): Promise<boolean> {
+    this.assertOpen();
     this.sessionId = sessionId;
     return Promise.resolve(true);
   }
 
   async update(response: Uint8Array): Promise<void> {
+    this.assertOpen();
     let type: SignedMessage.MessageType;
     try {
       type = getMessageType(response);
@@ -256,9 +268,11 @@ export class WidevineSession extends BaseMediaKeysEngineSession {
       if (!keyContainer.key || !keyContainer.iv) continue;
       const key = await Key.fromContainer(keyContainer, derivedKeys.encKey);
       if (!key.id || key.type !== 'CONTENT') continue;
+      this.assertOpen();
       this.#addKey(key);
     }
 
+    this.assertOpen();
     this.contexts.delete(requestId);
     this.emitKeysChange();
     this.emitKeyStatusesChange();
@@ -268,6 +282,7 @@ export class WidevineSession extends BaseMediaKeysEngineSession {
     const { signedDrmCertificate, drmCertificate } = await parseCertificate(certificate);
     const isValid = await verifyCertificate(signedDrmCertificate);
     if (!isValid) throw new Error('Certificate invalid: signature mismatch');
+    this.assertOpen();
     this.serviceCertificate = signedDrmCertificate;
     return drmCertificate.providerId;
   }
@@ -297,24 +312,30 @@ export class WidevineSession extends BaseMediaKeysEngineSession {
   }
 
   async getKeys() {
+    this.assertOpen();
     return Array.from(this.#contentKeys.values());
   }
 
   async close(): Promise<void> {
-    if (this.#closed) return;
-    this.#closed = true;
+    if (this.isClosed) return;
+    this.isClosed = true;
+    this.keys.clear();
+    this.keyStatuses.clear();
+    this.initData = undefined;
+    this.initDataType = undefined;
+    this.#contentKeys.clear();
+    this.contexts.clear();
+    this.serviceCertificate = undefined;
     this.#dispose(this.sessionId);
     this.dispatchEvent(new Event('closed'));
   }
 
   async remove(): Promise<void> {
-    if (this.#closed) return;
-    this.#closed = true;
-    this.#dispose(this.sessionId);
-    this.dispatchEvent(new Event('closed'));
+    await this.close();
   }
 
   pause() {
+    this.assertOpen();
     const values = {
       sessionId: this.sessionId,
       sessionNumber: this.sessionNumber,
@@ -322,9 +343,7 @@ export class WidevineSession extends BaseMediaKeysEngineSession {
       initData: this.initData ? fromBuffer(this.initData).toBase64() : undefined,
       initDataType: this.initDataType,
       serviceCertificate: this.serviceCertificate
-        ? fromBuffer(
-            SignedDrmCertificate.encode(this.serviceCertificate).finish(),
-          ).toBase64()
+        ? fromBuffer(SignedDrmCertificate.encode(this.serviceCertificate).finish()).toBase64()
         : undefined,
       contexts: Object.fromEntries(
         this.contexts.entries().map(([key, value]) => [
