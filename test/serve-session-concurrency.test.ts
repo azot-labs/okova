@@ -4,8 +4,8 @@ import { config, sessions } from '../src/cli/commands/serve/state';
 import { BaseMediaKeysEngine, BaseMediaKeysEngineSession, Session } from '../src/lib/api';
 
 class TestSession extends BaseMediaKeysEngineSession {
-  constructor() {
-    super();
+  constructor(id = '') {
+    super('temporary', id);
   }
 
   async generateRequest(initData: Uint8Array) {
@@ -48,8 +48,7 @@ afterEach(async () => {
 
 const openSession = (id = 'session', secret = '') => {
   const engine = new TestEngine();
-  const native = engine.createSession();
-  native.sessionId = id;
+  const native = new TestSession(id);
   const session = new Session('temporary', engine, native);
   sessions.set(`${secret}:${id}`, session);
   return { session, native };

@@ -130,8 +130,7 @@ class RemoteSession extends BaseMediaKeysEngineSession {
     dispose: (sessionId: string) => void,
     getServerCertificate: () => string | undefined,
   ) {
-    super(sessionType);
-    this.sessionId = sessionId;
+    super(sessionType, sessionId);
     this.#http = http;
     this.#dispose = dispose;
     this.#getServerCertificate = getServerCertificate;

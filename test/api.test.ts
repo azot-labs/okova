@@ -10,7 +10,7 @@ import {
   waitForKeys,
   type EncryptedPacket,
 } from '../src/lib/api';
-import { fromBuffer, fromHex } from '../src/lib/utils';
+import { fromBuffer, fromHex, parseBufferSource } from '../src/lib/utils';
 
 const KEY_ID = '00112233445566778899aabbccddeeff';
 const KEY_VALUE = 'ffeeddccbbaa99887766554433221100';
@@ -217,6 +217,71 @@ describe('waitForKeys', () => {
 });
 
 describe('Session', () => {
+  test('key statuses match fresh buffers and views by bytes and expose read-only iteration', async () => {
+    const native = new FakeEngineSession();
+    const session = new Session('temporary', new FakeEngine(), native);
+    const statuses = session.keyStatuses;
+    expect(statuses.size).toBe(0);
+    expect([...statuses]).toEqual([]);
+    await session.update(new Uint8Array());
+    const kid = Uint8Array.from(fromHex(KEY_ID).toBuffer());
+    const padded = new Uint8Array(20);
+    padded.set(kid, 2);
+    for (const lookup of [kid, kid.buffer, new DataView(padded.buffer, 2, 16)]) {
+      expect(statuses.get(lookup)).toBe('usable');
+      expect(statuses.has(lookup)).toBe(true);
+    }
+    expect(statuses.has(new Uint8Array(16))).toBe(false);
+    expect(statuses.get(new Uint8Array(16))).toBeUndefined();
+    expect(statuses).not.toHaveProperty('set');
+    expect(statuses).not.toHaveProperty('clear');
+    const callback = vi.fn();
+    const receiver = {};
+    statuses.forEach(callback, receiver);
+    expect(callback).toHaveBeenCalledWith('usable', expect.any(ArrayBuffer), statuses);
+    expect(callback.mock.contexts).toEqual([receiver]);
+    expect([...statuses.values()]).toEqual(['usable']);
+    expect([...statuses.entries()]).toEqual([[kid.buffer, 'usable']]);
+    const exposed = statuses.keys().next().value;
+    if (!(exposed instanceof ArrayBuffer)) throw new Error('Expected key bytes');
+    new Uint8Array(exposed).fill(0);
+    expect(statuses.get(kid)).toBe('usable');
+    native.dispatchEvent(
+      new CustomEvent('keystatuseschange', {
+        detail: { keys: new Map(), keyStatuses: new Map() },
+      }),
+    );
+    expect(session.keyStatuses).toBe(statuses);
+    expect(statuses.size).toBe(0);
+    await session.close();
+  });
+
+  test('concurrent and repeated close call the engine once and preserve the closed promise', async () => {
+    const native = new FakeEngineSession();
+    const engineSession = Promise.withResolvers<FakeEngineSession>();
+    const session = new Session('temporary', new FakeEngine(), engineSession.promise);
+    const closed = session.closed;
+    const close = vi.spyOn(native, 'close');
+    const first = session.close();
+    const second = session.close();
+    engineSession.resolve(native);
+    await Promise.all([first, second]);
+    await session.close();
+    expect(close).toHaveBeenCalledOnce();
+    expect(session.closed).toBe(closed);
+    await expect(closed).resolves.toBe('closed-by-application');
+  });
+
+  test('a failed close can be retried', async () => {
+    const native = new FakeEngineSession();
+    const close = vi.spyOn(native, 'close').mockRejectedValueOnce(new Error('Close failed'));
+    const session = new Session('temporary', new FakeEngine(), native);
+    await expect(session.close()).rejects.toThrow('Close failed');
+    await session.close();
+    expect(close).toHaveBeenCalledTimes(2);
+    await expect(session.closed).resolves.toBe('closed-by-application');
+  });
+
   test('synchronizes keys and statuses before delivering keyschange', async () => {
     const session = new Session('temporary', new FakeEngine(), new FakeEngineSession());
     const snapshots: Array<{ keys: Map<string, string>; statuses: MediaKeyStatus[] }> = [];
@@ -253,7 +318,7 @@ describe('Session', () => {
     expect(keys.get(KEY_ID)).toBe(KEY_VALUE);
 
     const [storedKeyId, status] = Array.from(session.keyStatuses.entries())[0]!;
-    expect(fromBuffer(storedKeyId as Uint8Array).toHex()).toBe(KEY_ID);
+    expect(fromBuffer(parseBufferSource(storedKeyId)).toHex()).toBe(KEY_ID);
     expect(status).toBe('usable');
 
     expect(session.pause()).toBe('paused-state');

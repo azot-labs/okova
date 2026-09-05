@@ -40,6 +40,7 @@ describe('Widevine Session Resumability', () => {
     expect(state.length).toBeGreaterThan(0);
 
     // Resume session using CDM methods
+    await session.close();
     const resumed = cdm.resumeSession(state);
     expect(resumed).toBeDefined();
     expect(resumed.sessionId).toBe(originalSessionId);
@@ -125,6 +126,7 @@ describe('Widevine Session Resumability', () => {
     const state = session.pause();
 
     // Resume
+    await session.close();
     const resumed = cdm.resumeSession(state);
     expect(resumed.sessionType).toBe('persistent-license');
 
@@ -159,6 +161,7 @@ describe('PlayReady Session Resumability', () => {
     expect(state.length).toBeGreaterThan(0);
 
     // Resume session using CDM methods
+    await session.close();
     const resumed = cdm.resumeSession(state);
     expect(resumed).toBeDefined();
     expect(resumed.sessionId).toBe(originalSessionId);
@@ -247,6 +250,7 @@ describe('PlayReady Session Resumability', () => {
     const state = session.pause();
 
     // Resume
+    await session.close();
     const resumed = cdm.resumeSession(state);
     expect(resumed.sessionType).toBe('persistent-license');
 

@@ -1,6 +1,8 @@
 import { DOMParser, XMLSerializer, type Document, type Element } from '@xmldom/xmldom';
+import { z } from 'zod';
 import * as utils from '@noble/curves/utils.js';
-import { BaseMediaKeysEngineSession } from '../api';
+import { BaseMediaKeysEngineSession, type MediaKeysEngineSession } from '../api';
+import { hexBytesSchema, sessionStateSchema } from '../session-state';
 import {
   base64ToBytes,
   bytesToBase64,
@@ -80,8 +82,28 @@ type PlayReadySessionOptions = {
   mergeRevocationInfo?: (revInfoXml: string) => void;
 };
 
+const stateSchema = sessionStateSchema.extend({
+  keySystem: z
+    .literal('com.microsoft.playready.recommendation')
+    .default('com.microsoft.playready.recommendation'),
+  certificateChain: z.base64(),
+  encryptionKey: z.base64(),
+  signingKey: z.base64(),
+  clientVersion: z.string(),
+  rgbMagicConstantZero: z.base64(),
+  wmrmServerKey: z.object({ x: z.string().regex(/^\d+$/), y: z.string().regex(/^\d+$/) }),
+  customData: z.string().optional(),
+  keys: z.array(
+    z.object({
+      keyId: hexBytesSchema.length(32),
+      key: hexBytesSchema,
+      cipherType: z.number().int(),
+      keyType: z.number().int(),
+    }),
+  ),
+});
+
 export class PlayReadySession extends BaseMediaKeysEngineSession {
-  sessionId: string;
   expiration: number;
   closed: Promise<MediaKeySessionClosedReason>;
   sessionType: MediaKeySessionType;
@@ -101,17 +123,17 @@ export class PlayReadySession extends BaseMediaKeysEngineSession {
   static DeviceCredentials = PlayReadyDeviceCredentials;
 
   #contentKeys: Key[];
-  #dispose: (sessionId: string) => void;
+  #dispose: (sessionId: string, session: MediaKeysEngineSession) => void;
   #options: PlayReadySessionOptions;
 
   constructor(
     sessionType: MediaKeySessionType = 'temporary',
     deviceCredentials: PlayReadySessionCredentials,
-    dispose: (sessionId: string) => void = () => {},
+    dispose: (sessionId: string, session: MediaKeysEngineSession) => void = () => {},
     options: PlayReadySessionOptions = {},
+    sessionId = fromBuffer(getRandomBytes()).toBase64(),
   ) {
-    super(sessionType);
-    this.sessionId = fromBuffer(getRandomBytes()).toBase64();
+    super(sessionType, sessionId);
     this.expiration = NaN;
     this.closed = new Promise<MediaKeySessionClosedReason>((resolve) => {
       this.addEventListener('closed', () => resolve('closed-by-application'));
@@ -538,7 +560,7 @@ export class PlayReadySession extends BaseMediaKeysEngineSession {
     this.initData = undefined;
     this.initDataType = undefined;
     this.#contentKeys.length = 0;
-    this.#dispose(this.sessionId);
+    this.#dispose(this.sessionId, this);
     this.dispatchEvent(new Event('closed'));
   }
 
@@ -557,6 +579,9 @@ export class PlayReadySession extends BaseMediaKeysEngineSession {
   pause() {
     this.assertOpen();
     const values = {
+      version: 1,
+      keySystem: 'com.microsoft.playready.recommendation',
+      customData: this.#options.customData,
       sessionId: this.sessionId,
       sessionType: this.sessionType,
       initData: this.initData ? fromBuffer(this.initData).toBase64() : undefined,
@@ -588,12 +613,20 @@ export class PlayReadySession extends BaseMediaKeysEngineSession {
   static resume(
     data: string,
     deviceCredentials: PlayReadySessionCredentials,
-    dispose?: (sessionId: string) => void,
+    dispose?: (sessionId: string, session: MediaKeysEngineSession) => void,
     options: PlayReadySessionOptions = {},
   ) {
-    const values = JSON.parse(data);
-    const session = new PlayReadySession(values.sessionType, deviceCredentials, dispose, options);
-    session.sessionId = values.sessionId;
+    const values = stateSchema.parse(JSON.parse(data));
+    const session = new PlayReadySession(
+      values.sessionType,
+      deviceCredentials,
+      dispose,
+      {
+        ...options,
+        customData: values.customData ?? options.customData,
+      },
+      values.sessionId,
+    );
     session.initData = values.initData ? fromBase64(values.initData).toBuffer() : undefined;
     session.initDataType = values.initDataType;
     session.certificateChain = fromBase64(values.certificateChain).toBuffer();
@@ -606,7 +639,7 @@ export class PlayReadySession extends BaseMediaKeysEngineSession {
     };
     session.clientVersion = values.clientVersion;
     session.#contentKeys = values.keys.map(
-      (key: { keyId: string; key: string; keyType: number; cipherType: number }) =>
+      (key) =>
         new Key(
           fromHex(key.keyId).toBuffer(),
           key.keyType,
