@@ -57,14 +57,16 @@ export default defineBackground({
 
     const closeSession = async (id: string) => {
       const entry = state.sessions.get(id);
-      await browser.storage.session.remove(SESSION_STORAGE_PREFIX + id);
-      if (!entry) return;
       state.sessions.delete(id);
-      clearTimeout(entry.timer);
+      if (entry) clearTimeout(entry.timer);
       try {
-        await entry.session.close();
-      } catch (error) {
-        console.warn('[okova] Unable to close DRM session', error);
+        await browser.storage.session.remove(SESSION_STORAGE_PREFIX + id);
+      } finally {
+        try {
+          await entry?.session.close();
+        } catch (error) {
+          console.warn('[okova] Unable to close DRM session', error);
+        }
       }
     };
 
@@ -85,15 +87,18 @@ export default defineBackground({
     const scheduleExpiry = (id: string, expiresAt: number) =>
       setTimeout(
         () => {
-          void runForSession(id, async () => {
-            const entry = state.sessions.get(id);
-            if (entry && entry.expiresAt <= Date.now()) await closeSession(id);
-          });
+          const entry = state.sessions.get(id);
+          if (entry && entry.expiresAt <= Date.now()) {
+            void closeSession(id).catch((error: unknown) => {
+              console.warn('[okova] Unable to expire DRM session', error);
+            });
+          }
         },
         Math.max(0, expiresAt - Date.now()),
       );
 
     const persistSession = async (id: string, entry: SessionEntry) => {
+      if (state.sessions.get(id) !== entry) throw new Error('DRM session closed');
       await browser.storage.session.set({
         [SESSION_STORAGE_PREFIX + id]: {
           state: entry.session.pause(),
@@ -104,6 +109,11 @@ export default defineBackground({
           challenge: entry.challenge,
         } satisfies z.infer<typeof storedSessionSchema>,
       });
+      // A lifecycle close can interrupt an in-flight storage write.
+      if (state.sessions.get(id) !== entry) {
+        await browser.storage.session.remove(SESSION_STORAGE_PREFIX + id);
+        throw new Error('DRM session closed');
+      }
     };
 
     const invalidatedTabs = new Set<number>();
@@ -147,16 +157,28 @@ export default defineBackground({
           console.warn('[okova] Unable to restore DRM session', error);
         }
       }
-      isRestoring = false;
-      invalidatedTabs.clear();
-    })();
+    })()
+      .catch((error: unknown) => {
+        console.warn('[okova] Unable to restore pending DRM sessions', error);
+      })
+      .finally(() => {
+        isRestoring = false;
+        invalidatedTabs.clear();
+      });
 
     const closeTabSessions = (tabId: number) => {
       if (isRestoring) invalidatedTabs.add(tabId);
       for (const id of new Set([...state.sessions.keys(), ...pending.keys()])) {
         const owner: unknown = JSON.parse(id);
         if (Array.isArray(owner) && owner[0] === tabId) {
-          void runForSession(id, () => closeSession(id));
+          // Active sessions must close now to unblock pending key-status waits.
+          // A session still loading its client is cleaned up once it is created.
+          const closing = state.sessions.has(id)
+            ? closeSession(id)
+            : runForSession(id, () => closeSession(id));
+          void closing.catch((error: unknown) => {
+            console.warn('[okova] Unable to close tab DRM session', error);
+          });
         }
       }
     };

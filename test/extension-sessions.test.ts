@@ -391,3 +391,61 @@ test.each([
     await send('close', 'other');
   },
 );
+
+test.each(['expiry', 'removal', 'navigation'])(
+  'a lifecycle %s closes an update waiting for key statuses',
+  async (action) => {
+    vi.mocked(Session.prototype.close).mockRestore();
+    vi.mocked(Session.prototype.waitForKeyStatusesChange).mockRestore();
+    const waiting = Promise.withResolvers<void>();
+    const waitForKeys = Session.prototype.waitForKeyStatusesChange;
+    vi.spyOn(Session.prototype, 'waitForKeyStatusesChange').mockImplementation(
+      function (this: Session) {
+        const result = waitForKeys.call(this);
+        waiting.resolve();
+        return result;
+      },
+    );
+    const removed = vi.spyOn(browser.tabs.onRemoved, 'addListener');
+    const updated = vi.spyOn(browser.tabs.onUpdated, 'addListener');
+    const send = startBackground();
+    const sender = { tab: tab(1) };
+    await send('generateRequest', 'waiting', sender);
+    const update = send('update', 'waiting', sender);
+    await waiting.promise;
+    if (action === 'expiry') {
+      await vi.advanceTimersByTimeAsync(5 * 60_000);
+    } else if (action === 'removal') {
+      removed.mock.calls[0]![0](1, { windowId: 1, isWindowClosing: false });
+    } else {
+      updated.mock.calls[0]![0](1, { status: 'loading' }, tab(1));
+    }
+    await expect(update).resolves.toBeUndefined();
+    await expect(send('license-request', 'waiting', sender)).resolves.toBeUndefined();
+    expect(await browser.storage.session.get(null)).toEqual({});
+    expect(vi.getTimerCount()).toBe(0);
+  },
+);
+
+test('tab closure does not leave a record from an interrupted storage write', async () => {
+  vi.mocked(Session.prototype.close).mockRestore();
+  const removed = vi.spyOn(browser.tabs.onRemoved, 'addListener');
+  const send = startBackground();
+  const sender = { tab: tab(1) };
+  await send('generateRequest', 'one', sender);
+  const started = Promise.withResolvers<void>();
+  const resumeWrite = Promise.withResolvers<void>();
+  const set = browser.storage.session.set.bind(browser.storage.session);
+  vi.spyOn(browser.storage.session, 'set').mockImplementationOnce(async (items) => {
+    started.resolve();
+    await resumeWrite.promise;
+    await set(items);
+  });
+  const challenge = send('license-request', 'one', sender);
+  await started.promise;
+  removed.mock.calls[0]![0](1, { windowId: 1, isWindowClosing: false });
+  await sessions[0]!.closed;
+  resumeWrite.resolve();
+  await expect(challenge).resolves.toBeUndefined();
+  expect(await browser.storage.session.get(null)).toEqual({});
+});

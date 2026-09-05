@@ -186,3 +186,37 @@ test.skipIf(!prdPath)('restores a PlayReady challenge with no selected client', 
   await send('close');
   expect(await pendingRecords()).toEqual([]);
 });
+
+test.each(['rejected read', 'synchronous storage error'])(
+  'continues handling messages after a restoration %s',
+  async (failure) => {
+    const error = new Error('Session storage unavailable');
+    const get = vi.spyOn(browser.storage.session, 'get');
+    if (failure === 'rejected read') {
+      get.mockRejectedValueOnce(error);
+    } else {
+      get.mockImplementationOnce(() => {
+        throw error;
+      });
+    }
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const send = startWorker();
+
+    for (const token of ['keyed', '']) {
+      await send('keystatuseschange', token, {
+        keyStatuses: { 'ABEiM0RVZneImaq7zN3u/w==': 'usable' },
+      });
+      expect(await appStorage.recentKeys.getValue()).toMatchObject([
+        { id: '00112233445566778899aabbccddeeff', value: 'usable' },
+      ]);
+      await appStorage.recentKeys.setValue([]);
+    }
+
+    await appStorage.clients.active.setValue(await loadWidevineClient());
+    await send('generateRequest');
+    expect(await send('license-request')).toEqual(expect.any(String));
+    await send('close');
+    expect(await pendingRecords()).toEqual([]);
+    expect(warn).toHaveBeenCalledWith('[okova] Unable to restore pending DRM sessions', error);
+  },
+);
