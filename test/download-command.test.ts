@@ -2,6 +2,15 @@ import { execFileSync } from 'node:child_process';
 import { expect, test } from 'vitest';
 import { buildDownloadCommand } from '../src/extension/entrypoints/popup/utils/command';
 
+test.each([
+  { id: '0123456789abcdef', value: 'abcdef0123456789' },
+  { id: '0123456789abcdef', value: 'abcdef0123456789', mpd: undefined },
+])('builds an editable command without a manifest URL: %j', (key) => {
+  expect(buildDownloadCommand(key)).toBe(
+    "N_m3u8DL-RE '' --key '0123456789abcdef:abcdef0123456789'",
+  );
+});
+
 test
   .skipIf(process.platform === 'win32')
   .each([

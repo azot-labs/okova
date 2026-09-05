@@ -4,4 +4,4 @@ import type { KeyInfo } from '@/utils/storage';
 const quoteShellArgument = (value: string) => `'${value.replaceAll("'", "'\"'\"'")}'`;
 
 export const buildDownloadCommand = (key: Pick<KeyInfo, 'mpd' | 'id' | 'value'>) =>
-  `N_m3u8DL-RE ${quoteShellArgument(key.mpd)} --key ${quoteShellArgument(`${key.id}:${key.value}`)}`;
+  `N_m3u8DL-RE ${quoteShellArgument(key.mpd ?? '')} --key ${quoteShellArgument(`${key.id}:${key.value}`)}`;
