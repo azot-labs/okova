@@ -113,3 +113,46 @@ test('playready PSSH advances over non-header records inside a PlayReady header'
 test('playready PSSH rejects empty payloads', () => {
   expect(() => new Pssh(new Uint8Array())).toThrowError(new InvalidPssh('Data must not be empty'));
 });
+
+test.each(['Привет 世界 😀', '\ufeffПривет'])(
+  'preserves Unicode in raw, record and PRO headers: %s',
+  (text) => {
+    const xml = WRM_HEADER.replace(
+      '<DATA></DATA>',
+      `<DATA><LA_URL>https://example.test/${text}</LA_URL></DATA>`,
+    );
+    const bytes = encodeUtf16Le(`\ufeff${xml}`);
+    const pro = createPlayreadyHeader([{ type: 1, data: bytes }]);
+    for (const input of [bytes, pro.subarray(6), pro, createPsshBox(PLAYREADY_SYSTEM_ID, pro)]) {
+      expect(new Pssh(input).wrmHeaders).toEqual([xml]);
+    }
+  },
+);
+
+test.each([
+  new Uint8Array([0x00, 0xd8]),
+  new Uint8Array([0x00, 0xdc]),
+  new Uint8Array([0x3c]),
+  encodeUtf16Le('<OTHER></OTHER>'),
+  encodeUtf16Le('<WRMHEADER><DATA></WRMHEADER>'),
+])('rejects invalid UTF-16LE or XML in type-1 records', (bytes) => {
+  expect(() => new Pssh(createPlayreadyHeader([{ type: 1, data: bytes }]))).toThrow();
+});
+
+test('enforces PRO total length, record count and record boundaries', () => {
+  const pro = createPlayreadyHeader([{ type: 1, data: encodeUtf16Le(WRM_HEADER) }]);
+  const invalid = [pro.subarray(0, pro.length - 1), new Uint8Array([...pro, 0])];
+  for (const [offset, value] of [
+    [0, pro.length - 1],
+    [4, 2],
+    [8, pro.length],
+  ] as const) {
+    const copy = new Uint8Array(pro);
+    new DataView(copy.buffer).setUint16(offset, value, true);
+    invalid.push(copy);
+  }
+  for (const bytes of invalid) {
+    expect(() => new Pssh(bytes)).toThrow();
+    expect(() => new Pssh(createPsshBox(PLAYREADY_SYSTEM_ID, bytes))).toThrow();
+  }
+});

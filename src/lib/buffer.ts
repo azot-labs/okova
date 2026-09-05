@@ -77,12 +77,6 @@ export const tryGetUtf16Le = (bytes: Uint8Array) => {
     return null;
   }
 
-  for (let i = 1; i < bytes.length; i += 2) {
-    if (bytes[i] !== 0) {
-      return null;
-    }
-  }
-
   try {
     const decoder = new TextDecoder('utf-16le', { fatal: true });
     return decoder.decode(bytes);

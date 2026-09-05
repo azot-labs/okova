@@ -100,6 +100,22 @@ describe('tryGetUtf16Le', () => {
 
   test('returns null for non-UTF-16LE input', () => {
     expect(tryGetUtf16Le(new Uint8Array([0x41, 0x42, 0x43]))).toBeNull();
-    expect(tryGetUtf16Le(new Uint8Array([0x41, 0x01]))).toBeNull();
+    expect(tryGetUtf16Le(new Uint8Array([0x00, 0xd8]))).toBeNull();
   });
+});
+
+test('WVD fields roundtrip at the maximum length and reject overflow', () => {
+  const fields = {
+    deviceType: WVD_DEVICE_TYPES.android,
+    securityLevel: 3,
+    privateKey: new Uint8Array(0xffff).fill(0xab),
+    clientId: new Uint8Array(0xffff).fill(0xcd),
+  };
+  expect(parseWvd(buildWvd(fields))).toMatchObject(fields);
+  expect(() => buildWvd({ ...fields, privateKey: new Uint8Array(0x10000) })).toThrow(
+    'private key exceeds',
+  );
+  expect(() => buildWvd({ ...fields, clientId: new Uint8Array(0x10000) })).toThrow(
+    'client ID exceeds',
+  );
 });

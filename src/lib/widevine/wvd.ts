@@ -106,6 +106,8 @@ export const buildWvd = (wvdData: {
   clientId: Uint8Array;
 }) => {
   const { deviceType, securityLevel, privateKey, clientId } = wvdData;
+  if (privateKey.length > 0xffff) throw new Error('WVD private key exceeds the 16-bit size limit');
+  if (clientId.length > 0xffff) throw new Error('WVD client ID exceeds the 16-bit size limit');
 
   // Private key length and client ID length
   const privateKeyLen = privateKey.length;

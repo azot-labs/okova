@@ -91,3 +91,13 @@ test('verifies WRMHEADER COCKTAIL checksums without node-specific crypto', async
 
   expect(await header.keyIds[0].verify(CONTENT_KEY)).toBe(true);
 });
+
+test('decodes base64 UTF-8 and UTF-16LE headers after Unicode detection', () => {
+  const xml =
+    '<WRMHEADER version="4.0.0.0"><DATA><LA_URL>https://example.test/许可/😀</LA_URL></DATA></WRMHEADER>';
+  for (const encoding of ['utf8', 'utf16le'] as const) {
+    expect(new WrmHeader(Buffer.from(xml, encoding).toString('base64')).laUrl).toBe(
+      'https://example.test/许可/😀',
+    );
+  }
+});

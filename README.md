@@ -250,6 +250,18 @@ rejects malformed boxes, raw DRM headers, and other MP4 box types. The returned
 `serializePsshBox` returns full box bytes; `psshBoxToBase64` returns base64. Both
 write a normal 32-bit size field, including for inputs parsed with extended sizes.
 
+Widevine and PlayReady challenge generation use the same bounded box parser,
+including extended-size and size-to-end boxes. A box sequence must contain the
+requested DRM system; malformed boxes are rejected instead of treated as raw
+payloads. Widevine still accepts non-box opaque initialization data for vendor
+compatibility. PlayReady also accepts raw UTF-16LE WRMHEADER XML, complete PROs,
+and standalone type-1 records. PRO and record lengths must match their contents;
+headers support Unicode and an optional UTF-16LE BOM.
+
+`fromHex` rejects odd-length input and non-hexadecimal characters. Empty input
+converts to an empty buffer or string. WVD export rejects private-key and client-ID
+fields larger than 65,535 bytes before writing the file.
+
 IDs accept 16-byte arrays, UUID strings, or 32 hex digits. Inspection returns
 lowercase hex in UUID byte order, accounting for PlayReady's GUID byte order.
 `getPsshKeyIds` prefers nonempty version 1 box KIDs, then reads Widevine protobuf
