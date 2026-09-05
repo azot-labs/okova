@@ -16,6 +16,7 @@ import { WidevineDeviceCredentials } from '@okova/lib/widevine/device-credential
 import { PlayReadyDeviceCredentials } from '@okova/lib/playready/device-credentials';
 import { Session } from '@okova/lib/api';
 import { z } from 'zod';
+import { parseClearKeyResponse } from '@/utils/clearkey';
 
 const SESSION_IDLE_TIMEOUT_MS = 5 * 60_000;
 
@@ -327,10 +328,36 @@ export default defineBackground({
           updateBadgeForTabInBackground(sender.tab);
         };
 
+        // Inspect before the history shortcut so later responses can add rotated keys.
+        if (
+          settings?.emeInterception &&
+          message.action === 'update' &&
+          message.keySystem === 'org.w3.clearkey'
+        ) {
+          const clearKeys = parseClearKeyResponse(parseBinary(message.message));
+          if (clearKeys?.length) {
+            const results = clearKeys.map((key) => ({
+              ...key,
+              url: message.url,
+              mpd: message.mpd,
+              pssh: message.initData,
+              createdAt: Date.now(),
+            }));
+            await setRecentKeys(results);
+            await appStorage.allKeys.add(...results);
+            if (sessionKey) await closeSession(sessionKey);
+            sendResponse({ keys: results });
+            return;
+          }
+        }
+
         const { initData } = message;
         const allKeys = await appStorage.allKeys.raw.getValue();
         const keys = allKeys?.filter(
-          (keyInfo) => keyInfo.pssh === initData && isCapturedKey(keyInfo),
+          (keyInfo) =>
+            keyInfo.pssh === initData &&
+            isCapturedKey(keyInfo) &&
+            (message.keySystem !== 'org.w3.clearkey' || keyInfo.url === message.url),
         );
         const hasKey = !!keys?.length;
         if (hasKey && (!sessionKey || !state.sessions.has(sessionKey))) {
@@ -356,6 +383,11 @@ export default defineBackground({
           }));
           await setRecentKeys(keys);
           await appStorage.allKeys.add(...keys);
+          sendResponse();
+          return;
+        }
+
+        if (message.keySystem === 'org.w3.clearkey') {
           sendResponse();
           return;
         }
