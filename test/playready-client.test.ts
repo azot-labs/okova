@@ -1,6 +1,6 @@
 import { readFile } from 'node:fs/promises';
 import { join } from 'node:path';
-import { expect, test } from 'vitest';
+import { assert, expect, test } from 'vitest';
 import * as common from '../src/lib/crypto/common';
 import { EccKey } from '../src/lib/crypto/ecc-key';
 import { fromBuffer } from '../src/lib';
@@ -54,6 +54,43 @@ test('creates playready device credentials from unpacked fixtures', async () => 
   expect(recreated.pack().length).toBeGreaterThan(0);
 });
 
+test('imports and roundtrips PRD v2 credentials without a group key', async () => {
+  const v3 = await loadPlayReadyClientData();
+  expect(v3[3]).toBe(3);
+  // v2 stores the certificate before the device keys and omits the group key.
+  const prd = new Uint8Array([0x50, 0x52, 0x44, 2, ...v3.subarray(292), ...v3.subarray(100, 292)]);
+  const original = await PlayReadyDeviceCredentials.from({ prd: v3 });
+  const client = await PlayReadyDeviceCredentials.from({ prd });
+
+  expect(client.groupKey).toBeNull();
+  expect(client.encryptionKey.dumps()).toEqual(original.encryptionKey.dumps());
+  expect(client.signingKey.dumps()).toEqual(original.signingKey.dumps());
+  expect(client.groupCertificate.dumps()).toEqual(original.groupCertificate.dumps());
+  expect(client.securityLevel).toBe(original.securityLevel);
+  expect(client.label).toBe(original.label);
+  expect(client.pack()).toEqual(prd);
+  expect(() => client.unpack()).toThrow('PRD v2 credentials have no group key');
+});
+
+test.each([0, 1, 4, 99, 255])('rejects unsupported PRD version %i', async (version) => {
+  const prd = new Uint8Array(await loadPlayReadyClientData());
+  prd[3] = version;
+  await expect(PlayReadyDeviceCredentials.from({ prd })).rejects.toThrow(
+    `Unsupported PRD version: ${version}`,
+  );
+});
+
+test('rejects invalid and truncated PRD headers', async () => {
+  const prd = new Uint8Array(await loadPlayReadyClientData());
+  for (const length of [0, 1, 2, 3]) {
+    await expect(
+      PlayReadyDeviceCredentials.from({ prd: prd.subarray(0, length) }),
+    ).rejects.toThrow();
+  }
+  prd[0] = 0;
+  await expect(PlayReadyDeviceCredentials.from({ prd })).rejects.toThrow();
+});
+
 test('rejects unpacked playready credentials when the group key does not match the certificate', async () => {
   const prd = await loadPlayReadyClientData();
   const original = await PlayReadyDeviceCredentials.from({ prd });
@@ -72,6 +109,7 @@ test('rejects unpacked playready credentials when the group key does not match t
 test('rejects already provisioned playready certificate chains when creating unpacked credentials', async () => {
   const prd = await loadPlayReadyClientData();
   const original = await PlayReadyDeviceCredentials.from({ prd });
+  assert(original.groupKey);
 
   await expect(
     PlayReadyDeviceCredentials.from({
@@ -84,6 +122,7 @@ test('rejects already provisioned playready certificate chains when creating unp
 test('verifies certificate extdata signatures when EXTDATA is present', async () => {
   const prd = await loadPlayReadyClientData();
   const original = await PlayReadyDeviceCredentials.from({ prd });
+  assert(original.groupKey);
   const unpacked = original.unpack();
   const issuerChain = CertificateChain.from(unpacked['bgroupcert.dat']);
   const leafCertificate = await Certificate.newLeafCert({
