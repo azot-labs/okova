@@ -15,10 +15,27 @@ import { getMessageType } from '@okova/lib/widevine/message';
 import { WidevineDeviceCredentials } from '@okova/lib/widevine/device-credentials';
 import { PlayReadyDeviceCredentials } from '@okova/lib/playready/device-credentials';
 import { Session } from '@okova/lib/api';
+import { z } from 'zod';
 
 const SESSION_IDLE_TIMEOUT_MS = 5 * 60_000;
 
+const SESSION_STORAGE_PREFIX = 'pending-session:';
+const storedSessionSchema = z.object({
+  state: z.string(),
+  client: z.discriminatedUnion('type', [
+    z.object({ type: z.literal('wvd'), data: z.string() }),
+    z.object({ type: z.literal('prd'), data: z.string() }),
+  ]),
+  tabId: z.number().optional(),
+  expiresAt: z.number(),
+  serverCertificate: z.string().optional(),
+  challenge: z.string(),
+});
+
 type SessionEntry = {
+  client: z.infer<typeof storedSessionSchema>['client'];
+  expiresAt: number;
+  challenge: string;
   session: Session;
   tabId: number | undefined;
   timer: ReturnType<typeof setTimeout>;
@@ -40,19 +57,129 @@ export default defineBackground({
 
     const closeSession = async (id: string) => {
       const entry = state.sessions.get(id);
-      if (!entry) return;
       state.sessions.delete(id);
-      clearTimeout(entry.timer);
+      if (entry) clearTimeout(entry.timer);
       try {
-        await entry.session.close();
-      } catch (error) {
-        console.warn('[okova] Unable to close DRM session', error);
+        await browser.storage.session.remove(SESSION_STORAGE_PREFIX + id);
+      } finally {
+        try {
+          await entry?.session.close();
+        } catch (error) {
+          console.warn('[okova] Unable to close DRM session', error);
+        }
       }
     };
 
+    // Serialize work for each owner without delaying unrelated sessions.
+    const pending = new Map<string, Promise<unknown>>();
+    const runForSession = (id: string, action: () => Promise<void>) => {
+      const operation = (pending.get(id) ?? restored).then(action);
+      const settled = operation.catch((error: unknown) => {
+        console.warn('[okova] Unable to process DRM session', error);
+      });
+      pending.set(id, settled);
+      void settled.then(() => {
+        if (pending.get(id) === settled) pending.delete(id);
+      });
+      return operation;
+    };
+
+    const scheduleExpiry = (id: string, expiresAt: number) =>
+      setTimeout(
+        () => {
+          const entry = state.sessions.get(id);
+          if (entry && entry.expiresAt <= Date.now()) {
+            void closeSession(id).catch((error: unknown) => {
+              console.warn('[okova] Unable to expire DRM session', error);
+            });
+          }
+        },
+        Math.max(0, expiresAt - Date.now()),
+      );
+
+    const persistSession = async (id: string, entry: SessionEntry) => {
+      if (state.sessions.get(id) !== entry) throw new Error('DRM session closed');
+      await browser.storage.session.set({
+        [SESSION_STORAGE_PREFIX + id]: {
+          state: entry.session.pause(),
+          client: entry.client,
+          tabId: entry.tabId,
+          expiresAt: entry.expiresAt,
+          serverCertificate: entry.serverCertificate,
+          challenge: entry.challenge,
+        } satisfies z.infer<typeof storedSessionSchema>,
+      });
+      // A lifecycle close can interrupt an in-flight storage write.
+      if (state.sessions.get(id) !== entry) {
+        await browser.storage.session.remove(SESSION_STORAGE_PREFIX + id);
+        throw new Error('DRM session closed');
+      }
+    };
+
+    const invalidatedTabs = new Set<number>();
+    let isRestoring = true;
+    const restored = (async () => {
+      const records = await browser.storage.session.get(null);
+      for (const [key, value] of Object.entries(records)) {
+        if (!key.startsWith(SESSION_STORAGE_PREFIX)) continue;
+        const id = key.slice(SESSION_STORAGE_PREFIX.length);
+        try {
+          const record = storedSessionSchema.parse(value);
+          if (record.expiresAt <= Date.now()) {
+            await browser.storage.session.remove(key);
+            continue;
+          }
+          const data = fromBase64(record.client.data).toBuffer();
+          const engine =
+            record.client.type === 'wvd'
+              ? new Widevine({
+                  deviceCredentials: await WidevineDeviceCredentials.from({ wvd: data }),
+                })
+              : new PlayReady({
+                  deviceCredentials: await PlayReadyDeviceCredentials.from({ prd: data }),
+                });
+          if (record.serverCertificate && engine instanceof Widevine) {
+            await engine.setServerCertificate(fromBase64(record.serverCertificate).toBuffer());
+          }
+          if (record.tabId !== undefined && invalidatedTabs.has(record.tabId)) {
+            await browser.storage.session.remove(key);
+            continue;
+          }
+          state.sessions.set(id, {
+            ...record,
+            tabId: record.tabId,
+            serverCertificate: record.serverCertificate,
+            session: Session.resume(record.state, engine),
+            timer: scheduleExpiry(id, record.expiresAt),
+          });
+        } catch (error) {
+          await browser.storage.session.remove(key);
+          console.warn('[okova] Unable to restore DRM session', error);
+        }
+      }
+    })()
+      .catch((error: unknown) => {
+        console.warn('[okova] Unable to restore pending DRM sessions', error);
+      })
+      .finally(() => {
+        isRestoring = false;
+        invalidatedTabs.clear();
+      });
+
     const closeTabSessions = (tabId: number) => {
-      for (const [id, entry] of state.sessions) {
-        if (entry.tabId === tabId) void closeSession(id);
+      if (isRestoring) invalidatedTabs.add(tabId);
+      for (const id of new Set([...state.sessions.keys(), ...pending.keys()])) {
+        const owner: unknown = JSON.parse(id);
+        if (Array.isArray(owner) && owner[0] === tabId) {
+          // Active sessions must close now to unblock pending key-status waits.
+          // A session still loading its client is cleaned up once it is created.
+          const closing = state.sessions.has(id)
+            ? closeSession(id)
+            : runForSession(id, () => closeSession(id));
+          void closing.catch((error: unknown) => {
+            console.warn('[okova] Unable to close tab DRM session', error);
+          });
+        }
       }
     };
     browser.tabs.onRemoved.addListener(closeTabSessions);
@@ -174,16 +301,22 @@ export default defineBackground({
               message.sessionToken,
             ])
           : undefined;
-      (async () => {
+      const handleMessage = async () => {
         if (message.action === 'close') {
           if (sessionKey) await closeSession(sessionKey);
           sendResponse();
           return;
         }
+        if (sessionKey) {
+          const current = state.sessions.get(sessionKey);
+          if (current && current.expiresAt <= Date.now()) await closeSession(sessionKey);
+        }
         const entry = sessionKey ? state.sessions.get(sessionKey) : undefined;
         if (sessionKey && entry) {
           clearTimeout(entry.timer);
-          entry.timer = setTimeout(() => void closeSession(sessionKey), SESSION_IDLE_TIMEOUT_MS);
+          entry.expiresAt = Date.now() + SESSION_IDLE_TIMEOUT_MS;
+          entry.timer = scheduleExpiry(sessionKey, entry.expiresAt);
+          await persistSession(sessionKey, entry);
         }
         console.log('[okova] Received message', message);
 
@@ -258,15 +391,25 @@ export default defineBackground({
           const mediaKeys = await keySystemAccess.createMediaKeys();
           const session = mediaKeys.createSession();
           // Close after five minutes of inactivity, including silently removed frames.
-          const timer = setTimeout(() => void closeSession(sessionKey), SESSION_IDLE_TIMEOUT_MS);
+          const clientData = fromBuffer(await cdm.deviceCredentials.pack()).toBase64();
+          const expiresAt = Date.now() + SESSION_IDLE_TIMEOUT_MS;
+          const timer = scheduleExpiry(sessionKey, expiresAt);
           const entry: SessionEntry = {
             session,
+            client: {
+              type: cdm instanceof Widevine ? 'wvd' : 'prd',
+              data: clientData,
+            },
+            expiresAt,
+            challenge: '',
             tabId: sender.tab?.id,
             timer,
             serverCertificate,
           };
           state.sessions.set(sessionKey, entry);
           await session.generateRequest(message.initDataType, fromBase64(initData).toBuffer());
+          entry.challenge = fromBuffer(await session.waitForLicenseRequest()).toBase64();
+          await persistSession(sessionKey, entry);
           sendResponse();
           return;
         }
@@ -296,41 +439,52 @@ export default defineBackground({
               ),
             );
             sessionEntry.serverCertificate = serverCertificate;
+            sessionEntry.challenge = fromBuffer(await session.waitForLicenseRequest()).toBase64();
           }
-          const challenge = await session.waitForLicenseRequest();
-          sendResponse(fromBuffer(challenge).toBase64());
+          await persistSession(sessionKey, sessionEntry);
+          sendResponse(sessionEntry.challenge);
         } else if (message.action === 'update') {
           const response = parseBinary(message.message);
           const isServiceCertificate =
             session.engine instanceof Widevine && getMessageType(response) === 5;
           await session.update(response);
           if (isServiceCertificate) {
+            sessionEntry.challenge = fromBuffer(await session.waitForLicenseRequest()).toBase64();
+            await persistSession(sessionKey, sessionEntry);
             sendResponse();
             return;
           }
 
-          try {
-            const keys = await session.waitForKeyStatusesChange();
-            const results = Array.from(keys, ([id, value]) => ({
-              id,
-              value,
-              url: message.url,
-              mpd: message.mpd,
-              pssh: message.initData,
-              createdAt: new Date().getTime(),
-            }));
-            await setRecentKeys(results);
-            await appStorage.allKeys.add(...results);
-            sendResponse({ keys: results });
-          } finally {
-            await closeSession(sessionKey);
-          }
+          const keys = await session.waitForKeyStatusesChange();
+          const results = Array.from(keys, ([id, value]) => ({
+            id,
+            value,
+            url: message.url,
+            mpd: message.mpd,
+            pssh: message.initData,
+            createdAt: new Date().getTime(),
+          }));
+          await setRecentKeys(results);
+          await appStorage.allKeys.add(...results);
+          await closeSession(sessionKey);
+          sendResponse({ keys: results });
         } else {
           sendResponse();
         }
-      })().catch(async (error: unknown) => {
-        if (sessionKey) await closeSession(sessionKey);
-        console.warn('[okova] DRM request failed', error);
+      };
+      const handleSafely = async () => {
+        try {
+          await handleMessage();
+        } catch (error: unknown) {
+          if (sessionKey) await closeSession(sessionKey);
+          console.warn('[okova] DRM request failed', error);
+          sendResponse();
+        }
+      };
+      void (
+        sessionKey ? runForSession(sessionKey, handleSafely) : restored.then(handleSafely)
+      ).catch((error: unknown) => {
+        console.warn('[okova] DRM session storage failed', error);
         sendResponse();
       });
       return true;
