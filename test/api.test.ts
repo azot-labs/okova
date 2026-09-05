@@ -72,7 +72,7 @@ class FakeEngine extends BaseMediaKeysEngine {
   }
 }
 
-describe('fetchDecryptionKeys', () => {
+describe.each(['successful', 'failed'])('fetchDecryptionKeys with %s cleanup', (cleanup) => {
   test.each(['success', 'generateRequest', 'fetch', 'update'] as const)(
     'closes its session after %s',
     async (outcome) => {
@@ -92,6 +92,7 @@ describe('fetchDecryptionKeys', () => {
       const close = vi.spyOn(session, 'close').mockImplementation(async () => {
         startClose();
         await closeFinished;
+        if (cleanup === 'failed') throw new Error('Session close failed');
       });
       let isSettled = false;
       const result = fetchDecryptionKeys({

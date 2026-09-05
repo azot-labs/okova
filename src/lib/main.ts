@@ -72,7 +72,12 @@ const fetchDecryptionKeys = async (params: FetchDecryptionKeysParams) => {
     return await Promise.race([keysReady, flowFailed]);
   } finally {
     session.removeEventListener('message', handleMessage);
-    await session.close();
+    try {
+      await session.close();
+    } catch (error) {
+      // Cleanup must not replace acquired keys or the original license-flow error.
+      params.logger?.warn('Failed to close decryption session', error);
+    }
   }
 };
 
