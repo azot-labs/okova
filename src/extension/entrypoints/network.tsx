@@ -29,23 +29,6 @@ export default defineUnlistedScript(() => {
     window.postMessage(message, '*');
   };
 
-  const isResponseMessage = (event: MessageEvent) => {
-    return event.data && event.data.jsonrpc === '2.0' && event.data.method === 'response';
-  };
-
-  const originalWorker = window.Worker;
-  // @ts-ignore
-  window.Worker = function (scriptUrl: string | URL, options: WorkerOptions) {
-    const worker = new originalWorker(scriptUrl, options);
-    worker.addEventListener('message', (event) => {
-      if (isResponseMessage(event)) {
-        const { url, headers, text } = event.data.params;
-        postMessage(url, headers, text);
-      }
-    });
-    return worker;
-  };
-
   const inspectFetchResponse = async (response: Response) => {
     const url = response.url;
     const headers = Object.fromEntries(response.headers.entries());
@@ -134,74 +117,8 @@ export default defineUnlistedScript(() => {
     window.XMLHttpRequest = PatchedXHR;
   };
 
-  const patchBlobFetch = () => {
-    const originalCreateObjectURL = URL.createObjectURL;
-    URL.createObjectURL = function (blob) {
-      if (
-        blob instanceof Blob &&
-        (blob.type.includes('javascript') ||
-          blob.type.includes('application/x-javascript') ||
-          blob.type === 'text/javascript' ||
-          blob.type === '')
-      ) {
-        // Convert blob to text synchronously
-        const xhr = new XMLHttpRequest();
-        const url = originalCreateObjectURL(blob);
-        xhr.overrideMimeType('text/plain; charset=x-user-defined');
-        xhr.open('GET', url, false);
-        xhr.send();
-        const blobDataBuffer = Uint8Array.from(xhr.response as string, (c) => c.charCodeAt(0));
-        const sourceCode = new TextDecoder().decode(blobDataBuffer);
-        const injectionCode = `
-          const originalFetch = fetch;
-          fetch = async function(...args) {
-            const response = await originalFetch.apply(this, args);
-
-            const inspectResponse = async () => {
-              const size = response.headers.get('content-length');
-              const MAX_SIZE = 1024 * 1024 * 1; // 1 MB
-              const isSizeOk = Number(size) < MAX_SIZE;
-              if (size && !isSizeOk) return;
-
-              const type = response.headers.get('content-type');
-              const isTypeOk = type?.includes('xml') || type?.includes('dash') || type?.includes('octet-stream');
-              if (!isTypeOk) return;
-
-              const clone = response.clone();
-              const text = await clone.text();
-              const message = {
-                jsonrpc: '2.0',
-                method: 'response',
-                params: {
-                  url: response.url,
-                  text,
-                  headers: Object.fromEntries(response.headers.entries())
-                },
-                id: Date.now()
-              };
-              if (typeof WorkerGlobalScope !== 'undefined' && self instanceof WorkerGlobalScope) {
-                self.postMessage(message);
-              } else {
-                window.postMessage(message, '*');
-              }
-            };
-            void inspectResponse().catch(error => {
-              console.warn('[okova] Fetch response inspection failed', error);
-            });
-            return response;
-          };
-        `;
-        const modifiedCode = injectionCode + '\n' + sourceCode;
-        const modifiedBlob = new Blob([modifiedCode], { type: blob.type });
-        return originalCreateObjectURL.call(URL, modifiedBlob);
-      }
-      return originalCreateObjectURL.call(URL, blob);
-    };
-  };
-
   patchFetch();
   patchXmlHttpRequest();
-  patchBlobFetch();
 
   console.log('[okova] Response interception added');
 });

@@ -21,6 +21,8 @@ Okova is a set of tools (JavaScript library, command-line utility and browser ex
 
 With EME interception enabled, the extension inspects ClearKey license responses and saves their key IDs and keys as hex. ClearKey capture works without an imported device or spoofing enabled.
 
+Experimental request interception detects streaming manifests in page fetch and XMLHttpRequest responses. Requests made inside workers are not inspected.
+
 ### Installing Chrome extension
 
 **Developer Mode** needs to be enabled in `chrome://extensions/` page

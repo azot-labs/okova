@@ -1,4 +1,3 @@
-import { runInNewContext } from 'node:vm';
 import { DOMParser, XMLSerializer } from '@xmldom/xmldom';
 import { afterEach, beforeEach, expect, test, vi } from 'vitest';
 import network from '../src/extension/entrypoints/network';
@@ -7,7 +6,6 @@ const manifest = '<MPD xmlns="urn:mpeg:dash:schema:mpd:2011"/>';
 const url = 'https://example.com/manifest.mpd';
 const postMessage = vi.fn();
 const nativeFetch = vi.fn<typeof fetch>();
-const nativeCreateObjectURL = vi.fn<typeof URL.createObjectURL>();
 
 // Node lacks XMLHttpRequest. Model its response getters and load events.
 class NativeXHR extends EventTarget {
@@ -41,8 +39,6 @@ beforeEach(() => {
   vi.stubGlobal('fetch', nativeFetch);
   vi.spyOn(console, 'log').mockImplementation(() => {});
   vi.spyOn(console, 'warn').mockImplementation(() => {});
-  // Restore the object URL patch after each test.
-  vi.spyOn(URL, 'createObjectURL').mockImplementation(nativeCreateObjectURL);
   network.main();
 });
 
@@ -154,26 +150,7 @@ test('contains XHR body inspection failures while delivering load events', async
 const makeResponse = () =>
   new Response(manifest, { headers: { 'content-type': 'application/dash+xml' } });
 
-// Execute the actual generated blob worker script with Node's real fetch body types.
-const useWorkerFetch = async () => {
-  let workerBlob: Blob | undefined;
-  const patchedCreateObjectURL = URL.createObjectURL;
-  nativeCreateObjectURL.mockImplementation((blob) => {
-    if (blob instanceof Blob) workerBlob = blob;
-    return 'blob:test';
-  });
-  patchedCreateObjectURL(new Blob([''], { type: 'text/javascript' }));
-  if (!workerBlob) throw new Error('Worker script was not generated');
-  class WorkerGlobalScope {
-    postMessage = postMessage;
-  }
-  const context = { fetch: nativeFetch, console, WorkerGlobalScope, self: new WorkerGlobalScope() };
-  runInNewContext(await workerBlob.text(), context);
-  vi.stubGlobal('fetch', context.fetch);
-};
-
-test.each(['page', 'worker'])('%s fetch returns before inspection finishes', async (context) => {
-  if (context === 'worker') await useWorkerFetch();
+test('page fetch returns before inspection finishes', async () => {
   const response = makeResponse();
   const inspection = Promise.withResolvers<string>();
   const clone = response.clone();
@@ -189,38 +166,32 @@ test.each(['page', 'worker'])('%s fetch returns before inspection finishes', asy
   await vi.waitFor(() => expect(postMessage).toHaveBeenCalledOnce());
 });
 
-test.each([
-  ['page', 'clone'],
-  ['page', 'body'],
-  ['page', 'message'],
-  ['worker', 'clone'],
-  ['worker', 'body'],
-  ['worker', 'message'],
-])('%s fetch contains %s inspection failures', async (context, failure) => {
-  if (context === 'worker') await useWorkerFetch();
-  const response = makeResponse();
-  const error = new Error('Inspection failed');
-  if (failure === 'clone') {
-    vi.spyOn(response, 'clone').mockImplementation(() => {
-      throw error;
-    });
-  } else if (failure === 'body') {
-    const clone = response.clone();
-    vi.spyOn(clone, 'text').mockRejectedValue(error);
-    vi.spyOn(response, 'clone').mockReturnValue(clone);
-  } else {
-    postMessage.mockImplementation(() => {
-      throw error;
-    });
-  }
-  nativeFetch.mockResolvedValue(response);
-  expect(await fetch(url)).toBe(response);
-  expect(await response.text()).toBe(manifest);
-  await vi.waitFor(() => expect(console.warn).toHaveBeenCalledWith(expect.any(String), error));
-});
+test.each(['clone', 'body', 'message'])(
+  'page fetch contains %s inspection failures',
+  async (failure) => {
+    const response = makeResponse();
+    const error = new Error('Inspection failed');
+    if (failure === 'clone') {
+      vi.spyOn(response, 'clone').mockImplementation(() => {
+        throw error;
+      });
+    } else if (failure === 'body') {
+      const clone = response.clone();
+      vi.spyOn(clone, 'text').mockRejectedValue(error);
+      vi.spyOn(response, 'clone').mockReturnValue(clone);
+    } else {
+      postMessage.mockImplementation(() => {
+        throw error;
+      });
+    }
+    nativeFetch.mockResolvedValue(response);
+    expect(await fetch(url)).toBe(response);
+    expect(await response.text()).toBe(manifest);
+    await vi.waitFor(() => expect(console.warn).toHaveBeenCalledWith(expect.any(String), error));
+  },
+);
 
-test.each(['page', 'worker'])('%s fetch preserves network failures', async (context) => {
-  if (context === 'worker') await useWorkerFetch();
+test('page fetch preserves network failures', async () => {
   const error = new TypeError('Network failure');
   nativeFetch.mockRejectedValue(error);
   await expect(fetch(url)).rejects.toBe(error);
