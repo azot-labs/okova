@@ -72,6 +72,7 @@ const fetchDecryptionKeys = async (params: FetchDecryptionKeysParams) => {
     return await Promise.race([keysReady, flowFailed]);
   } finally {
     session.removeEventListener('message', handleMessage);
+    await session.close();
   }
 };
 

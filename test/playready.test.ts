@@ -3,7 +3,7 @@ import { DOMParser, XMLSerializer } from '@xmldom/xmldom';
 import * as utils from '@noble/curves/utils.js';
 import { afterEach } from 'vitest';
 import { expect, test, vi } from 'vitest';
-import { fromBase64, toBufferSource } from '../src/lib';
+import { fetchDecryptionKeys, fromBase64, toBufferSource } from '../src/lib';
 import { requestMediaKeySystemAccess, setSupportedEngines } from '../src/lib/api';
 import * as common from '../src/lib/crypto/common';
 import { EccKey } from '../src/lib/crypto/ecc-key';
@@ -428,6 +428,17 @@ test('playready pause and resume preserve key identifiers', async () => {
 
   expect(resumedSession.keys).toEqual(session.keys);
   expect(resumedSession.keyStatuses).toEqual(session.keyStatuses);
+});
+
+test('fetchDecryptionKeys releases playready sessions after invalid initialization data', async () => {
+  const cdm = createPlayReady();
+
+  for (let index = 0; index <= PlayReady.MAX_NUM_OF_SESSIONS; index++) {
+    await expect(
+      fetchDecryptionKeys({ cdm, pssh: 'AQ==', server: 'https://license.example.test' }),
+    ).rejects.toThrow();
+    expect(cdm.sessions.size).toBe(0);
+  }
 });
 
 test('playready engine rejects opening more than 16 sessions', () => {
