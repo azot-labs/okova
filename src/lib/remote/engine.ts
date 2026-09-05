@@ -119,7 +119,6 @@ const createHttpClient = ({ baseUrl, secret, ...params }: RemoteParams) => {
 class RemoteSession extends BaseMediaKeysEngineSession {
   #http: ReturnType<typeof createHttpClient>;
   #dispose: (sessionId: string) => void;
-  #closed: boolean;
 
   constructor(
     sessionId: string,
@@ -131,15 +130,15 @@ class RemoteSession extends BaseMediaKeysEngineSession {
     this.sessionId = sessionId;
     this.#http = http;
     this.#dispose = dispose;
-    this.#closed = false;
   }
 
   async generateRequest(initData: Uint8Array, initDataType: string = 'cenc') {
-    if (this.#closed) throw new Error('session closed');
+    this.assertOpen();
     const data = await this.#http.post(`/sessions/${this.sessionId}/generate-request`, {
       initDataType,
       initData: fromBuffer(initData).toBase64(),
     });
+    this.assertOpen();
     const message = fromBase64(data.message).toBuffer();
     this.emitMessage({
       message,
@@ -148,10 +147,11 @@ class RemoteSession extends BaseMediaKeysEngineSession {
   }
 
   async update(response: Uint8Array) {
-    if (this.#closed) throw new Error('session closed');
+    this.assertOpen();
     const data = await this.#http.post(`/sessions/${this.sessionId}/update`, {
       response: fromBuffer(response).toBase64(),
     });
+    this.assertOpen();
     if (data?.message) {
       this.emitMessage({
         message: fromBase64(data.message).toBuffer(),
@@ -168,6 +168,7 @@ class RemoteSession extends BaseMediaKeysEngineSession {
     }
 
     const keys = await this.#getKeys();
+    this.assertOpen();
     if (keys.size) {
       this.#syncKeys(keys);
       this.emitKeysChange();
@@ -176,16 +177,23 @@ class RemoteSession extends BaseMediaKeysEngineSession {
   }
 
   async close() {
-    this.#closed = true;
+    if (this.isClosed) return;
+    this.isClosed = true;
+    this.keys.clear();
+    this.keyStatuses.clear();
     await this.#http.post(`/sessions/${this.sessionId}/close`);
     this.#dispose(this.sessionId);
     this.dispatchEvent(new Event('closed'));
   }
 
   async remove() {
-    this.#closed = true;
+    if (this.isClosed) return;
+    this.isClosed = true;
+    this.keys.clear();
+    this.keyStatuses.clear();
     await this.#http.delete(`/sessions/${this.sessionId}`);
     this.#dispose(this.sessionId);
+    this.dispatchEvent(new Event('closed'));
     this.dispatchEvent(new Event('removed'));
   }
 

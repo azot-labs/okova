@@ -119,3 +119,31 @@ test('remote requests time out', async () => {
   await vi.advanceTimersByTimeAsync(100);
   await expectation;
 });
+
+test.each(['close', 'remove'] as const)(
+  'remote %s clears local keys and rejects later work',
+  async (operation) => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (url: string | URL | Request) => {
+        const route = String(url);
+        const body = route.endsWith('/sessions')
+          ? { id: 'session-close' }
+          : route.endsWith('/update')
+            ? { keys: { '00112233445566778899aabbccddeeff': 'ffeeddccbbaa99887766554433221100' } }
+            : { success: true };
+        return Response.json(body);
+      }),
+    );
+    const cdm = new Remote({ keySystem: 'com.widevine.alpha', baseUrl: 'https://remote.example' });
+    const session = await cdm.createSession();
+    await session.update(new Uint8Array([1]));
+    expect(session.keys.size).toBe(1);
+    await session[operation]();
+    expect(session.keys.size).toBe(0);
+    expect(session.keyStatuses.size).toBe(0);
+    await expect(session.waitForKeys()).rejects.toThrow('Session closed');
+    await expect(session.update(new Uint8Array([1]))).rejects.toThrow('Session closed');
+    await expect(session.generateRequest(new Uint8Array([1]))).rejects.toThrow('Session closed');
+  },
+);

@@ -76,6 +76,8 @@ export abstract class BaseMediaKeysEngineSession
   extends EventTarget
   implements MediaKeysEngineSession
 {
+  protected isClosed = false;
+
   sessionId = '';
   sessionType: MediaKeySessionType;
   keyStatuses: Map<MediaKeyId, MediaKeyStatus>;
@@ -105,11 +107,17 @@ export abstract class BaseMediaKeysEngineSession
   remove?(): Promise<void>;
   pause?(): string;
 
+  protected assertOpen() {
+    if (this.isClosed) throw new Error('Session closed');
+  }
+
   async decrypt(packet: EncryptedPacket) {
+    this.assertOpen();
     return decryptPacketWithKeys(packet, this.keys, this.keyStatuses);
   }
 
-  waitForKeys(options?: WaitForKeysOptions) {
+  async waitForKeys(options?: WaitForKeysOptions) {
+    this.assertOpen();
     return waitForKeys(this, () => this.keys, options);
   }
 
@@ -187,6 +195,7 @@ export const waitForKeys = (
     const cleanup = () => {
       if (timeout) clearTimeout(timeout);
       target.removeEventListener('keyschange', handler);
+      target.removeEventListener('closed', handleClosed);
       options.signal?.removeEventListener('abort', handleAbort);
     };
 
@@ -195,6 +204,11 @@ export const waitForKeys = (
       if (!keys.size) return;
       cleanup();
       resolve(new Map(keys));
+    };
+
+    const handleClosed = () => {
+      cleanup();
+      reject(new Error('Session closed'));
     };
 
     const handleAbort = () => {
@@ -210,6 +224,7 @@ export const waitForKeys = (
     }
 
     target.addEventListener('keyschange', handler);
+    target.addEventListener('closed', handleClosed);
     options.signal?.addEventListener('abort', handleAbort, { once: true });
   });
 };
@@ -287,7 +302,9 @@ export class Session extends EventTarget implements MediaKeySession {
 
   async #getEngineSession() {
     if (this.#closed) throw new Error('Session closed');
-    return this.#engineSessionPromise;
+    const session = await this.#engineSessionPromise;
+    if (this.#closed) throw new Error('Session closed');
+    return session;
   }
 
   #attachEngineSession(session: MediaKeysEngineSession) {
@@ -330,14 +347,21 @@ export class Session extends EventTarget implements MediaKeySession {
   #handleClosed = () => {
     if (this.#closed) return;
     this.#closed = true;
+    this.keys.clear();
+    this.keyStatuses.clear();
+    this.initData = undefined;
+    this.initDataType = undefined;
+    this.#messageQueue.length = 0;
+    const session = this.#engineSession;
+    session?.removeEventListener('message', this.#handleMessage);
+    session?.removeEventListener('keyschange', this.#handleKeysChange);
+    session?.removeEventListener('keystatuseschange', this.#handleKeyStatusesChange);
+    session?.removeEventListener('closed', this.#handleClosed);
     this.dispatchEvent(new Event('closed'));
   };
 
   #handleRemove = () => {
-    if (!this.#closed) {
-      this.#closed = true;
-      this.dispatchEvent(new Event('closed'));
-    }
+    this.#handleClosed();
 
     this.dispatchEvent(new Event('removed'));
   };
@@ -348,6 +372,7 @@ export class Session extends EventTarget implements MediaKeySession {
   }
 
   async load(_sessionId: string): Promise<boolean> {
+    if (this.#closed) throw new Error('Session closed');
     return false;
   }
 
@@ -361,16 +386,14 @@ export class Session extends EventTarget implements MediaKeySession {
   async update(response: BufferSource): Promise<void> {
     const session = await this.#getEngineSession();
     await session.update(parseBufferSource(response));
+    if (this.#closed) throw new Error('Session closed');
     this.#syncFromEngineSession(session);
   }
 
   async close(): Promise<void> {
     const session = await this.#getEngineSession();
     await session.close();
-    if (!this.#closed) {
-      this.#closed = true;
-      this.dispatchEvent(new Event('closed'));
-    }
+    this.#handleClosed();
   }
 
   async remove(): Promise<void> {
@@ -380,39 +403,60 @@ export class Session extends EventTarget implements MediaKeySession {
   }
 
   async waitForLicenseRequest() {
+    if (this.#closed) throw new Error('Session closed');
     // A service certificate can replace an earlier, unencrypted challenge.
     const queuedMessage = this.#messageQueue.findLast(
       (message) => message.messageType === 'license-request',
     );
     if (queuedMessage) return queuedMessage.message;
 
-    return new Promise<Uint8Array>((resolve) => {
+    return new Promise<Uint8Array>((resolve, reject) => {
+      const cleanup = () => {
+        this.removeEventListener('message', handler);
+        this.removeEventListener('closed', handleClosed);
+      };
+      const handleClosed = () => {
+        cleanup();
+        reject(new Error('Session closed'));
+      };
       const handler = (event: Event) => {
         const messageEvent = event as MediaKeyMessageEvent;
         if (messageEvent.messageType !== 'license-request') return;
 
-        this.removeEventListener('message', handler);
+        cleanup();
         resolve(new Uint8Array(messageEvent.message));
       };
 
       this.addEventListener('message', handler);
+      this.addEventListener('closed', handleClosed);
     });
   }
 
   async waitForKeyStatusesChange() {
+    if (this.#closed) throw new Error('Session closed');
     if (this.keys.size) return this.keys;
 
-    return new Promise<MediaKeysMap>((resolve) => {
-      const handler = () => {
+    return new Promise<MediaKeysMap>((resolve, reject) => {
+      const cleanup = () => {
         this.removeEventListener('keystatuseschange', handler);
+        this.removeEventListener('closed', handleClosed);
+      };
+      const handleClosed = () => {
+        cleanup();
+        reject(new Error('Session closed'));
+      };
+      const handler = () => {
+        cleanup();
         resolve(new Map(this.keys));
       };
 
       this.addEventListener('keystatuseschange', handler);
+      this.addEventListener('closed', handleClosed);
     });
   }
 
   pause() {
+    if (this.#closed) throw new Error('Session closed');
     if (!this.#engineSession?.pause) {
       throw new Error('Key system does not support session serialization');
     }
