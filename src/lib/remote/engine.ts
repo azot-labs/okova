@@ -8,6 +8,7 @@ type RemoteParams = {
   baseUrl: string;
   secret?: string;
   client?: string;
+  customData?: string;
   headers?: Record<string, string>;
   requestTimeoutMs?: number;
 };
@@ -139,11 +140,14 @@ class RemoteSession extends BaseMediaKeysEngineSession {
   async generateRequest(initData: Uint8Array, initDataType: string = 'cenc') {
     this.assertOpen();
     const serverCertificate = this.#getServerCertificate();
-    const data = await this.#http.post(`/sessions/${this.sessionId}/generate-request`, {
-      initDataType,
-      serverCertificate,
-      initData: fromBuffer(initData).toBase64(),
-    });
+    const data = await this.#http.post(
+      `/sessions/${encodeURIComponent(this.sessionId)}/generate-request`,
+      {
+        initDataType,
+        serverCertificate,
+        initData: fromBuffer(initData).toBase64(),
+      },
+    );
     this.assertOpen();
     if (serverCertificate !== undefined && data?.serverCertificateAccepted !== true) {
       throw new Error(
@@ -159,7 +163,7 @@ class RemoteSession extends BaseMediaKeysEngineSession {
 
   async update(response: Uint8Array) {
     this.assertOpen();
-    const data = await this.#http.post(`/sessions/${this.sessionId}/update`, {
+    const data = await this.#http.post(`/sessions/${encodeURIComponent(this.sessionId)}/update`, {
       response: fromBuffer(response).toBase64(),
     });
     this.assertOpen();
@@ -189,7 +193,7 @@ class RemoteSession extends BaseMediaKeysEngineSession {
 
   async close() {
     if (this.isClosed) return;
-    await this.#http.post(`/sessions/${this.sessionId}/close`);
+    await this.#http.post(`/sessions/${encodeURIComponent(this.sessionId)}/close`);
     if (this.isClosed) return;
     this.isClosed = true;
     this.keys.clear();
@@ -200,7 +204,7 @@ class RemoteSession extends BaseMediaKeysEngineSession {
 
   async remove() {
     if (this.isClosed) return;
-    await this.#http.delete(`/sessions/${this.sessionId}`);
+    await this.#http.delete(`/sessions/${encodeURIComponent(this.sessionId)}`);
     if (this.isClosed) return;
     this.isClosed = true;
     this.keys.clear();
@@ -211,7 +215,7 @@ class RemoteSession extends BaseMediaKeysEngineSession {
   }
 
   async #getKeys() {
-    const keys = await this.#http.get(`/sessions/${this.sessionId}/keys`);
+    const keys = await this.#http.get(`/sessions/${encodeURIComponent(this.sessionId)}/keys`);
     return new Map(Object.entries(keys as Record<string, string>));
   }
 
@@ -232,6 +236,7 @@ export class Remote extends BaseMediaKeysEngine {
 
   #http: ReturnType<typeof createHttpClient>;
   #client?: string;
+  #customData?: string;
   #serverCertificate?: string;
 
   constructor(params: RemoteParams) {
@@ -239,6 +244,7 @@ export class Remote extends BaseMediaKeysEngine {
     this.keySystem = params.keySystem;
     this.#http = createHttpClient(params);
     this.#client = params.client;
+    this.#customData = params.customData;
     this.sessions = new Map();
   }
 
@@ -260,6 +266,7 @@ export class Remote extends BaseMediaKeysEngine {
       keySystem: this.keySystem,
       sessionType,
       client: this.#client,
+      customData: this.#customData,
     });
     const session = new RemoteSession(
       data.id,

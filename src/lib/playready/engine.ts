@@ -12,13 +12,15 @@ export class PlayReady extends BaseMediaKeysEngine {
   sessions: Map<string, MediaKeysEngineSession>;
   deviceCredentials: PlayReadyDeviceCredentials;
   revocationInfo: RevocationInfoStore;
+  readonly customData?: string;
 
   static DeviceCredentials = PlayReadyDeviceCredentials;
 
-  constructor(options: { deviceCredentials: PlayReadyDeviceCredentials }) {
+  constructor(options: { deviceCredentials: PlayReadyDeviceCredentials; customData?: string }) {
     super();
     this.sessions = new Map();
     this.deviceCredentials = options.deviceCredentials;
+    this.customData = options.customData;
     this.revocationInfo = new RevocationInfoStore();
   }
 
@@ -49,6 +51,7 @@ export class PlayReady extends BaseMediaKeysEngine {
       this.deviceCredentials,
       this.#handleSessionDisposed,
       {
+        customData: this.customData,
         getRevocationListsXml: () => this.revocationInfo.buildRequestXml(),
         mergeRevocationInfo: (revInfoXml) => {
           this.revocationInfo.merge(revInfoXml);
@@ -67,6 +70,7 @@ export class PlayReady extends BaseMediaKeysEngine {
       this.deviceCredentials,
       this.#handleSessionDisposed,
       {
+        customData: this.customData,
         getRevocationListsXml: () => this.revocationInfo.buildRequestXml(),
         mergeRevocationInfo: (revInfoXml) => {
           this.revocationInfo.merge(revInfoXml);

@@ -75,6 +75,7 @@ type PlayReadySessionCredentials =
     };
 
 type PlayReadySessionOptions = {
+  customData?: string;
   getRevocationListsXml?: () => string;
   mergeRevocationInfo?: (revInfoXml: string) => void;
 };
@@ -195,9 +196,19 @@ export class PlayReadySession extends BaseMediaKeysEngineSession {
     dataCipher: string,
     protocolVersion: string | number,
     revLists?: string,
+    customData?: string,
   ) {
     const clientTime = Math.floor(Date.now() / 1000);
     const revocationListsXml = revLists ?? '';
+    const customDataXml =
+      customData === undefined
+        ? ''
+        : `<CustomData>${customData
+            .replaceAll('&', '&amp;')
+            .replaceAll('<', '&lt;')
+            .replaceAll('>', '&gt;')
+            .replaceAll('"', '&quot;')
+            .replaceAll("'", '&#x27;')}</CustomData>`;
 
     return (
       `<LA xmlns="http://schemas.microsoft.com/DRM/2007/03/protocols" Id="SignedData" xml:space="preserve">` +
@@ -207,6 +218,7 @@ export class PlayReadySession extends BaseMediaKeysEngineSession {
       `<CLIENTVERSION>${this.clientVersion}</CLIENTVERSION>` +
       `</CLIENTINFO>` +
       revocationListsXml +
+      customDataXml +
       `<LicenseNonce>${nonce}</LicenseNonce>` +
       `<ClientTime>${clientTime}</ClientTime>` +
       `<EncryptedData xmlns="http://www.w3.org/2001/04/xmlenc#" Type="http://www.w3.org/2001/04/xmlenc#Element">` +
@@ -287,7 +299,11 @@ export class PlayReadySession extends BaseMediaKeysEngineSession {
     this.emitKeyStatusesChange();
   }
 
-  async getLicenseChallenge(wrm_header: string | WrmHeader, rev_lists?: string) {
+  async getLicenseChallenge(
+    wrm_header: string | WrmHeader,
+    rev_lists?: string,
+    customData = this.#options.customData,
+  ) {
     this.assertOpen();
     const wrmHeader = wrm_header instanceof WrmHeader ? wrm_header : new WrmHeader(wrm_header);
     const xml_key = new XmlKey();
@@ -301,6 +317,7 @@ export class PlayReadySession extends BaseMediaKeysEngineSession {
       bytesToBase64(await this.#getDataCipher(xml_key)),
       protocol_version,
       revocationListsXml,
+      customData,
     );
 
     const contentHash = await createSha256(fromText(laContent).toBuffer());

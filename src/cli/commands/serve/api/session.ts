@@ -44,6 +44,7 @@ app.post(
     z.object({
       sessionType: z.string().optional(),
       client: z.string().optional(),
+      customData: z.string().optional(),
     }),
   ),
   async (c) => {
@@ -86,7 +87,7 @@ app.post(
     const cdm =
       client instanceof WidevineDeviceCredentials
         ? new Widevine({ deviceCredentials: client })
-        : new PlayReady({ deviceCredentials: client });
+        : new PlayReady({ deviceCredentials: client, customData: c.req.valid('json').customData });
 
     setSupportedEngines([cdm]);
     const keySystemAccess = requestMediaKeySystemAccess(cdm.keySystem, []);

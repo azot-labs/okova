@@ -200,3 +200,26 @@ test.each(['close', 'remove'] as const)(
     await pendingMessage;
   },
 );
+
+test('remote encodes PlayReady session IDs in request URLs', async () => {
+  const fetch = vi.fn<typeof globalThis.fetch>();
+  vi.stubGlobal('fetch', fetch);
+  try {
+    fetch.mockResolvedValueOnce(Response.json({ id: 'a/b+c==' }));
+    const engine = new Remote({
+      keySystem: 'com.microsoft.playready.recommendation',
+      baseUrl: 'https://remote.example',
+    });
+    const session = await engine.createSession();
+    fetch.mockResolvedValueOnce(Response.json({ message: 'AQ==', messageType: 'license-request' }));
+    await session.generateRequest(new Uint8Array([1]));
+    expect(fetch.mock.calls[1]?.[0]).toBe(
+      'https://remote.example/sessions/a%2Fb%2Bc%3D%3D/generate-request',
+    );
+    fetch.mockResolvedValueOnce(Response.json({ success: true }));
+    await session.close();
+    expect(fetch.mock.calls[2]?.[0]).toBe('https://remote.example/sessions/a%2Fb%2Bc%3D%3D/close');
+  } finally {
+    vi.unstubAllGlobals();
+  }
+});
