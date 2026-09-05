@@ -1,5 +1,6 @@
 import { cbc, ctr } from '@noble/ciphers/aes.js';
-import { describe, expect, test } from 'vitest';
+import { describe, expect, test, vi } from 'vitest';
+import { fetchDecryptionKeys } from '../src/lib/main';
 import {
   BaseMediaKeysEngine,
   BaseMediaKeysEngineSession,
@@ -70,6 +71,51 @@ class FakeEngine extends BaseMediaKeysEngine {
     return new FakeEngineSession(sessionType);
   }
 }
+
+describe.each(['successful', 'failed'])('fetchDecryptionKeys with %s cleanup', (cleanup) => {
+  test.each(['success', 'generateRequest', 'fetch', 'update'] as const)(
+    'closes its session after %s',
+    async (outcome) => {
+      const engine = new FakeEngine();
+      const session = new FakeEngineSession();
+      vi.spyOn(engine, 'createSession').mockResolvedValue(session);
+      const fetchImpl = vi.fn<typeof fetch>().mockResolvedValue(new Response());
+      const failure = new Error('License flow failed');
+      if (outcome === 'fetch') {
+        fetchImpl.mockRejectedValue(failure);
+      } else if (outcome !== 'success') {
+        vi.spyOn(session, outcome).mockRejectedValue(failure);
+      }
+
+      const { promise: closeFinished, resolve: finishClose } = Promise.withResolvers<void>();
+      const { promise: closeStarted, resolve: startClose } = Promise.withResolvers<void>();
+      const close = vi.spyOn(session, 'close').mockImplementation(async () => {
+        startClose();
+        await closeFinished;
+        if (cleanup === 'failed') throw new Error('Session close failed');
+      });
+      let isSettled = false;
+      const result = fetchDecryptionKeys({
+        cdm: engine,
+        pssh: 'AQ==',
+        server: 'https://license.example.test',
+        fetch: fetchImpl,
+      }).finally(() => {
+        isSettled = true;
+      });
+      const assertion =
+        outcome === 'success'
+          ? expect(result).resolves.toEqual(new Map([[KEY_ID, KEY_VALUE]]))
+          : expect(result).rejects.toBe(failure);
+
+      await closeStarted;
+      expect(isSettled).toBe(false);
+      finishClose();
+      await assertion;
+      expect(close).toHaveBeenCalledOnce();
+    },
+  );
+});
 
 describe('waitForKeys', () => {
   test('resolves immediately when keys already exist', async () => {
