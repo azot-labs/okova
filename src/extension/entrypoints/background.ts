@@ -1,4 +1,4 @@
-import { appStorage, Client, getRecentKeysForUrl, isCapturedKey } from '@/utils/storage';
+import { appStorage, getRecentKeysForUrl, isCapturedKey } from '@/utils/storage';
 import type { KeyInfo } from '@/utils/storage';
 import {
   fromBase64,
@@ -33,10 +33,8 @@ export default defineBackground({
     });
 
     const state: {
-      client: Client | null;
       sessions: Map<string, SessionEntry>;
     } = {
-      client: null,
       sessions: new Map(),
     };
 
@@ -60,12 +58,11 @@ export default defineBackground({
     browser.tabs.onRemoved.addListener(closeTabSessions);
 
     const loadClient = async () => {
-      if (state.client) return state.client;
       console.log('[okova] Loading DRM client...');
-      state.client = await appStorage.clients.active.getValue();
-      if (state.client) {
+      const client = await appStorage.clients.active.getValue();
+      if (client) {
         console.log('[okova] DRM client loaded');
-        return state.client;
+        return client;
       } else {
         console.log('[okova] Unable to load client');
         return null;
