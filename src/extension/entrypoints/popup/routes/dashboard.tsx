@@ -4,6 +4,7 @@ import {
   useActiveClient,
   useActiveTabUrl,
   useClients,
+  useDrmFailure,
   useRecentKeys,
   useRecentKeysByDomain,
   useSettings,
@@ -14,15 +15,17 @@ import { Header } from '../components/header';
 import { CellImportClient } from '../components/cell-import-client';
 import { NoKeys } from '../components/no-keys';
 import { KeysList } from '../components/keys-list';
-import { appStorage, getRecentKeysForUrl, getWebsiteDomain } from '@/utils/storage';
+import { appStorage, getRecentKeysForUrl, getWebsiteDomain, drmStages } from '@/utils/storage';
 
 export const Dashboard = () => {
+  const [failure] = useDrmFailure();
   const [settings] = useSettings();
   const [clients] = useClients();
   const [recentKeys] = useRecentKeys();
   const [recentKeysByDomain] = useRecentKeysByDomain();
   const [activeTabUrl] = useActiveTabUrl();
   const [activeClient, setActiveClient] = useActiveClient();
+  const activeFailure = createMemo(() => failure()?.url === activeTabUrl() && failure());
   const activeDomain = createMemo(() => getWebsiteDomain(activeTabUrl()));
   const recentKeysHeader = createMemo(() =>
     activeDomain() ? `Recent Keys for ${activeDomain()}` : 'Recent Keys',
@@ -55,6 +58,19 @@ export const Dashboard = () => {
           </Cell>
         </Show>
 
+        <Show when={activeFailure()}>
+          {(diagnostic) => (
+            <div
+              role="alert"
+              class="rounded-lg bg-red-50 p-3 text-[13px] text-red-900 dark:bg-red-950 dark:text-red-200"
+            >
+              <p class="font-semibold">{drmStages[diagnostic().stage]} failed</p>
+              <p class="mt-1 whitespace-pre-wrap break-words select-text">{diagnostic().error}</p>
+              <p class="mt-2 text-[11px]">Reload the page to retry after fixing the error.</p>
+            </div>
+          )}
+        </Show>
+
         <KeysList
           keys={activeDomainRecentKeys}
           header={
@@ -76,7 +92,7 @@ export const Dashboard = () => {
           }
         />
 
-        <Show when={activeDomainRecentKeys().length === 0}>
+        <Show when={activeDomainRecentKeys().length === 0 && !activeFailure()}>
           <footer class="w-full flex flex-col items-center justify-center text-center gap-1 mt-auto py-2">
             <NoKeys />
           </footer>

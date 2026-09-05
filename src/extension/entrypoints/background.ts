@@ -1,5 +1,6 @@
 import { appStorage, getRecentKeysForUrl, isCapturedKey } from '@/utils/storage';
-import type { KeyInfo } from '@/utils/storage';
+import { getDrmFailureStorage } from '@/utils/storage';
+import type { DrmStage, KeyInfo } from '@/utils/storage';
 import {
   fromBase64,
   fromBuffer,
@@ -167,7 +168,14 @@ export default defineBackground({
         invalidatedTabs.clear();
       });
 
+    const tabGenerations = new Map<number, number>();
     const closeTabSessions = (tabId: number) => {
+      tabGenerations.set(tabId, (tabGenerations.get(tabId) ?? 0) + 1);
+      void getDrmFailureStorage(tabId)
+        .removeValue()
+        .catch((error: unknown) => {
+          console.warn('[okova] Unable to clear DRM diagnostic', error);
+        });
       if (isRestoring) invalidatedTabs.add(tabId);
       for (const id of new Set([...state.sessions.keys(), ...pending.keys()])) {
         const owner: unknown = JSON.parse(id);
@@ -302,8 +310,20 @@ export default defineBackground({
               message.sessionToken,
             ])
           : undefined;
+      let stage: DrmStage = 'setup';
+      const tabId = sender.tab?.id;
+      const tabGeneration = tabId === undefined ? 0 : (tabGenerations.get(tabId) ?? 0);
+      const clearFailure = async () => {
+        if (tabId === undefined || tabGeneration !== (tabGenerations.get(tabId) ?? 0)) return;
+        try {
+          await getDrmFailureStorage(tabId).removeValue();
+        } catch (error) {
+          console.warn('[okova] Unable to clear DRM diagnostic', error);
+        }
+      };
       const handleMessage = async () => {
         if (message.action === 'close') {
+          stage = 'close';
           if (sessionKey) await closeSession(sessionKey);
           sendResponse();
           return;
@@ -317,10 +337,12 @@ export default defineBackground({
           clearTimeout(entry.timer);
           entry.expiresAt = Date.now() + SESSION_IDLE_TIMEOUT_MS;
           entry.timer = scheduleExpiry(sessionKey, entry.expiresAt);
+          stage = 'storage';
           await persistSession(sessionKey, entry);
         }
         console.log('[okova] Received message', message);
 
+        stage = 'setup';
         const settings = await appStorage.settings.getValue();
         const setRecentKeys = async (keys: KeyInfo[]) => {
           await appStorage.recentKeys.setValue(keys);
@@ -334,6 +356,7 @@ export default defineBackground({
           message.action === 'update' &&
           message.keySystem === 'org.w3.clearkey'
         ) {
+          stage = 'license';
           const clearKeys = parseClearKeyResponse(parseBinary(message.message));
           if (clearKeys?.length) {
             const results = clearKeys.map((key) => ({
@@ -343,8 +366,11 @@ export default defineBackground({
               pssh: message.initData,
               createdAt: Date.now(),
             }));
+            stage = 'history';
             await setRecentKeys(results);
             await appStorage.allKeys.add(...results);
+            await clearFailure();
+            stage = 'close';
             if (sessionKey) await closeSession(sessionKey);
             sendResponse({ keys: results });
             return;
@@ -366,7 +392,9 @@ export default defineBackground({
             url: message.url ?? keyInfo.url,
             mpd: message.mpd ?? keyInfo.mpd,
           }));
+          stage = 'history';
           await setRecentKeys(currentSiteKeys);
+          await clearFailure();
           sendResponse();
           return;
         }
@@ -381,8 +409,10 @@ export default defineBackground({
             pssh: message.initData,
             createdAt: new Date().getTime(),
           }));
+          stage = 'history';
           await setRecentKeys(keys);
           await appStorage.allKeys.add(...keys);
+          await clearFailure();
           sendResponse();
           return;
         }
@@ -408,16 +438,18 @@ export default defineBackground({
             sendResponse();
             return;
           }
+          await clearFailure();
+          stage = 'client';
           const cdm = await loadCdm();
-          if (!cdm) {
-            sendResponse();
-            return;
-          }
+          if (!cdm)
+            throw new Error('No active DRM client. Import or select a client in the popup.');
           const serverCertificate =
             typeof message.serverCertificate === 'string' ? message.serverCertificate : undefined;
           if (serverCertificate && cdm instanceof Widevine) {
+            stage = 'certificate';
             await cdm.setServerCertificate(fromBase64(serverCertificate).toBuffer());
           }
+          stage = 'session';
           setSupportedEngines([cdm]);
           const keySystemAccess = requestMediaKeySystemAccess(cdm.keySystem, []);
           const mediaKeys = await keySystemAccess.createMediaKeys();
@@ -439,8 +471,10 @@ export default defineBackground({
             serverCertificate,
           };
           state.sessions.set(sessionKey, entry);
+          stage = 'challenge';
           await session.generateRequest(message.initDataType, fromBase64(initData).toBuffer());
           entry.challenge = fromBuffer(await session.waitForLicenseRequest()).toBase64();
+          stage = 'storage';
           await persistSession(sessionKey, entry);
           sendResponse();
           return;
@@ -454,12 +488,14 @@ export default defineBackground({
 
         const { session } = sessionEntry;
         if (message.action === 'license-request') {
+          stage = 'challenge';
           const serverCertificate = message.serverCertificate;
           if (
             session.engine instanceof Widevine &&
             typeof serverCertificate === 'string' &&
             serverCertificate !== sessionEntry.serverCertificate
           ) {
+            stage = 'certificate';
             const { signedDrmCertificate } = await parseCertificate(serverCertificate);
             // Replace any session-level override and regenerate with the new certificate.
             await session.update(
@@ -471,22 +507,29 @@ export default defineBackground({
               ),
             );
             sessionEntry.serverCertificate = serverCertificate;
+            stage = 'challenge';
             sessionEntry.challenge = fromBuffer(await session.waitForLicenseRequest()).toBase64();
           }
+          stage = 'storage';
           await persistSession(sessionKey, sessionEntry);
           sendResponse(sessionEntry.challenge);
         } else if (message.action === 'update') {
+          stage = 'license';
           const response = parseBinary(message.message);
           const isServiceCertificate =
             session.engine instanceof Widevine && getMessageType(response) === 5;
+          if (isServiceCertificate) stage = 'certificate';
           await session.update(response);
           if (isServiceCertificate) {
+            stage = 'challenge';
             sessionEntry.challenge = fromBuffer(await session.waitForLicenseRequest()).toBase64();
+            stage = 'storage';
             await persistSession(sessionKey, sessionEntry);
             sendResponse();
             return;
           }
 
+          stage = 'keys';
           const keys = await session.waitForKeyStatusesChange();
           const results = Array.from(keys, ([id, value]) => ({
             id,
@@ -496,8 +539,11 @@ export default defineBackground({
             pssh: message.initData,
             createdAt: new Date().getTime(),
           }));
+          stage = 'history';
           await setRecentKeys(results);
           await appStorage.allKeys.add(...results);
+          await clearFailure();
+          stage = 'close';
           await closeSession(sessionKey);
           sendResponse({ keys: results });
         } else {
@@ -508,8 +554,24 @@ export default defineBackground({
         try {
           await handleMessage();
         } catch (error: unknown) {
-          if (sessionKey) await closeSession(sessionKey);
-          console.warn('[okova] DRM request failed', error);
+          console.warn('[okova] DRM request failed at', stage, error);
+          try {
+            if (tabId !== undefined && tabGeneration === (tabGenerations.get(tabId) ?? 0)) {
+              await getDrmFailureStorage(tabId).setValue({
+                stage,
+                error: error instanceof Error ? error.message : String(error),
+                url: sender.tab?.url ?? message.url ?? '',
+                createdAt: Date.now(),
+              });
+            }
+          } catch (diagnosticError) {
+            console.warn('[okova] Unable to store DRM diagnostic', diagnosticError);
+          }
+          try {
+            if (sessionKey) await closeSession(sessionKey);
+          } catch (cleanupError) {
+            console.warn('[okova] Unable to clean up failed DRM session', cleanupError);
+          }
           sendResponse();
         }
       };

@@ -13,6 +13,26 @@ export type KeyInfo = {
   createdAt: number;
 };
 
+export const drmStages = {
+  setup: 'Request setup',
+  client: 'Client loading',
+  certificate: 'Server certificate',
+  session: 'Session creation',
+  challenge: 'Challenge generation',
+  license: 'License processing',
+  keys: 'Key extraction',
+  storage: 'Session storage',
+  history: 'Key storage',
+  close: 'Session cleanup',
+} as const;
+
+export type DrmStage = keyof typeof drmStages;
+export type DrmFailure = { stage: DrmStage; error: string; url: string; createdAt: number };
+
+// Session storage keeps diagnostics across popup/worker restarts, but not browser restarts.
+export const getDrmFailureStorage = (tabId: number) =>
+  storage.defineItem<DrmFailure>(`session:drm-failure:${tabId}`);
+
 export type RecentKeysByDomain = Record<string, KeyInfo[]>;
 
 // History also contains EME statuses, which cannot be reused as content keys.
