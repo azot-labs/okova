@@ -72,10 +72,10 @@ const help = () => {
       const [input, output] = positionals;
       switch (subcommand) {
         case 'pack':
-          client.pack(input, args.values.format as string | undefined, output);
+          await client.pack(input, args.values.format as string | undefined, output);
           break;
         case 'unpack':
-          client.unpack(input, output);
+          await client.unpack(input, output);
           break;
         case 'info':
           client.info(input);
@@ -121,4 +121,7 @@ const help = () => {
       }
     }
   }
-})();
+})().catch((error: unknown) => {
+  console.error(error instanceof Error ? error.message : String(error));
+  process.exitCode = 1;
+});
