@@ -36,6 +36,15 @@ test('remote session', async () => {
     client,
   });
 
+  const certificateResponse = await fetch(url, {
+    method: 'POST',
+    body: toBufferSource(new Uint8Array([0x08, 0x04])),
+  });
+  if (!certificateResponse.ok) {
+    throw new Error(`Service certificate request failed: ${certificateResponse.status}`);
+  }
+  await cdm.setServerCertificate(new Uint8Array(await certificateResponse.arrayBuffer()));
+
   setSupportedEngines([cdm]);
   const keySystemAccess = requestMediaKeySystemAccess(cdm.keySystem, []);
   const mediaKeys = await keySystemAccess.createMediaKeys();
