@@ -429,7 +429,7 @@ test.each(['deadline', 'removal', 'navigation', 'close'])(
       });
       await getDrmFailureStorage(1).removeValue();
     }
-    if (action === 'close') await getDrmFailureStorage(1).removeValue();
+    if (action === 'close') expect(await getDrmFailureStorage(1).getValue()).toBeNull();
     expect(await browser.storage.session.get(null)).toEqual({});
     expect(vi.getTimerCount()).toBe(0);
   },
@@ -786,5 +786,48 @@ test('a timed-out client load cannot create a session when it later resolves', a
   await vi.advanceTimersByTimeAsync(0);
   expect(Session.prototype.generateRequest).not.toHaveBeenCalled();
   expect(await getDrmFailureStorage(1).getValue()).toMatchObject({ stage: 'client' });
+  expect(vi.getTimerCount()).toBe(0);
+});
+
+test('request deadlines include worker restoration and expired requests never execute', async () => {
+  const restoration = Promise.withResolvers<Record<string, unknown>>();
+  vi.spyOn(browser.storage.session, 'get').mockImplementationOnce(async () => restoration.promise);
+  const send = startBackground();
+  const response = vi.fn();
+  const request = send('generateRequest', 'queued').then(response);
+  await vi.advanceTimersByTimeAsync(24_999);
+  expect(response).not.toHaveBeenCalled();
+  await vi.advanceTimersByTimeAsync(1);
+  expect(response).toHaveBeenCalledOnce();
+  await request;
+  restoration.resolve({});
+  await vi.advanceTimersByTimeAsync(0);
+  expect(Session.prototype.generateRequest).not.toHaveBeenCalled();
+  expect(vi.getTimerCount()).toBe(0);
+});
+
+test('a queued request responds by its own deadline while earlier cleanup is still pending', async () => {
+  const send = startBackground();
+  await send('generateRequest', 'queued');
+  const closing = Promise.withResolvers<void>();
+  const started = Promise.withResolvers<void>();
+  vi.mocked(Session.prototype.close).mockImplementationOnce(() => {
+    started.resolve();
+    return closing.promise;
+  });
+  const first = send('close', 'queued');
+  await started.promise;
+  await vi.advanceTimersByTimeAsync(1000);
+  const response = vi.fn();
+  const queued = send('generateRequest', 'queued').then(response);
+  await vi.advanceTimersByTimeAsync(24_999);
+  expect(response).not.toHaveBeenCalled();
+  await vi.advanceTimersByTimeAsync(1);
+  expect(response).toHaveBeenCalledOnce();
+  await Promise.all([first, queued]);
+  closing.resolve();
+  await vi.advanceTimersByTimeAsync(0);
+  expect(Session.prototype.generateRequest).toHaveBeenCalledOnce();
+  expect(Session.prototype.close).toHaveBeenCalledOnce();
   expect(vi.getTimerCount()).toBe(0);
 });

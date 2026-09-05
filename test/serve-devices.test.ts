@@ -142,3 +142,37 @@ test
     400,
   );
 });
+
+test.each(['missing', 'invalid magic', 'truncated WVD', 'truncated PRD'])(
+  'DRM-aware selection skips an authorized %s candidate',
+  async (failure) => {
+    const unusable = join(directory, 'unusable.device');
+    if (failure !== 'missing') {
+      const data = failure === 'invalid magic' ? 'invalid' : failure.slice(-3);
+      await writeFile(unusable, data);
+    }
+    config.clients.unshift(unusable);
+    config.users = { secret: { name: 'test', clients: [unusable, clientPath] } };
+    const response = await openForSystem({ keySystem: 'com.widevine.alpha' }, 'secret');
+    expect(response.status).toBe(200);
+    expect(await response.json()).toMatchObject({ client: clientPath });
+    expect(clients.has(unusable)).toBe(false);
+
+    const explicit = await openForSystem(
+      { keySystem: 'com.widevine.alpha', client: unusable },
+      'secret',
+    );
+    const expectedStatus = failure === 'invalid magic' ? 400 : 500;
+    expect(explicit.status).toBe(expectedStatus);
+    expect((await open(undefined, 'secret')).status).toBe(expectedStatus);
+  },
+);
+
+test('unusable candidates do not permit falling back to an unauthorized device', async () => {
+  const missing = join(directory, 'missing.wvd');
+  config.clients.unshift(missing);
+  config.users = { secret: { name: 'test', clients: [missing] } };
+  expect((await openForSystem({ keySystem: 'com.widevine.alpha' }, 'secret')).status).toBe(400);
+  expect(clients.size).toBe(0);
+  expect(sessions.size).toBe(0);
+});

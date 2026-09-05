@@ -112,14 +112,21 @@ app.post(
       if (!isAllowed(path)) continue;
       let client = clients.get(path);
       if (!client) {
-        const clientData = await readFile(path);
-        const magic = fromBuffer(clientData.subarray(0, 3)).toText();
-        if (magic === 'WVD') {
-          client = await WidevineDeviceCredentials.from({ wvd: clientData });
-        } else if (magic === 'PRD') {
-          client = await PlayReadyDeviceCredentials.from({ prd: clientData });
-        } else {
-          return c.json({ error: 'Client is not a valid WVD or PRD file' }, 400);
+        try {
+          const clientData = await readFile(path);
+          const magic = fromBuffer(clientData.subarray(0, 3)).toText();
+          if (magic === 'WVD') {
+            client = await WidevineDeviceCredentials.from({ wvd: clientData });
+          } else if (magic === 'PRD') {
+            client = await PlayReadyDeviceCredentials.from({ prd: clientData });
+          } else {
+            if (clientName === undefined && requestedSystem) continue;
+            return c.json({ error: 'Client is not a valid WVD or PRD file' }, 400);
+          }
+        } catch (error) {
+          // Automatic selection can recover from stale paths and malformed provisions.
+          if (clientName === undefined && requestedSystem) continue;
+          throw error;
         }
         clients.set(path, client);
       }

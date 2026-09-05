@@ -23,6 +23,7 @@ import { z } from 'zod';
 import { parseClearKeyResponse } from '@/utils/clearkey';
 
 const REQUEST_TIMEOUT_MS = 25_000;
+const EXPLICIT_CLOSE_REASON = new Error('DRM request closed');
 const SESSION_IDLE_TIMEOUT_MS = 5 * 60_000;
 
 const SESSION_STORAGE_PREFIX = 'pending-session:';
@@ -320,9 +321,21 @@ export default defineBackground({
             ])
           : undefined;
       if (message.action === 'close' && sessionKey) {
-        activeRequests.get(sessionKey)?.abort(new Error('DRM request closed'));
+        activeRequests.get(sessionKey)?.abort(EXPLICIT_CLOSE_REASON);
       }
       const controller = new AbortController();
+      let hasResponded = false;
+      const respond = (response?: unknown) => {
+        if (hasResponded) return;
+        hasResponded = true;
+        clearTimeout(timer);
+        sendResponse(response);
+      };
+      // Include time spent queued behind session work or worker restoration.
+      const timer = setTimeout(() => {
+        controller.abort(new Error(`DRM request timed out after ${REQUEST_TIMEOUT_MS}ms`));
+        respond();
+      }, REQUEST_TIMEOUT_MS);
       const run = <T>(operation: T | Promise<T>) =>
         withAbort(Promise.resolve(operation), controller.signal);
       let stage: DrmStage = 'setup';
@@ -340,7 +353,7 @@ export default defineBackground({
         if (message.action === 'close') {
           stage = 'close';
           if (sessionKey) await closeSession(sessionKey);
-          sendResponse();
+          respond();
           return;
         }
         if (sessionKey) {
@@ -387,7 +400,7 @@ export default defineBackground({
             await run(clearFailure());
             stage = 'close';
             if (sessionKey) await closeSession(sessionKey);
-            sendResponse({ keys: results });
+            respond({ keys: results });
             return;
           }
         }
@@ -418,29 +431,29 @@ export default defineBackground({
           await setRecentKeys([...capturedKeys, ...keys.filter((key) => !capturedIds.has(key.id))]);
           await run(appStorage.allKeys.add(...keys));
           await run(clearFailure());
-          sendResponse();
+          respond();
           return;
         }
 
         if (message.keySystem === 'org.w3.clearkey') {
-          sendResponse();
+          respond();
           return;
         }
 
         if (!settings?.spoofing) {
           console.log('[okova] Spoofing disabled, skipping message...');
-          sendResponse();
+          respond();
           return;
         }
 
         if (!sessionKey) {
-          sendResponse();
+          respond();
           return;
         }
 
         if (message.action === 'generateRequest') {
           if (state.sessions.has(sessionKey)) {
-            sendResponse();
+            respond();
             return;
           }
           await run(clearFailure());
@@ -487,13 +500,13 @@ export default defineBackground({
           entry.challenge = fromBuffer(await run(session.waitForLicenseRequest())).toBase64();
           stage = 'storage';
           await run(persistSession(sessionKey, entry));
-          sendResponse();
+          respond();
           return;
         }
 
         const sessionEntry = state.sessions.get(sessionKey);
         if (!sessionEntry) {
-          sendResponse();
+          respond();
           return;
         }
 
@@ -527,7 +540,7 @@ export default defineBackground({
           }
           stage = 'storage';
           await run(persistSession(sessionKey, sessionEntry));
-          sendResponse(sessionEntry.challenge);
+          respond(sessionEntry.challenge);
         } else if (message.action === 'update') {
           stage = 'license';
           const response = parseBinary(message.message);
@@ -542,7 +555,7 @@ export default defineBackground({
             ).toBase64();
             stage = 'storage';
             await run(persistSession(sessionKey, sessionEntry));
-            sendResponse();
+            respond();
             return;
           }
 
@@ -563,27 +576,30 @@ export default defineBackground({
           await run(clearFailure());
           stage = 'close';
           await closeSession(sessionKey);
-          sendResponse({ keys: results });
+          respond({ keys: results });
         } else {
-          sendResponse();
+          respond();
         }
       };
       const handleSafely = async () => {
+        // A timed-out queued request must not mutate or close another request's session.
+        if (controller.signal.aborted) return;
         if (sessionKey) activeRequests.set(sessionKey, controller);
-        const timer = setTimeout(
-          () => controller.abort(new Error(`DRM request timed out after ${REQUEST_TIMEOUT_MS}ms`)),
-          REQUEST_TIMEOUT_MS,
-        );
         try {
           if (tabId !== undefined && tabGeneration !== (tabGenerations.get(tabId) ?? 0)) {
-            sendResponse();
+            respond();
             return;
           }
           await handleMessage();
         } catch (error: unknown) {
-          console.warn('[okova] DRM request failed at', stage, error);
+          const isExplicitClose = controller.signal.reason === EXPLICIT_CLOSE_REASON;
+          if (!isExplicitClose) console.warn('[okova] DRM request failed at', stage, error);
           try {
-            if (tabId !== undefined && tabGeneration === (tabGenerations.get(tabId) ?? 0)) {
+            if (
+              !isExplicitClose &&
+              tabId !== undefined &&
+              tabGeneration === (tabGenerations.get(tabId) ?? 0)
+            ) {
               await getDrmFailureStorage(tabId).setValue({
                 stage,
                 error: error instanceof Error ? error.message : String(error),
@@ -599,7 +615,7 @@ export default defineBackground({
           } catch (cleanupError) {
             console.warn('[okova] Unable to clean up failed DRM session', cleanupError);
           }
-          sendResponse();
+          respond();
         } finally {
           clearTimeout(timer);
           if (sessionKey && activeRequests.get(sessionKey) === controller)
@@ -610,7 +626,7 @@ export default defineBackground({
         sessionKey ? runForSession(sessionKey, handleSafely) : restored.then(handleSafely)
       ).catch((error: unknown) => {
         console.warn('[okova] DRM session storage failed', error);
-        sendResponse();
+        respond();
       });
       return true;
     });
