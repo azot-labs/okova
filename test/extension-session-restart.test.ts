@@ -43,6 +43,7 @@ const startWorker = () => {
       onMessage(
         {
           action,
+          keySystem: 'com.widevine.alpha',
           sessionToken: token,
           initData,
           initDataType: 'cenc',
@@ -176,6 +177,7 @@ test.skipIf(!prdPath)('restores a PlayReady challenge with no selected client', 
     '<WRMHEADER xmlns="http://schemas.microsoft.com/DRM/2007/03/PlayReadyHeader" version="4.0.0.0"><DATA><PROTECTINFO><KEYLEN>16</KEYLEN><ALGID>AESCTR</ALGID></PROTECTINFO><KID>AAAAAAAAAAAAAAAAAAAAAA==</KID></DATA></WRMHEADER>';
   let send = startWorker();
   await send('generateRequest', 'one', {
+    keySystem: 'com.microsoft.playready',
     initData: Buffer.from(wrm, 'utf16le').toString('base64'),
   });
   const challenge = await send('license-request');

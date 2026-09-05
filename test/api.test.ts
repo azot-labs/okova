@@ -447,3 +447,193 @@ describe('requestMediaKeySystemAccess', () => {
     );
   });
 });
+
+describe('acquisition completion and cancellation', () => {
+  const params = { pssh: 'AQ==', server: 'https://license.example.test' };
+
+  test('rejects an empty license without waiting for another event', async () => {
+    const session = new FakeEngineSession();
+    const engine = new FakeEngine();
+    vi.spyOn(engine, 'createSession').mockResolvedValue(session);
+    vi.spyOn(session, 'update').mockImplementation(async () => {
+      session.dispatchEvent(new Event('keyschange'));
+      session.dispatchEvent(
+        new CustomEvent('keystatuseschange', {
+          detail: { keys: new Map(), keyStatuses: new Map() },
+        }),
+      );
+    });
+    const close = vi.spyOn(session, 'close');
+    await expect(
+      fetchDecryptionKeys({
+        ...params,
+        cdm: engine,
+        fetch: vi.fn<typeof fetch>().mockResolvedValue(new Response()),
+      }),
+    ).rejects.toMatchObject({ name: 'NoContentKeysError' });
+    expect(close).toHaveBeenCalledOnce();
+  });
+
+  test('continues a certificate exchange before requiring content keys', async () => {
+    const session = new FakeEngineSession();
+    const engine = new FakeEngine();
+    vi.spyOn(engine, 'createSession').mockResolvedValue(session);
+    vi.spyOn(session, 'update').mockImplementationOnce(async () => {
+      session.dispatchEvent(
+        new CustomEvent('message', {
+          detail: {
+            message: LICENSE_REQUEST,
+            messageType: 'license-request',
+          },
+        }),
+      );
+    });
+    const fetchImpl = vi.fn<typeof fetch>().mockImplementation(async () => new Response());
+    await expect(
+      fetchDecryptionKeys({ ...params, cdm: engine, fetch: fetchImpl }),
+    ).resolves.toEqual(new Map([[KEY_ID, KEY_VALUE]]));
+    expect(fetchImpl).toHaveBeenCalledTimes(2);
+  });
+
+  test.each([
+    'createSession',
+    'generateRequest',
+    'transformRequest',
+    'fetch',
+    'transformResponse',
+    'body',
+    'update',
+  ] as const)('cancels stalled %s and ignores late completion', async (stage) => {
+    const session = new FakeEngineSession();
+    const engine = new FakeEngine();
+    const controller = new AbortController();
+    const started = Promise.withResolvers<void>();
+    const resume = Promise.withResolvers<void>();
+    const stall = async () => {
+      started.resolve();
+      await resume.promise;
+    };
+    vi.spyOn(engine, 'createSession').mockImplementation(async () => {
+      if (stage === 'createSession') await stall();
+      return session;
+    });
+    const generate = session.generateRequest.bind(session);
+    vi.spyOn(session, 'generateRequest').mockImplementation(async (...args) => {
+      if (stage === 'generateRequest') await stall();
+      return generate(...args);
+    });
+    const update = vi.spyOn(session, 'update');
+    if (stage === 'update') update.mockImplementation(stall);
+    const close = vi.spyOn(session, 'close');
+    let requestSignal: AbortSignal | undefined;
+    const result = fetchDecryptionKeys({
+      ...params,
+      cdm: engine,
+      signal: controller.signal,
+      transformRequest: async (request) => {
+        if (stage === 'transformRequest') await stall();
+        return new Request(request.url, { method: 'POST', body: LICENSE_REQUEST });
+      },
+      fetch: vi.fn<typeof fetch>().mockImplementation(async (request) => {
+        if (!(request instanceof Request)) throw new Error('Expected request');
+        requestSignal = request.signal;
+        if (stage === 'fetch') await stall();
+        const response = new Response();
+        if (stage === 'body')
+          vi.spyOn(response, 'arrayBuffer').mockImplementation(async () => {
+            await stall();
+            return new ArrayBuffer(0);
+          });
+        return response;
+      }),
+      transformResponse: async (response) => {
+        if (stage === 'transformResponse') await stall();
+        return response;
+      },
+    });
+    const reason = new Error('Caller cancelled');
+    const assertion = expect(result).rejects.toBe(reason);
+    await started.promise;
+    controller.abort(reason);
+    await assertion;
+    if (requestSignal) expect(requestSignal.aborted).toBe(true);
+    resume.resolve();
+    await vi.waitFor(() => expect(close).toHaveBeenCalledOnce());
+    if (stage !== 'update') expect(update).not.toHaveBeenCalled();
+  });
+
+  test('does not open a session for an already cancelled request', async () => {
+    const engine = new FakeEngine();
+    const create = vi.spyOn(engine, 'createSession');
+    await expect(
+      fetchDecryptionKeys({ ...params, cdm: engine, signal: AbortSignal.abort() }),
+    ).rejects.toMatchObject({ name: 'AbortError' });
+    expect(create).not.toHaveBeenCalled();
+  });
+
+  test('the default deadline also bounds an engine that never creates its session', async () => {
+    vi.useFakeTimers();
+    try {
+      const engine = new FakeEngine();
+      vi.spyOn(engine, 'createSession').mockReturnValue(new Promise(() => {}));
+      const assertion = expect(
+        fetchDecryptionKeys({ ...params, cdm: engine }),
+      ).rejects.toMatchObject({ name: 'TimeoutError' });
+      await vi.advanceTimersByTimeAsync(30_000);
+      await assertion;
+      expect(vi.getTimerCount()).toBe(0);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  test('limits cleanup time after cancellation', async () => {
+    vi.useFakeTimers();
+    try {
+      const engine = new FakeEngine();
+      const session = new FakeEngineSession();
+      vi.spyOn(engine, 'createSession').mockResolvedValue(session);
+      vi.spyOn(session, 'generateRequest').mockReturnValue(new Promise(() => {}));
+      const close = vi.spyOn(session, 'close').mockReturnValue(new Promise(() => {}));
+      const assertion = expect(
+        fetchDecryptionKeys({ ...params, cdm: engine, timeoutMs: 10 }),
+      ).rejects.toMatchObject({ name: 'TimeoutError' });
+      await vi.advanceTimersByTimeAsync(1010);
+      await assertion;
+      expect(close).toHaveBeenCalledOnce();
+      expect(vi.getTimerCount()).toBe(0);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+});
+
+test('an update failure stops queued follow-up POSTs even after emitting keys', async () => {
+  const session = new FakeEngineSession();
+  const engine = new FakeEngine();
+  vi.spyOn(engine, 'createSession').mockResolvedValue(session);
+  const update = session.update.bind(session);
+  const failure = new Error('Invalid license');
+  vi.spyOn(session, 'update').mockImplementation(async (response) => {
+    await update(response);
+    session.dispatchEvent(
+      new CustomEvent('message', {
+        detail: {
+          message: LICENSE_REQUEST,
+          messageType: 'license-request',
+        },
+      }),
+    );
+    throw failure;
+  });
+  const fetchImpl = vi.fn<typeof fetch>().mockImplementation(async () => new Response());
+  await expect(
+    fetchDecryptionKeys({
+      cdm: engine,
+      pssh: 'AQ==',
+      server: 'https://license.example.test',
+      fetch: fetchImpl,
+    }),
+  ).rejects.toBe(failure);
+  expect(fetchImpl).toHaveBeenCalledOnce();
+});

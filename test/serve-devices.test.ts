@@ -82,3 +82,97 @@ test('no configured device returns a client error', async () => {
   config.clients = [];
   expect((await open()).status).toBe(400);
 });
+
+const openForSystem = (body: object, secret?: string) =>
+  sessionApi.request('/', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...(secret ? { 'x-secret-key': secret } : {}) },
+    body: JSON.stringify(body),
+  });
+
+test.each([
+  { keySystem: 'com.microsoft.playready', client: 'client.wvd' },
+  { keySystem: 'com.widevine.alpha.extra' },
+  { keySystem: 'com.microsoft.playready.invalid' },
+  { keySystem: 'org.w3.clearkey' },
+  { sessionType: 'banana' },
+])('rejects invalid or incompatible session selection: %j', async (body) => {
+  expect((await openForSystem(body)).status).toBe(400);
+  expect(sessions.size).toBe(0);
+});
+
+test('returns the resolved device and canonical system', async () => {
+  const response = await openForSystem({ keySystem: 'com.widevine.alpha' });
+  expect(response.status).toBe(200);
+  expect(await response.json()).toMatchObject({
+    id: expect.any(String),
+    client: clientPath,
+    keySystem: 'com.widevine.alpha',
+  });
+});
+
+test('DRM-aware default selection searches only authorized devices', async () => {
+  const other = join(directory, 'other.wvd');
+  config.clients.unshift(other);
+  config.users = { secret: { name: 'test', clients: ['client.wvd'] } };
+  const response = await openForSystem({ keySystem: 'com.widevine.alpha' }, 'secret');
+  expect(response.status).toBe(200);
+  expect(await response.json()).toMatchObject({ client: clientPath });
+  expect(clients.has(other)).toBe(false);
+});
+
+const prdPath = process.env.VITEST_PRD_PATH;
+test
+  .skipIf(!prdPath)
+  .each([
+    'com.microsoft.playready',
+    'com.microsoft.playready.recommendation',
+    'com.microsoft.playready.recommendation.3000',
+    'com.microsoft.playready.hardware',
+  ])('selects a PlayReady device for alias %s after a Widevine default', async (keySystem) => {
+  if (!prdPath) throw new Error('Set VITEST_PRD_PATH for mixed-device selection checks');
+  config.clients.push(prdPath);
+  const response = await openForSystem({ keySystem });
+  expect(response.status).toBe(200);
+  expect(await response.json()).toMatchObject({
+    client: resolve(prdPath),
+    keySystem: 'com.microsoft.playready.recommendation',
+  });
+  expect((await openForSystem({ keySystem: 'com.widevine.alpha', client: prdPath })).status).toBe(
+    400,
+  );
+});
+
+test.each(['missing', 'invalid magic', 'truncated WVD', 'truncated PRD'])(
+  'DRM-aware selection skips an authorized %s candidate',
+  async (failure) => {
+    const unusable = join(directory, 'unusable.device');
+    if (failure !== 'missing') {
+      const data = failure === 'invalid magic' ? 'invalid' : failure.slice(-3);
+      await writeFile(unusable, data);
+    }
+    config.clients.unshift(unusable);
+    config.users = { secret: { name: 'test', clients: [unusable, clientPath] } };
+    const response = await openForSystem({ keySystem: 'com.widevine.alpha' }, 'secret');
+    expect(response.status).toBe(200);
+    expect(await response.json()).toMatchObject({ client: clientPath });
+    expect(clients.has(unusable)).toBe(false);
+
+    const explicit = await openForSystem(
+      { keySystem: 'com.widevine.alpha', client: unusable },
+      'secret',
+    );
+    const expectedStatus = failure === 'invalid magic' ? 400 : 500;
+    expect(explicit.status).toBe(expectedStatus);
+    expect((await open(undefined, 'secret')).status).toBe(expectedStatus);
+  },
+);
+
+test('unusable candidates do not permit falling back to an unauthorized device', async () => {
+  const missing = join(directory, 'missing.wvd');
+  config.clients.unshift(missing);
+  config.users = { secret: { name: 'test', clients: [missing] } };
+  expect((await openForSystem({ keySystem: 'com.widevine.alpha' }, 'secret')).status).toBe(400);
+  expect(clients.size).toBe(0);
+  expect(sessions.size).toBe(0);
+});
