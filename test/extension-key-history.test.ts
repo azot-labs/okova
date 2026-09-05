@@ -9,7 +9,11 @@ import { WidevineDeviceCredentials } from '../src/lib/widevine/device-credential
 
 // No device credentials or license server are needed to exercise the background flow.
 vi.mock('../src/lib/widevine/device-credentials', () => ({
-  WidevineDeviceCredentials: class {},
+  WidevineDeviceCredentials: class {
+    async pack() {
+      return new Uint8Array();
+    }
+  },
 }));
 
 const key: KeyInfo = {
@@ -91,6 +95,8 @@ test('captures keys after logging a status with spoofing disabled', async () => 
     .mockResolvedValue(new WidevineDeviceCredentials(new Uint8Array()));
   const createSession = vi.spyOn(Widevine.prototype, 'createSession');
   const generateRequest = vi.spyOn(Session.prototype, 'generateRequest').mockResolvedValue();
+  vi.spyOn(Session.prototype, 'pause').mockReturnValue('{}');
+  vi.spyOn(Session.prototype, 'waitForLicenseRequest').mockResolvedValue(new Uint8Array());
   vi.spyOn(Session.prototype, 'update').mockResolvedValue();
   vi.spyOn(Session.prototype, 'waitForKeyStatusesChange').mockResolvedValue(
     new Map([[key.id, key.value]]),

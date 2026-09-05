@@ -18,7 +18,11 @@ import { WidevineDeviceCredentials } from '../src/lib/widevine/device-credential
 import { Widevine } from '../src/lib/widevine/engine';
 
 vi.mock('../src/lib/widevine/device-credentials', () => ({
-  WidevineDeviceCredentials: class {},
+  WidevineDeviceCredentials: class {
+    async pack() {
+      return new Uint8Array();
+    }
+  },
 }));
 
 const sessions: Session[] = [];
@@ -55,6 +59,7 @@ beforeEach(async () => {
   vi.spyOn(Session.prototype, 'generateRequest').mockImplementation(async function (this: Session) {
     sessions.push(this);
   });
+  vi.spyOn(Session.prototype, 'pause').mockReturnValue('{}');
   vi.spyOn(Session.prototype, 'close').mockResolvedValue();
   vi.spyOn(Session.prototype, 'update').mockResolvedValue();
   vi.spyOn(Session.prototype, 'waitForLicenseRequest').mockImplementation(
@@ -76,7 +81,7 @@ afterEach(() => {
 const startBackground = () => {
   const addListener = vi.spyOn(browser.runtime.onMessage, 'addListener');
   background.main();
-  const listener = addListener.mock.calls[0]![0];
+  const listener = addListener.mock.calls.at(-1)![0];
   return (
     action: string,
     sessionToken: string,
