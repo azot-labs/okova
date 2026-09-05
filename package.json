@@ -75,7 +75,7 @@
     }
   },
   "engines": {
-    "node": ">=22.19"
+    "node": ">=24.5.0"
   },
   "dependencies": {
     "@hono/node-server": "^2.0.4",

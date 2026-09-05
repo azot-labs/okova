@@ -43,7 +43,7 @@ Okova is a set of tools (JavaScript library, command-line utility and browser ex
 
 ### Installation
 
-> Command-line tool installation requires pre-installed JavaScript runtime (e.g. [Node.js](https://nodejs.org/en/download)).
+> Command-line tool installation requires a pre-installed JavaScript runtime, such as [Node.js](https://nodejs.org/en/download) 24.5.0 or later.
 
 ```bash
 npm install -g okova
@@ -84,7 +84,7 @@ oem_crypto_build_information: OEMCrypto Level3 Code 8162 May  9 2018 14:01:12
 
 ## JavaScript library
 
-> Library installation requires pre-installed JavaScript runtime (e.g. [Node.js](https://nodejs.org/en/download)).
+> Library installation requires a pre-installed JavaScript runtime, such as [Node.js](https://nodejs.org/en/download) 24.5.0 or later.
 
 ### Installation
 
