@@ -489,6 +489,54 @@ test('playready XMR getObjects keeps the matching container before descending', 
   expect(license.getObjects(10)).toHaveLength(1);
 });
 
+test('playready retains earlier keys and replaces matching KIDs across updates and resume', async () => {
+  const credentials = {
+    certificateChain: new Uint8Array(),
+    encryptionKey: EccKey.generate().dumps(),
+    signingKey: EccKey.generate().dumps(),
+  };
+  const session = new PlayReadySession('temporary', credentials);
+  const first = new Key(new Uint8Array(16).fill(1), 1, 3, new Uint8Array(16).fill(0xaa));
+  const second = new Key(new Uint8Array(16).fill(2), 1, 3, new Uint8Array(16).fill(0xbb));
+  const replacement = new Key(new Uint8Array(16).fill(1), 1, 3, new Uint8Array(16).fill(0xcc));
+  vi.spyOn(session, 'parseLicense')
+    .mockResolvedValueOnce([first])
+    .mockResolvedValueOnce([second])
+    .mockResolvedValueOnce([replacement])
+    .mockResolvedValueOnce([]);
+
+  await session.update(new Uint8Array());
+  await session.update(new Uint8Array());
+  expect(session.keys).toEqual(
+    new Map([
+      ['01'.repeat(16), 'aa'.repeat(16)],
+      ['02'.repeat(16), 'bb'.repeat(16)],
+    ]),
+  );
+  await session.update(new Uint8Array());
+  await session.update(new Uint8Array());
+  expect(session.keys).toEqual(
+    new Map([
+      ['01'.repeat(16), 'cc'.repeat(16)],
+      ['02'.repeat(16), 'bb'.repeat(16)],
+    ]),
+  );
+  expect(session.keyStatuses).toEqual(
+    new Map([
+      ['01'.repeat(16), 'usable'],
+      ['02'.repeat(16), 'usable'],
+    ]),
+  );
+
+  const resumed = PlayReadySession.resume(session.pause(), credentials);
+  expect(resumed.keys).toEqual(session.keys);
+  expect(resumed.keyStatuses).toEqual(session.keyStatuses);
+  await session.close();
+  await resumed.close();
+  expect(session.keys.size).toBe(0);
+  expect(session.keyStatuses.size).toBe(0);
+});
+
 test('playready pause and resume preserve key identifiers', async () => {
   const credentials = {
     certificateChain: new Uint8Array(),

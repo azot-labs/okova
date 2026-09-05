@@ -146,6 +146,12 @@ async function main() {
 }
 ```
 
+`fetchDecryptionKeys` rejects unsuccessful HTTP responses with `LicenseHttpError`,
+which exposes `status` and `endpoint`. The endpoint excludes URL credentials, query
+parameters, and fragments; the error does not include the response body. Status is
+checked after any `transformResponse` callback. PlayReady requests default to
+`Content-Type: text/xml; charset=utf-8` unless you provide that header.
+
 ### Saving and resuming native sessions
 
 Widevine and PlayReady can serialize an open session with `pause()`. This takes

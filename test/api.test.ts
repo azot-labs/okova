@@ -1,6 +1,6 @@
 import { cbc, ctr } from '@noble/ciphers/aes.js';
 import { describe, expect, test, vi } from 'vitest';
-import { fetchDecryptionKeys } from '../src/lib/main';
+import { fetchDecryptionKeys, LicenseHttpError } from '../src/lib/main';
 import {
   BaseMediaKeysEngine,
   BaseMediaKeysEngineSession,
@@ -119,6 +119,81 @@ describe.each(['successful', 'failed'])('fetchDecryptionKeys with %s cleanup', (
   );
 });
 
+describe('license HTTP responses', () => {
+  test.each([401, 403, 429, 500])('preserves HTTP %i without parsing the body', async (status) => {
+    const engine = new FakeEngine();
+    const session = new FakeEngineSession();
+    vi.spyOn(engine, 'createSession').mockResolvedValue(session);
+    const update = vi.spyOn(session, 'update');
+    const close = vi.spyOn(session, 'close');
+    const response = new Response('private server details', { status });
+    const readBody = vi.spyOn(response, 'arrayBuffer');
+
+    const result = fetchDecryptionKeys({
+      cdm: engine,
+      pssh: 'AQ==',
+      server: 'https://license.example.test/license?token=secret',
+      fetch: vi.fn<typeof fetch>().mockResolvedValue(response),
+    });
+
+    await expect(result).rejects.toBeInstanceOf(LicenseHttpError);
+    await expect(result).rejects.toMatchObject({
+      status,
+      endpoint: 'https://license.example.test/license',
+      message: `License request failed with HTTP ${status} at https://license.example.test/license`,
+    });
+    expect(update).not.toHaveBeenCalled();
+    expect(readBody).not.toHaveBeenCalled();
+    expect(close).toHaveBeenCalledOnce();
+  });
+
+  test.each([true, false])('checks the transformed response, success=%s', async (isSuccessful) => {
+    const engine = new FakeEngine();
+    const session = new FakeEngineSession();
+    vi.spyOn(engine, 'createSession').mockResolvedValue(session);
+    const update = vi.spyOn(session, 'update');
+    const result = fetchDecryptionKeys({
+      cdm: engine,
+      pssh: 'AQ==',
+      server: 'https://license.example.test',
+      fetch: vi
+        .fn<typeof fetch>()
+        .mockResolvedValue(new Response(null, { status: isSuccessful ? 500 : 200 })),
+      transformRequest: async () => new Request('https://other.example.test/license?secret=1'),
+      transformResponse: async () => new Response(null, { status: isSuccessful ? 200 : 403 }),
+    });
+
+    if (isSuccessful) {
+      await expect(result).resolves.toEqual(new Map([[KEY_ID, KEY_VALUE]]));
+      expect(update).toHaveBeenCalledWith(new Uint8Array());
+    } else {
+      await expect(result).rejects.toMatchObject({
+        status: 403,
+        endpoint: 'https://other.example.test/license',
+      });
+      expect(update).not.toHaveBeenCalled();
+    }
+  });
+
+  test.each([undefined, 'application/custom'])(
+    'sets PlayReady content type while preserving %s',
+    async (contentType) => {
+      const fetchImpl = vi.fn<typeof fetch>().mockResolvedValue(new Response());
+      await fetchDecryptionKeys({
+        cdm: new FakeEngine('com.microsoft.playready.recommendation'),
+        pssh: 'AQ==',
+        server: 'https://license.example.test',
+        headers: contentType ? { 'content-type': contentType } : undefined,
+        fetch: fetchImpl,
+      });
+      const request = fetchImpl.mock.calls[0]?.[0];
+      expect(request).toBeInstanceOf(Request);
+      if (!(request instanceof Request)) throw new Error('Expected a Request');
+      expect(request.headers.get('Content-Type')).toBe(contentType ?? 'text/xml; charset=utf-8');
+    },
+  );
+});
+
 describe('waitForKeys', () => {
   test('resolves immediately when keys already exist', async () => {
     const keys = new Map([[KEY_ID, KEY_VALUE]]);
@@ -205,6 +280,26 @@ describe('Session', () => {
     await session.close();
     expect(close).toHaveBeenCalledTimes(2);
     await expect(session.closed).resolves.toBe('closed-by-application');
+  });
+
+  test('synchronizes keys and statuses before delivering keyschange', async () => {
+    const session = new Session('temporary', new FakeEngine(), new FakeEngineSession());
+    const snapshots: Array<{ keys: Map<string, string>; statuses: MediaKeyStatus[] }> = [];
+    const capture = () => {
+      snapshots.push({ keys: new Map(session.keys), statuses: [...session.keyStatuses.values()] });
+    };
+    session.addEventListener('keyschange', capture);
+    session.onkeyschange = capture;
+    const pendingKeys = waitForKeys(session, () => session.keys, { timeoutMs: 100 });
+
+    await session.update(new Uint8Array());
+
+    await expect(pendingKeys).resolves.toEqual(new Map([[KEY_ID, KEY_VALUE]]));
+    expect(snapshots).toEqual([
+      { keys: new Map([[KEY_ID, KEY_VALUE]]), statuses: ['usable'] },
+      { keys: new Map([[KEY_ID, KEY_VALUE]]), statuses: ['usable'] },
+    ]);
+    await session.close();
   });
 
   test('waits for future license requests and syncs key status updates', async () => {
