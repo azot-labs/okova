@@ -1,12 +1,11 @@
-import { equalBytes } from '@noble/curves/utils.js';
 import { EccKey } from '../crypto/ecc-key';
 import { getRandomBytes } from '../utils';
 import { BCertCertType, Certificate, CertificateChain } from './bcert';
 import { InvalidCertificateChain } from './exceptions';
-import { PRD_MAGIC, PRD3 } from './prd';
+import { parsePrd, PRD_MAGIC, PRD2, PRD3 } from './prd';
 
 export class PlayReadyDeviceCredentials {
-  groupKey: EccKey;
+  groupKey: EccKey | null;
   encryptionKey: EccKey;
   signingKey: EccKey;
 
@@ -15,12 +14,12 @@ export class PlayReadyDeviceCredentials {
   securityLevel: number;
 
   constructor(data: {
-    groupKey: Uint8Array;
+    groupKey?: Uint8Array;
     encryptionKey: Uint8Array;
     signingKey: Uint8Array;
     groupCertificate: Uint8Array;
   }) {
-    this.groupKey = EccKey.from(data.groupKey);
+    this.groupKey = data.groupKey ? EccKey.from(data.groupKey) : null;
     this.encryptionKey = EccKey.from(data.encryptionKey);
     this.signingKey = EccKey.from(data.signingKey);
     this.groupCertificate = CertificateChain.from(data.groupCertificate);
@@ -38,7 +37,7 @@ export class PlayReadyDeviceCredentials {
         },
   ) {
     if ('prd' in payload) {
-      const parsed = PRD3.parse(payload.prd);
+      const parsed = parsePrd(payload.prd);
       const groupKey = parsed.group_key;
       const encryptionKey = parsed.encryption_key;
       const signingKey = parsed.signing_key;
@@ -106,18 +105,28 @@ export class PlayReadyDeviceCredentials {
   }
 
   pack() {
-    return PRD3.build({
+    const groupCertificate = this.groupCertificate.dumps();
+    const fields = {
       signature: PRD_MAGIC,
-      version: 3,
-      group_key: this.groupKey.dumps(),
       encryption_key: this.encryptionKey.dumps(),
       signing_key: this.signingKey.dumps(),
-      group_certificate_length: this.groupCertificate.dumps().length,
-      group_certificate: this.groupCertificate.dumps(),
+      group_certificate_length: groupCertificate.length,
+      group_certificate: groupCertificate,
+    };
+    if (!this.groupKey) {
+      return PRD2.build({ ...fields, version: 2 });
+    }
+    return PRD3.build({
+      ...fields,
+      version: 3,
+      group_key: this.groupKey.dumps(),
     });
   }
 
   unpack() {
+    if (!this.groupKey) {
+      throw new Error('Cannot unpack PlayReady group files: PRD v2 credentials have no group key');
+    }
     const groupCertificate = CertificateChain.from(this.groupCertificate.dumps());
     groupCertificate.remove(0);
     return {
