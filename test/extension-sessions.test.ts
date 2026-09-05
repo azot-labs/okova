@@ -513,3 +513,72 @@ test('cleanup failures preserve the original diagnostic and still respond', asyn
     error: 'Invalid PSSH',
   });
 });
+
+test('an old document cannot clear a new document failure after navigation', async () => {
+  const key = {
+    id: '00112233445566778899aabbccddeeff',
+    value: 'ffeeddccbbaa99887766554433221100',
+    url: 'https://example.com/video',
+    mpd: '',
+    pssh: 'cHNzaA==',
+    createdAt: Date.now(),
+  };
+  await appStorage.allKeys.setValue([key]);
+  const updated = vi.spyOn(browser.tabs.onUpdated, 'addListener');
+  const send = startBackground();
+  const started = Promise.withResolvers<void>();
+  const resumeWrite = Promise.withResolvers<void>();
+  const setRecentKeys = appStorage.recentKeys.setValue;
+  vi.spyOn(appStorage.recentKeys, 'setValue').mockImplementationOnce(async (keys) => {
+    started.resolve();
+    await resumeWrite.promise;
+    await setRecentKeys(keys);
+  });
+  const oldRequest = send('generateRequest', 'old', { tab: tab(1), documentId: 'old' });
+  await started.promise;
+  updated.mock.calls[0]![0](1, { status: 'loading' }, tab(1));
+  vi.mocked(appStorage.clients.active.getValue).mockResolvedValue(null);
+  await send('generateRequest', 'new', { tab: tab(1), documentId: 'new' }, { initData: 'bmV3' });
+  const failure = await getDrmFailureStorage(1).getValue();
+  expect(failure).toMatchObject({ stage: 'client' });
+  resumeWrite.resolve();
+  await oldRequest;
+  expect(await getDrmFailureStorage(1).getValue()).toEqual(failure);
+});
+
+test('diagnostic deletion errors do not abort generation or successful license processing', async () => {
+  const send = startBackground();
+  const remove = browser.storage.session.remove.bind(browser.storage.session);
+  vi.spyOn(browser.storage.session, 'remove').mockImplementation(
+    async (keys: string | string[]) => {
+      const storageKeys = typeof keys === 'string' ? [keys] : keys;
+      if (storageKeys.some((key) => key.startsWith('drm-failure:'))) {
+        throw new Error('Diagnostic deletion failed');
+      }
+      await remove(storageKeys);
+    },
+  );
+  const sender = { tab: tab(1) };
+  await send('generateRequest', 'one', sender);
+  expect(Session.prototype.generateRequest).toHaveBeenCalledOnce();
+  await expect(send('license-request', 'one', sender)).resolves.toEqual(expect.any(String));
+  await expect(send('update', 'one', sender)).resolves.toMatchObject({ keys: expect.any(Array) });
+  expect(await appStorage.allKeys.getValue()).toHaveLength(1);
+  expect(await getDrmFailureStorage(1).getValue()).toBeNull();
+  expect(Session.prototype.close).toHaveBeenCalledOnce();
+});
+
+test('a recovered key-status history write clears the previous failure', async () => {
+  const send = startBackground();
+  const sender = { tab: tab(1) };
+  const message = { keyStatuses: { 'AAECAw==': 'usable' } };
+  vi.spyOn(appStorage.allKeys, 'add').mockRejectedValueOnce(new Error('History write failed'));
+  await send('keystatuseschange', 'one', sender, message);
+  expect(await getDrmFailureStorage(1).getValue()).toMatchObject({
+    stage: 'history',
+    error: 'History write failed',
+  });
+  await send('keystatuseschange', 'one', sender, message);
+  expect(await appStorage.allKeys.getValue()).toMatchObject([{ value: 'usable' }]);
+  expect(await getDrmFailureStorage(1).getValue()).toBeNull();
+});

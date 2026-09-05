@@ -313,7 +313,12 @@ export default defineBackground({
       const tabId = sender.tab?.id;
       const tabGeneration = tabId === undefined ? 0 : (tabGenerations.get(tabId) ?? 0);
       const clearFailure = async () => {
-        if (tabId !== undefined) await getDrmFailureStorage(tabId).removeValue();
+        if (tabId === undefined || tabGeneration !== (tabGenerations.get(tabId) ?? 0)) return;
+        try {
+          await getDrmFailureStorage(tabId).removeValue();
+        } catch (error) {
+          console.warn('[okova] Unable to clear DRM diagnostic', error);
+        }
       };
       const handleMessage = async () => {
         if (message.action === 'close') {
@@ -376,6 +381,7 @@ export default defineBackground({
           stage = 'history';
           await setRecentKeys(keys);
           await appStorage.allKeys.add(...keys);
+          await clearFailure();
           sendResponse();
           return;
         }
