@@ -12,6 +12,7 @@ import {
   requestMediaKeySystemAccess,
   setSupportedEngines,
   Widevine,
+  type Session,
 } from '../../../../lib';
 import { WidevineDeviceCredentials } from '../../../../lib/widevine/device-credentials';
 import { PlayReadyDeviceCredentials } from '../../../../lib/playready/device-credentials';
@@ -36,6 +37,24 @@ const secretKeyMiddleware = createMiddleware(async (c, next) => {
 });
 
 app.use(secretKeyMiddleware);
+
+const busySessions = new WeakSet<Session>();
+
+// Hold ownership through response synchronization, including certificate changes and close.
+const exclusiveSessionMutation = createMiddleware(async (c, next) => {
+  const sessionKey = `${c.req.header('x-secret-key') ?? ''}:${c.req.param('id')}`;
+  const session = sessions.get(sessionKey);
+  if (!session) return next();
+  if (busySessions.has(session)) {
+    return c.json({ error: 'Session is busy. Retry after the current operation completes.' }, 409);
+  }
+  busySessions.add(session);
+  try {
+    await next();
+  } finally {
+    busySessions.delete(session);
+  }
+});
 
 app.post(
   '/',
@@ -104,6 +123,7 @@ app.post(
 
 app.post(
   '/:id/generate-request',
+  exclusiveSessionMutation,
   zValidator('param', z.object({ id: z.string() })),
   zValidator(
     'json',
@@ -196,6 +216,7 @@ app.post(
 
 app.post(
   '/:id/update',
+  exclusiveSessionMutation,
   zValidator('param', z.object({ id: z.string() })),
   zValidator('json', z.object({ response: z.string() })),
   async (c) => {
@@ -277,30 +298,40 @@ app.get('/:id/keys', zValidator('param', z.object({ id: z.string() })), async (c
   return c.json(Object.fromEntries(keys));
 });
 
-app.post('/:id/close', zValidator('param', z.object({ id: z.string() })), async (c) => {
-  const secretKey = c.req.header('x-secret-key') as string;
-  const sessionId = c.req.valid('param').id;
-  const sessionKey = `${secretKey ?? ''}:${sessionId}`;
-  const session = sessions.get(sessionKey);
-  if (!session) {
-    return c.json({ error: 'No session has been opened yet. No session to close.' }, 400);
-  }
-  await session.close();
-  sessions.delete(sessionKey);
-  return c.json({ success: true });
-});
+app.post(
+  '/:id/close',
+  exclusiveSessionMutation,
+  zValidator('param', z.object({ id: z.string() })),
+  async (c) => {
+    const secretKey = c.req.header('x-secret-key') as string;
+    const sessionId = c.req.valid('param').id;
+    const sessionKey = `${secretKey ?? ''}:${sessionId}`;
+    const session = sessions.get(sessionKey);
+    if (!session) {
+      return c.json({ error: 'No session has been opened yet. No session to close.' }, 400);
+    }
+    await session.close();
+    sessions.delete(sessionKey);
+    return c.json({ success: true });
+  },
+);
 
-app.delete('/:id', zValidator('param', z.object({ id: z.string() })), async (c) => {
-  const secretKey = c.req.header('x-secret-key') as string;
-  const sessionId = c.req.valid('param').id;
-  const sessionKey = `${secretKey ?? ''}:${sessionId}`;
-  const session = sessions.get(sessionKey);
-  if (!session) {
-    return c.json({ error: 'No session has been opened yet. No session to remove.' }, 400);
-  }
-  await session.close();
-  sessions.delete(sessionKey);
-  return c.json({ success: true });
-});
+app.delete(
+  '/:id',
+  exclusiveSessionMutation,
+  zValidator('param', z.object({ id: z.string() })),
+  async (c) => {
+    const secretKey = c.req.header('x-secret-key') as string;
+    const sessionId = c.req.valid('param').id;
+    const sessionKey = `${secretKey ?? ''}:${sessionId}`;
+    const session = sessions.get(sessionKey);
+    if (!session) {
+      return c.json({ error: 'No session has been opened yet. No session to remove.' }, 400);
+    }
+    await session.close();
+    sessions.delete(sessionKey);
+    return c.json({ success: true });
+  },
+);
 
 export default app;
