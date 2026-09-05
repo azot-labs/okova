@@ -1,8 +1,23 @@
-import { afterEach, expect, test, vi } from 'vitest';
+import { beforeEach, afterEach, expect, test, vi } from 'vitest';
 import eme from '../src/extension/entrypoints/eme';
 import { sendDrmMessage } from '../src/extension/utils/drm-bridge';
 
 vi.mock('../src/extension/utils/drm-bridge', () => ({ sendDrmMessage: vi.fn() }));
+
+// Node provides EventTarget but not the EME-specific event constructor.
+class NativeMessageEvent extends Event {
+  readonly message: ArrayBuffer;
+  readonly messageType: MediaKeyMessageType;
+  constructor(type: string, init: MediaKeyMessageEventInit) {
+    super(type, init);
+    this.message = init.message;
+    this.messageType = init.messageType;
+  }
+}
+
+beforeEach(() => {
+  vi.stubGlobal('MediaKeyMessageEvent', NativeMessageEvent);
+});
 
 afterEach(() => {
   vi.resetAllMocks();
@@ -128,7 +143,7 @@ test('uses distinct tokens despite empty native IDs and waits for background cre
   const handled = Promise.withResolvers<void>();
   first.addEventListener('message', () => handled.resolve());
   first.dispatchEvent(
-    Object.assign(new Event('message'), {
+    new MediaKeyMessageEvent('message', {
       messageType: 'license-request',
       message: initData.buffer,
     }),
@@ -227,14 +242,16 @@ test('associates accepted certificate views with MediaKeys and preserves certifi
     }),
   );
 
-  const certificateRequest = Object.assign(new Event('message'), {
+  const certificateRequest = new MediaKeyMessageEvent('message', {
     messageType: 'license-request',
     message: new Uint8Array([8, 4]).buffer,
   });
   const received = Promise.withResolvers<Event>();
-  session.addEventListener('message', received.resolve);
+  const receiveCertificate = vi.fn(received.resolve);
+  session.addEventListener('message', receiveCertificate);
   const callCount = vi.mocked(sendDrmMessage).mock.calls.length;
   session.dispatchEvent(certificateRequest);
+  expect(receiveCertificate).toHaveBeenCalledExactlyOnceWith(certificateRequest);
   expect(await received.promise).toBe(certificateRequest);
   expect(sendDrmMessage).toHaveBeenCalledTimes(callCount);
 
@@ -242,7 +259,7 @@ test('associates accepted certificate views with MediaKeys and preserves certifi
   const handled = Promise.withResolvers<void>();
   sibling.addEventListener('message', () => handled.resolve());
   sibling.dispatchEvent(
-    Object.assign(new Event('message'), {
+    new MediaKeyMessageEvent('message', {
       messageType: 'license-request',
       message: new Uint8Array([8, 1, 2]).buffer,
     }),
@@ -256,15 +273,13 @@ test('associates accepted certificate views with MediaKeys and preserves certifi
   );
 });
 
-test.each(['function', 'object', 'onmessage'])(
-  'preserves the message event and %s listener receiver when replacing the challenge',
-  async (registration) => {
-    class NativeMessageEvent extends Event {
-      readonly messageType = 'license-request';
-      get message() {
-        return new Uint8Array([1, 2, 3]).buffer;
-      }
-    }
+test.each(
+  ['function', 'object', 'onmessage'].flatMap((registration) =>
+    ['replacement', 'bridge failure'].map((result) => ({ registration, result })),
+  ),
+)(
+  'preserves listener receivers and stops later $registration listeners after $result',
+  async ({ registration, result }) => {
     class NativeSession extends EventTarget {
       sessionId = 'native-session';
       keyStatuses = new Map();
@@ -285,34 +300,62 @@ test.each(['function', 'object', 'onmessage'])(
     vi.stubGlobal('MediaKeySession', NativeSession);
     vi.stubGlobal('MediaKeys', NativeKeys);
     vi.stubGlobal('MediaKeyMessageEvent', NativeMessageEvent);
-    vi.mocked(sendDrmMessage).mockResolvedValue(btoa('replacement challenge'));
+    const bridge = Promise.withResolvers<unknown>();
+    vi.mocked(sendDrmMessage).mockReturnValue(bridge.promise);
     eme.main();
 
     const session = new NativeSession();
-    const received = Promise.withResolvers<{ event: Event; receiver: unknown }>();
+    const received = Promise.withResolvers<{
+      event: Event;
+      receiver: unknown;
+    }>();
     const listener = function (this: unknown, event: Event) {
-      received.resolve({ event, receiver: this });
+      received.resolve({
+        event,
+        receiver: this,
+      });
+      event.preventDefault();
+      event.stopImmediatePropagation();
     };
     const listenerObject = { handleEvent: listener };
     if (registration === 'function') session.addEventListener('message', listener);
     if (registration === 'object') session.addEventListener('message', listenerObject);
     if (registration === 'onmessage') session.onmessage = listener;
+    const laterListener = vi.fn();
+    session.addEventListener('message', laterListener);
+    const delivered = vi.fn();
+    void received.promise.then(delivered);
 
-    const originalEvent = new NativeMessageEvent('message', { cancelable: true });
+    const originalEvent = new MediaKeyMessageEvent('message', {
+      cancelable: true,
+      messageType: 'license-request',
+      message: new Uint8Array([1, 2, 3]).buffer,
+    });
     session.dispatchEvent(originalEvent);
+    await Promise.resolve();
+    expect(delivered).not.toHaveBeenCalled();
+    expect(laterListener).not.toHaveBeenCalled();
+    expect(sendDrmMessage).toHaveBeenCalledTimes(1);
+    if (result === 'replacement') bridge.resolve(btoa('replacement challenge'));
+    else bridge.reject(new Error('Bridge unavailable'));
+
     const { event, receiver } = await received.promise;
+    expect(laterListener).not.toHaveBeenCalled();
+    expect(sendDrmMessage).toHaveBeenCalledTimes(1);
     expect(receiver).toBe(registration === 'object' ? listenerObject : session);
-    expect(event).toBe(originalEvent);
+    expect(event).not.toBe(originalEvent);
     expect(event).toBeInstanceOf(Event);
     expect(event).toBeInstanceOf(MediaKeyMessageEvent);
     expect(event.target).toBe(session);
-    expect(event.isTrusted).toBe(originalEvent.isTrusted);
+    expect(event.isTrusted).toBe(false);
     expect(originalEvent.messageType).toBe('license-request');
-    expect(new TextDecoder().decode(originalEvent.message)).toBe('replacement challenge');
-    expect(() => event.preventDefault()).not.toThrow();
+    expect(event).toHaveProperty(
+      'message',
+      result === 'replacement'
+        ? new TextEncoder().encode('replacement challenge').buffer
+        : originalEvent.message,
+    );
+    expect(new Uint8Array(originalEvent.message)).toEqual(new Uint8Array([1, 2, 3]));
     expect(event.defaultPrevented).toBe(true);
-    expect(() => event.stopPropagation()).not.toThrow();
-    expect(() => event.stopImmediatePropagation()).not.toThrow();
-    expect(() => event.composedPath()).not.toThrow();
   },
 );
