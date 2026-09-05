@@ -30,7 +30,9 @@ afterEach(() => {
 });
 
 const respond = (requestId: string, body?: unknown) => {
-  window.dispatchEvent(new CustomEvent('drm-message-response', { detail: { requestId, body } }));
+  window.dispatchEvent(
+    new CustomEvent('drm-message-response', { detail: JSON.stringify({ requestId, body }) }),
+  );
 };
 
 test('matches concurrent requests to their own out-of-order responses and cleans up', async () => {
@@ -45,7 +47,9 @@ test('matches concurrent requests to their own out-of-order responses and cleans
   const acknowledgementId = postMessage.mock.calls[2]![0].requestId;
   expect(new Set([firstId, secondId, acknowledgementId]).size).toBe(3);
 
-  window.dispatchEvent(new CustomEvent('drm-message-response', { detail: 'legacy response' }));
+  for (const detail of ['legacy response', 'null', '42', '{}', { requestId: firstId }]) {
+    window.dispatchEvent(new CustomEvent('drm-message-response', { detail }));
+  }
   respond('unknown-request', 'unrelated response');
   respond(acknowledgementId);
   await expect(acknowledgement).resolves.toBeUndefined();
@@ -139,11 +143,30 @@ test('content bridge preserves request IDs for acknowledgements and license resp
 
 test('content bridge correlates runtime errors and the request cleans up', async () => {
   await startContentBridge();
+  const onResponse = vi.fn();
+  window.addEventListener('drm-message-response', onResponse);
   const removeListener = vi.spyOn(window, 'removeEventListener');
   sendMessage.mockRejectedValueOnce(new Error('Extension context invalidated'));
   await expect(sendDrmMessage({ action: 'update' })).rejects.toThrow(
     'Extension context invalidated',
   );
+  const response = onResponse.mock.calls[0]![0] as CustomEvent<unknown>;
+  expect(typeof response.detail).toBe('string');
   expect(removeListener).toHaveBeenCalledTimes(1);
   expect(vi.getTimerCount()).toBe(0);
 });
+
+test.each([undefined, 'license challenge', { keys: [{ id: 'key-id', value: 'key-value' }] }])(
+  'content bridge sends string-only event detail and preserves body %j',
+  async (body) => {
+    await startContentBridge();
+    const onResponse = vi.fn();
+    window.addEventListener('drm-message-response', onResponse);
+    sendMessage.mockResolvedValueOnce(body);
+
+    await expect(sendDrmMessage({ action: 'update' })).resolves.toEqual(body);
+    const response = onResponse.mock.calls[0]![0] as CustomEvent<unknown>;
+    expect(typeof response.detail).toBe('string');
+    expect(vi.getTimerCount()).toBe(0);
+  },
+);

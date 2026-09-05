@@ -1,9 +1,3 @@
-type DrmResponse = {
-  requestId: string;
-  body?: unknown;
-  error?: string;
-};
-
 export const sendDrmMessage = (data: Record<string, unknown>): Promise<unknown> => {
   return new Promise((resolve, reject) => {
     const requestId = crypto.randomUUID();
@@ -12,14 +6,28 @@ export const sendDrmMessage = (data: Record<string, unknown>): Promise<unknown> 
       clearTimeout(timer);
     };
     const onResponse = (event: Event) => {
-      const detail = (event as CustomEvent<DrmResponse | null>).detail;
-      if (!detail || detail.requestId !== requestId) return;
+      const detail = (event as CustomEvent<unknown>).detail;
+      if (typeof detail !== 'string') return;
+
+      let response: unknown;
+      try {
+        response = JSON.parse(detail);
+      } catch {
+        return;
+      }
+      if (
+        typeof response !== 'object' ||
+        response === null ||
+        !('requestId' in response) ||
+        response.requestId !== requestId
+      )
+        return;
 
       cleanup();
-      if (typeof detail.error === 'string') {
-        reject(new Error(detail.error));
+      if ('error' in response && typeof response.error === 'string') {
+        reject(new Error(response.error));
       } else {
-        resolve(detail.body);
+        resolve('body' in response ? response.body : undefined);
       }
     };
     const timer = setTimeout(() => {
