@@ -1,4 +1,5 @@
 import { readFile } from 'node:fs/promises';
+import { basename, extname, resolve } from 'node:path';
 import { WidevineDeviceCredentials } from '../../../lib/widevine/device-credentials';
 import { PlayReadyDeviceCredentials } from '../../../lib/playready/device-credentials';
 import { Session } from '../../../lib';
@@ -23,6 +24,22 @@ const defaultConfig = {
 };
 
 export const config: Config = defaultConfig;
+
+// Aliases must identify exactly one configured device, regardless of list order.
+export const resolveClient = (identifier: string) => {
+  const paths = new Set(
+    config.clients
+      .filter(
+        (path) =>
+          identifier === path ||
+          identifier === resolve(path) ||
+          identifier === basename(path) ||
+          identifier === basename(path, extname(path)),
+      )
+      .map((path) => resolve(path)),
+  );
+  return paths.size === 1 ? paths.values().next().value : undefined;
+};
 
 export const loadConfig = async (configPath: string) => {
   const data = await readFile(configPath, { encoding: 'utf-8' })

@@ -1,5 +1,5 @@
 import { readFile } from 'node:fs/promises';
-import { basename } from 'node:path';
+import { resolve } from 'node:path';
 import { Hono } from 'hono';
 import { createMiddleware } from 'hono/factory';
 import { z } from 'zod';
@@ -15,7 +15,7 @@ import {
 } from '../../../../lib';
 import { WidevineDeviceCredentials } from '../../../../lib/widevine/device-credentials';
 import { PlayReadyDeviceCredentials } from '../../../../lib/playready/device-credentials';
-import { clients, config, sessions } from '../state';
+import { clients, config, resolveClient, sessions } from '../state';
 import { WidevineSession } from '../../../../lib/widevine/session';
 
 const app = new Hono();
@@ -47,15 +47,16 @@ app.post(
     }),
   ),
   async (c) => {
-    const clientName = c.req.valid('json').client || config.clients[0];
-    const clientPath = config.clients.find((client: string) =>
-      basename(client).includes(clientName),
-    );
+    const clientName = c.req.valid('json').client;
+    const defaultPath = config.clients[0];
+    const clientPath =
+      clientName === undefined ? defaultPath && resolve(defaultPath) : resolveClient(clientName);
 
     const secretKey = c.req.header('x-secret-key');
     if (secretKey) {
       const user = config.users[secretKey];
-      const clientAllowed = user?.clients.includes(clientName);
+      const clientAllowed =
+        clientPath && user?.clients.some((identifier) => resolveClient(identifier) === clientPath);
       if (!clientAllowed) {
         return c.json({ error: 'Client is not found or you are not authorized to use it.' }, 403);
       }
@@ -65,22 +66,22 @@ app.post(
       return c.json({ error: 'Client not found' }, 400);
     }
 
-    if (!clients.has(clientName)) {
+    if (!clients.has(clientPath)) {
       const clientData = await readFile(clientPath);
       const isWvd = fromBuffer(clientData.subarray(0, 3)).toText() == 'WVD';
       const isPrd = fromBuffer(clientData.subarray(0, 3)).toText() == 'PRD';
       if (isWvd) {
         const client = await WidevineDeviceCredentials.from({ wvd: clientData });
-        clients.set(clientName, client);
+        clients.set(clientPath, client);
       } else if (isPrd) {
         const client = await PlayReadyDeviceCredentials.from({ prd: clientData });
-        clients.set(clientName, client);
+        clients.set(clientPath, client);
       } else {
         return c.json({ error: 'Client is not a valid WVD or PRD file' }, 403);
       }
     }
 
-    const client = clients.get(clientName)!;
+    const client = clients.get(clientPath)!;
 
     const cdm =
       client instanceof WidevineDeviceCredentials

@@ -1,5 +1,5 @@
 import { readdir } from 'node:fs/promises';
-import { basename, extname } from 'node:path';
+import { resolve } from 'node:path';
 import { Hono } from 'hono';
 import { logger } from 'hono/logger';
 import { secureHeaders } from 'hono/secure-headers';
@@ -29,9 +29,8 @@ export const serve = async (options: ServeOptions = {}) => {
   if (options.secret) {
     const anonymousUser = { name: 'anonymous', clients: [] };
     const user = config.users[options.secret] || anonymousUser;
-    const clientFilename = basename(options.client || config.clients.at(-1)!);
-    const clientName = clientFilename.replace(extname(clientFilename), '');
-    if (!user.clients.length) user.clients.push(clientName);
+    const clientPath = options.client ?? config.clients.at(-1);
+    if (!user.clients.length && clientPath) user.clients.push(resolve(clientPath));
     config.users[options.secret] = user;
   }
 
@@ -46,8 +45,8 @@ export const serve = async (options: ServeOptions = {}) => {
 
   const server = nodeServe({
     fetch: app.fetch,
-    port: config.port || 4000,
-    hostname: config.host || '0.0.0.0',
+    port: options.port ?? config.port ?? 4000,
+    hostname: options.host ?? config.host ?? '0.0.0.0',
   });
 
   process.on('SIGINT', () => {

@@ -1,4 +1,5 @@
 import { readFile } from 'node:fs/promises';
+import { resolve } from 'node:path';
 import { afterEach, beforeEach, expect, test, vi } from 'vitest';
 import { Hono } from 'hono';
 import { fromBase64, Remote, Session, PlayReady, PlayReadyDeviceCredentials } from '../src/lib';
@@ -18,7 +19,7 @@ beforeEach(async () => {
   config.clients = ['test.wvd'];
   config.users = {};
   config.forcePrivacyMode = true;
-  clients.set('test.wvd', await loadWidevineDeviceCredentials());
+  clients.set(resolve('test.wvd'), await loadWidevineDeviceCredentials());
 });
 
 afterEach(() => {
@@ -149,7 +150,7 @@ test('PlayReady rejects server certificates, forced privacy, and CLI encrypt', a
   });
   const engine = new PlayReady({ deviceCredentials });
   await expect(engine.setServerCertificate()).rejects.toThrow('unsupported');
-  clients.set('test.wvd', deviceCredentials);
+  clients.set(resolve('test.wvd'), deviceCredentials);
   const session = await connect().createSession();
   await expect(session.generateRequest(initData)).rejects.toThrow(
     'Forced privacy mode is unsupported',
