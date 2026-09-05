@@ -86,7 +86,10 @@ export const Settings = () => {
             Spoofing
           </Cell>
         </Section>
-        <Section header="Network" footer="Experimental feature.">
+        <Section
+          header="Network"
+          footer="Experimental feature. Requests inside workers are not inspected."
+        >
           {[
             <Cell
               subtitle="Streaming manifest URL detection"
