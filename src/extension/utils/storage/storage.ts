@@ -147,7 +147,13 @@ export const appStorage = {
       mutateKeyHistory(async () => {
         const keys = (await appStorage.allKeys.getValue()) || [];
         for (const newKey of newKeys) {
-          const index = keys.findIndex((key) => key.id === newKey.id);
+          const index = keys.findIndex(
+            (key) =>
+              key.id === newKey.id &&
+              (!isCapturedKey(key) ||
+                !isCapturedKey(newKey) ||
+                (key.value === newKey.value && key.pssh === newKey.pssh && key.url === newKey.url)),
+          );
           if (index === -1) {
             keys.push(newKey);
           } else if (!isCapturedKey(keys[index]!) && isCapturedKey(newKey)) {
@@ -159,7 +165,13 @@ export const appStorage = {
     remove: (key: KeyInfo) =>
       mutateKeyHistory(async () => {
         const keys = (await appStorage.allKeys.getValue()) || [];
-        const index = keys.findIndex((storedKey) => storedKey.id === key.id);
+        const index = keys.findIndex(
+          (storedKey) =>
+            storedKey.id === key.id &&
+            storedKey.value === key.value &&
+            storedKey.pssh === key.pssh &&
+            storedKey.url === key.url,
+        );
         if (index === -1) return;
         keys.splice(index, 1);
         await appStorage.allKeys.raw.setValue(keys);

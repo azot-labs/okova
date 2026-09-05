@@ -85,6 +85,7 @@ export { fetchDecryptionKeys };
 export * from './utils';
 export * from './api';
 export * from './decrypt';
+export * from './pssh';
 export * from './widevine/engine';
 export * from './widevine/device-credentials';
 export * from './playready/engine';

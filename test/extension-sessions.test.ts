@@ -582,3 +582,116 @@ test('a recovered key-status history write clears the previous failure', async (
   expect(await appStorage.allKeys.getValue()).toMatchObject([{ value: 'usable' }]);
   expect(await getDrmFailureStorage(1).getValue()).toBeNull();
 });
+
+test.each([true, false])(
+  'captures ClearKey without a client when spoofing is %s',
+  async (spoofing) => {
+    await appStorage.settings.setValue({
+      spoofing,
+      emeInterception: true,
+      requestInterception: false,
+      theme: 'auto',
+    });
+    vi.mocked(appStorage.clients.active.getValue).mockResolvedValue(null);
+    const send = startBackground();
+    const context = {
+      keySystem: 'org.w3.clearkey',
+      initDataType: 'keyids',
+      mpd: 'https://example.com/manifest.mpd',
+    };
+    await send('generateRequest', 'clear', {}, context);
+    await expect(send('license-request', 'clear', {}, context)).resolves.toBeUndefined();
+    for (const kid of ['LwVHf8JLtPrv2GUXFW2v_A', 'AAECAwQFBgcICQoLDA0ODw']) {
+      const message = new TextEncoder().encode(
+        JSON.stringify({ keys: [{ kty: 'oct', kid, k: 'tQ0bJVWb6b0KPL6KtZIy_A' }] }),
+      );
+      await expect(send('update', 'clear', {}, { ...context, message })).resolves.toMatchObject({
+        keys: [
+          {
+            value: 'b50d1b25559be9bd0a3cbe8ab59232fc',
+            pssh: 'cHNzaA==',
+            url: 'https://example.com/video',
+            mpd: context.mpd,
+          },
+        ],
+      });
+    }
+    expect(await appStorage.allKeys.getValue()).toHaveLength(2);
+    expect(await appStorage.recentKeys.getValue()).toMatchObject([
+      { id: '000102030405060708090a0b0c0d0e0f' },
+    ]);
+    expect(await appStorage.recentKeysByDomain.getValue()).toHaveProperty('example.com');
+    expect(appStorage.clients.active.getValue).not.toHaveBeenCalled();
+    expect(Session.prototype.generateRequest).not.toHaveBeenCalled();
+    expect(Session.prototype.update).not.toHaveBeenCalled();
+  },
+);
+
+test.each(['com.widevine.alpha', 'com.microsoft.playready', undefined])(
+  'does not capture ClearKey-shaped JSON for key system %s',
+  async (keySystem) => {
+    const send = startBackground();
+    await send('generateRequest', 'other', {}, { keySystem });
+    const message = new TextEncoder().encode(
+      JSON.stringify({ keys: [{ kty: 'oct', kid: 'AA', k: 'tQ0bJVWb6b0KPL6KtZIy_A' }] }),
+    );
+    await expect(send('update', 'other', {}, { keySystem, message })).resolves.toBeUndefined();
+    expect(Session.prototype.waitForKeyStatusesChange).not.toHaveBeenCalled();
+    expect((await appStorage.allKeys.getValue()) ?? []).toEqual([]);
+    expect((await appStorage.recentKeys.getValue()) ?? []).toEqual([]);
+  },
+);
+
+test('retains reused ClearKey IDs across origins and status events', async () => {
+  const send = startBackground();
+  const captures = [
+    {
+      url: 'https://first.example/video',
+      k: 'tQ0bJVWb6b0KPL6KtZIy_A',
+      value: 'b50d1b25559be9bd0a3cbe8ab59232fc',
+    },
+    {
+      url: 'https://second.example/video',
+      k: 'AAECAwQFBgcICQoLDA0ODw',
+      value: '000102030405060708090a0b0c0d0e0f',
+    },
+  ];
+  for (const capture of captures) {
+    const context = { keySystem: 'org.w3.clearkey', url: capture.url };
+    const message = new TextEncoder().encode(
+      JSON.stringify({ keys: [{ kty: 'oct', kid: 'AA', k: capture.k }] }),
+    );
+    await send('update', 'clear', {}, { ...context, message });
+    await send('keystatuseschange', 'clear', {}, { ...context, keyStatuses: { 'AA==': 'usable' } });
+    expect(await appStorage.recentKeys.getValue()).toMatchObject([
+      { id: '00', value: capture.value, url: capture.url },
+    ]);
+  }
+  const history = await appStorage.allKeys.getValue();
+  expect(history).toHaveLength(2);
+  expect(history).toMatchObject(captures.map(({ url, value }) => ({ id: '00', url, value })));
+  if (!history?.[1]) throw new Error('Missing second capture');
+  await appStorage.allKeys.remove(history[1]);
+  expect(await appStorage.allKeys.getValue()).toMatchObject([{ value: captures[0]?.value }]);
+});
+
+test('a recovered ClearKey history write clears its diagnostic', async () => {
+  const send = startBackground();
+  const sender = { tab: tab(1) };
+  const context = {
+    keySystem: 'org.w3.clearkey',
+    message: new TextEncoder().encode(
+      JSON.stringify({ keys: [{ kty: 'oct', kid: 'AA', k: 'tQ0bJVWb6b0KPL6KtZIy_A' }] }),
+    ),
+  };
+  vi.spyOn(appStorage.allKeys, 'add').mockRejectedValueOnce(new Error('History write failed'));
+  await send('update', 'clear', sender, context);
+  expect(await getDrmFailureStorage(1).getValue()).toMatchObject({
+    stage: 'history',
+    error: 'History write failed',
+  });
+  await expect(send('update', 'clear', sender, context)).resolves.toMatchObject({
+    keys: [{ id: '00', value: 'b50d1b25559be9bd0a3cbe8ab59232fc' }],
+  });
+  expect(await getDrmFailureStorage(1).getValue()).toBeNull();
+});

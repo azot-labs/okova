@@ -223,3 +223,12 @@ test('cache hits expose only captured keys matching the PSSH with current site m
   expect(await appStorage.recentKeysByDomain.getValue()).toEqual({ 'other.example': cachedKeys });
   expect(loadClient).not.toHaveBeenCalled();
 });
+
+test('retains different values and content metadata for a reused KID', async () => {
+  const otherValue = { ...key, value: '000102030405060708090a0b0c0d0e0f' };
+  const otherContent = { ...key, pssh: 'other-pssh' };
+  await appStorage.allKeys.add(key, otherValue, otherContent, otherValue);
+  expect(await appStorage.allKeys.getValue()).toEqual([key, otherValue, otherContent]);
+  await appStorage.allKeys.remove(otherValue);
+  expect(await appStorage.allKeys.getValue()).toEqual([key, otherContent]);
+});

@@ -19,6 +19,8 @@ Okova is a set of tools (JavaScript library, command-line utility and browser ex
 
 ## Browser Extension
 
+With EME interception enabled, the extension inspects ClearKey license responses and saves their key IDs and keys as hex. ClearKey capture works without an imported device or spoofing enabled.
+
 ### Installing Chrome extension
 
 **Developer Mode** needs to be enabled in `chrome://extensions/` page
@@ -141,6 +143,56 @@ async function main() {
   await session.remove(); // Destroy the license(s) and/or key(s) associated with the session whether they are in memory, persistent store or both.
 }
 ```
+
+### Inspect, edit, and convert PSSH boxes
+
+```ts
+import {
+  PSSH_SYSTEM_IDS,
+  createPsshBox,
+  parsePsshBoxes,
+  getPsshKeyIds,
+  setPsshKeyIds,
+  convertPsshBox,
+  psshBoxToBase64,
+} from 'okova';
+
+const widevine = setPsshKeyIds(createPsshBox({ systemId: PSSH_SYSTEM_IDS.widevine }), [
+  '00112233-4455-6677-8899-aabbccddeeff',
+]);
+const playready = convertPsshBox(widevine, 'playready', {
+  laUrl: 'https://example.com/license',
+});
+const [box] = parsePsshBoxes(psshBoxToBase64(playready));
+console.log(box.systemId, box.version, getPsshKeyIds(box));
+const restored = convertPsshBox(box, 'widevine');
+```
+
+`parsePsshBoxes` accepts bytes or base64 containing one or more full PSSH boxes. It
+rejects malformed boxes, raw DRM headers, and other MP4 box types. The returned
+`ParsedPsshBox` exposes `systemId`, `version`, `flags`, `keyIds`, and raw payload
+`data`. Unknown system IDs and opaque payloads can be parsed and serialized.
+`serializePsshBox` returns full box bytes; `psshBoxToBase64` returns base64. Both
+write a normal 32-bit size field, including for inputs parsed with extended sizes.
+
+IDs accept 16-byte arrays, UUID strings, or 32 hex digits. Inspection returns
+lowercase hex in UUID byte order, accounting for PlayReady's GUID byte order.
+`getPsshKeyIds` prefers nonempty version 1 box KIDs, then reads Widevine protobuf
+or PlayReady Object headers, versions 4.0 through 4.3. `createPsshBox` wraps raw
+payload bytes or base64; its `keyIds` option is only available with `version: 1`
+and sets box KIDs. Use `setPsshKeyIds` to populate or replace Widevine payload KIDs.
+It also updates version 1 box KIDs and preserves other protobuf fields. Editing
+and conversion return new boxes without changing their inputs. PlayReady KID
+replacement is not supported.
+
+Conversion carries KIDs, box version, flags, and `cenc`/`cbcs` encryption signaling.
+Widevine data without an explicit scheme defaults to AES-CTR. Unsupported or mixed
+PlayReady algorithms are rejected. Conversion discards other source metadata,
+including license URLs, provider data, custom attributes, and checksums. Supply
+`laUrl` when converting to PlayReady if needed. Generated PlayReady 4.3 headers
+omit checksums because computing them requires content keys. Converted headers
+may not meet a particular license server's requirements. See Microsoft's
+[PlayReady header specification](https://learn.microsoft.com/en-us/playready/specifications/playready-header-specification).
 
 ## Disclaimer
 
