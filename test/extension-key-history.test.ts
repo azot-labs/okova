@@ -56,6 +56,83 @@ test('upgrades a status within the same batch while retaining distinct key IDs',
   expect(await appStorage.allKeys.getValue()).toEqual([key, otherKey]);
 });
 
+test('retains every key from concurrent captures', async () => {
+  const captures = Array.from({ length: 10 }, (_, index) => ({
+    ...key,
+    id: index.toString(16).padStart(32, '0'),
+  }));
+
+  await Promise.all(captures.map((capture) => appStorage.allKeys.add(capture)));
+
+  expect(await appStorage.allKeys.getValue()).toEqual(captures);
+});
+
+test('retains recent keys for different domains during concurrent captures', async () => {
+  const otherKey = { ...key, url: 'https://other.example/video' };
+
+  await Promise.all([
+    appStorage.recentKeysByDomain.setForUrl(key.url, [key]),
+    appStorage.recentKeysByDomain.setForUrl(otherKey.url, [otherKey]),
+  ]);
+
+  expect(await appStorage.recentKeysByDomain.getValue()).toEqual({
+    'example.com': [key],
+    'other.example': [otherKey],
+  });
+});
+
+test('serializes status upgrades and duplicate captures', async () => {
+  await Promise.all([
+    appStorage.allKeys.add({ ...key, value: 'usable' }),
+    appStorage.allKeys.add(key),
+    appStorage.allKeys.add({ ...key, value: 'expired' }),
+  ]);
+
+  expect(await appStorage.allKeys.getValue()).toEqual([key]);
+});
+
+test('serializes removals with captures and ignores repeated removals', async () => {
+  const otherKey = { ...key, id: '112233445566778899aabbccddeeff00' };
+  await appStorage.allKeys.add(key);
+
+  await Promise.all([
+    appStorage.allKeys.add(otherKey),
+    appStorage.allKeys.remove(key),
+    appStorage.allKeys.remove(key),
+  ]);
+
+  expect(await appStorage.allKeys.getValue()).toEqual([otherKey]);
+});
+
+test('clears history after pending writes without restoring stale entries', async () => {
+  await Promise.all([
+    appStorage.allKeys.add(key),
+    appStorage.recentKeys.setValue([key]),
+    appStorage.recentKeysByDomain.setForUrl(key.url, [key]),
+    appStorage.allKeys.clear(),
+  ]);
+
+  expect(await appStorage.allKeys.getValue()).toEqual([]);
+  expect(await appStorage.recentKeys.getValue()).toEqual([]);
+  expect(await appStorage.recentKeysByDomain.getValue()).toEqual({});
+});
+
+test('releases the lock after a failed write and reports the failure', async () => {
+  const error = new Error('Storage write failed');
+  vi.spyOn(appStorage.allKeys.raw, 'setValue').mockRejectedValueOnce(error);
+
+  const results = await Promise.allSettled([
+    appStorage.allKeys.add(key),
+    appStorage.allKeys.add(key),
+  ]);
+
+  expect(results).toEqual([
+    { status: 'rejected', reason: error },
+    { status: 'fulfilled', value: undefined },
+  ]);
+  expect(await appStorage.allKeys.getValue()).toEqual([key]);
+});
+
 const startBackground = () => {
   const addListener = vi.spyOn(browser.runtime.onMessage, 'addListener');
   vi.spyOn(browser.tabs, 'query').mockImplementation(async () => []);

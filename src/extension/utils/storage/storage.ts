@@ -74,15 +74,24 @@ const fromClientToInfo = async (client: Client): Promise<ClientInfo> => {
   return { type, data };
 };
 
+// A shared browser lock serializes background and popup writes, including clears.
+// Call raw setters inside the lock to avoid acquiring the same lock recursively.
+const mutateKeyHistory = (mutation: () => Promise<void>) =>
+  navigator.locks.request('okova:key-history', mutation);
+
+const recentKeys = asJson(storage.defineItem<KeyInfo[]>('local:recent-keys'));
+
 export const appStorage = {
   settings: asJson(storage.defineItem<Settings>('local:settings')),
 
-  recentKeys: asJson(storage.defineItem<KeyInfo[]>('local:recent-keys')),
+  recentKeys: {
+    ...recentKeys,
+    setValue: (keys: KeyInfo[]) => mutateKeyHistory(() => recentKeys.setValue(keys)),
+  },
   recentKeysByDomain: {
     raw: asJson(storage.defineItem<RecentKeysByDomain>('local:recent-keys-by-domain')),
-    setValue: async (keys: RecentKeysByDomain) => {
-      await appStorage.recentKeysByDomain.raw.setValue(keys);
-    },
+    setValue: (keys: RecentKeysByDomain) =>
+      mutateKeyHistory(() => appStorage.recentKeysByDomain.raw.setValue(keys)),
     getValue: async () => {
       return appStorage.recentKeysByDomain.raw.getValue();
     },
@@ -91,50 +100,50 @@ export const appStorage = {
     ) => {
       return appStorage.recentKeysByDomain.raw.watch(callback);
     },
-    clear: async () => {
-      await appStorage.recentKeysByDomain.raw.setValue({});
-    },
+    clear: () => mutateKeyHistory(() => appStorage.recentKeysByDomain.raw.setValue({})),
     setForUrl: async (url: string | undefined, keys: KeyInfo[]) => {
       const domain = getWebsiteDomain(url);
       if (!domain) return;
 
-      const keysByDomain = (await appStorage.recentKeysByDomain.getValue()) || {};
-      await appStorage.recentKeysByDomain.setValue({ ...keysByDomain, [domain]: keys });
+      await mutateKeyHistory(async () => {
+        const keysByDomain = (await appStorage.recentKeysByDomain.getValue()) || {};
+        await appStorage.recentKeysByDomain.raw.setValue({ ...keysByDomain, [domain]: keys });
+      });
     },
   },
   allKeys: {
     raw: asJson(storage.defineItem<KeyInfo[]>('local:all-keys')),
-    setValue: async (keys: KeyInfo[]) => {
-      await appStorage.allKeys.raw.setValue(keys);
-    },
+    setValue: (keys: KeyInfo[]) => mutateKeyHistory(() => appStorage.allKeys.raw.setValue(keys)),
     getValue: async () => {
       return appStorage.allKeys.raw.getValue();
     },
-    clear: async () => {
-      await appStorage.allKeys.raw.setValue([]);
-      await appStorage.recentKeys.setValue([]);
-      await appStorage.recentKeysByDomain.clear();
-    },
-    add: async (...newKeys: KeyInfo[]) => {
-      const keys = (await appStorage.allKeys.getValue()) || [];
-      for (const newKey of newKeys) {
-        const index = keys.findIndex((key) => key.id === newKey.id);
-        if (index === -1) {
-          keys.push(newKey);
-        } else if (!isCapturedKey(keys[index]!) && isCapturedKey(newKey)) {
-          keys[index] = newKey;
+    clear: () =>
+      mutateKeyHistory(async () => {
+        await appStorage.allKeys.raw.setValue([]);
+        await recentKeys.setValue([]);
+        await appStorage.recentKeysByDomain.raw.setValue({});
+      }),
+    add: (...newKeys: KeyInfo[]) =>
+      mutateKeyHistory(async () => {
+        const keys = (await appStorage.allKeys.getValue()) || [];
+        for (const newKey of newKeys) {
+          const index = keys.findIndex((key) => key.id === newKey.id);
+          if (index === -1) {
+            keys.push(newKey);
+          } else if (!isCapturedKey(keys[index]!) && isCapturedKey(newKey)) {
+            keys[index] = newKey;
+          }
         }
-      }
-      await appStorage.allKeys.setValue(keys);
-    },
-    remove: async (key: KeyInfo) => {
-      const keys = (await appStorage.allKeys.getValue()) || [];
-      keys.splice(
-        keys.findIndex((k) => k.id === key.id),
-        1,
-      );
-      await appStorage.allKeys.setValue(keys);
-    },
+        await appStorage.allKeys.raw.setValue(keys);
+      }),
+    remove: (key: KeyInfo) =>
+      mutateKeyHistory(async () => {
+        const keys = (await appStorage.allKeys.getValue()) || [];
+        const index = keys.findIndex((storedKey) => storedKey.id === key.id);
+        if (index === -1) return;
+        keys.splice(index, 1);
+        await appStorage.allKeys.raw.setValue(keys);
+      }),
   },
 
   clients: {
