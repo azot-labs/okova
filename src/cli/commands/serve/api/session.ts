@@ -16,6 +16,7 @@ import {
 import { WidevineDeviceCredentials } from '../../../../lib/widevine/device-credentials';
 import { PlayReadyDeviceCredentials } from '../../../../lib/playready/device-credentials';
 import { clients, config, sessions } from '../state';
+import { WidevineSession } from '../../../../lib/widevine/session';
 
 const app = new Hono();
 const SESSION_MESSAGE_TIMEOUT_MS = 5_000;
@@ -107,6 +108,7 @@ app.post(
     z.object({
       initDataType: z.string().optional(),
       initData: z.string(),
+      serverCertificate: z.base64().min(1).optional(),
     }),
   ),
   async (c) => {
@@ -116,6 +118,29 @@ app.post(
     const session = sessions.get(sessionKey);
     if (!session) {
       return c.json({ error: 'Session not found. Unable to generate request.' }, 400);
+    }
+    const { serverCertificate } = c.req.valid('json');
+    if (serverCertificate !== undefined) {
+      try {
+        const accepted = await session.engine.setServerCertificate(
+          Buffer.from(serverCertificate, 'base64'),
+        );
+        if (!accepted) return c.json({ error: 'Server certificates are unsupported' }, 400);
+      } catch (error) {
+        return c.json({ error: error instanceof Error ? error.message : String(error) }, 400);
+      }
+    }
+    if (config.forcePrivacyMode) {
+      if (!(session.engine instanceof Widevine)) {
+        return c.json({ error: 'Forced privacy mode is unsupported for this key system' }, 400);
+      }
+      const nativeSession = session.engine.sessions.get(session.sessionId);
+      const hasCertificate =
+        session.engine.serverCertificate ||
+        (nativeSession instanceof WidevineSession && nativeSession.serviceCertificate);
+      if (!hasCertificate) {
+        return c.json({ error: 'Privacy mode requires a valid server certificate' }, 403);
+      }
     }
     const initDataType = c.req.valid('json').initDataType || 'cenc';
     const initData = Buffer.from(c.req.valid('json').initData, 'base64');
@@ -162,6 +187,7 @@ app.post(
     return c.json({
       message: Buffer.from(new Uint8Array(message.message)).toString('base64'),
       messageType: message.messageType,
+      serverCertificateAccepted: serverCertificate !== undefined,
     });
   },
 );

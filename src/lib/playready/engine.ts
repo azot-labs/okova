@@ -23,7 +23,7 @@ export class PlayReady extends BaseMediaKeysEngine {
   }
 
   async setServerCertificate(): Promise<boolean> {
-    return true;
+    throw new Error('Server certificates are unsupported for PlayReady');
   }
 
   #handleSessionDisposed = (sessionId: string) => {

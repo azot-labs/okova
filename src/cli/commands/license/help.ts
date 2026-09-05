@@ -19,7 +19,8 @@ export const help = () => {
       'path to client (directory with id and private key or path to *.wvd file)',
   );
   console.log(
-    col(`-e, --encrypt`) + 'enable client encryption with service certificate, disabled by default',
+    col(`-e, --encrypt`) +
+      'encrypt Widevine client ID using a service certificate from the license URL',
   );
   console.log(col(`-h, --help`) + 'display this menu and exit');
 };
