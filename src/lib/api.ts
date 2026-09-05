@@ -380,7 +380,8 @@ export class Session extends EventTarget implements MediaKeySession {
   }
 
   async waitForLicenseRequest() {
-    const queuedMessage = this.#messageQueue.find(
+    // A service certificate can replace an earlier, unencrypted challenge.
+    const queuedMessage = this.#messageQueue.findLast(
       (message) => message.messageType === 'license-request',
     );
     if (queuedMessage) return queuedMessage.message;

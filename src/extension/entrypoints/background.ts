@@ -6,14 +6,24 @@ import {
   PlayReady,
   requestMediaKeySystemAccess,
   setSupportedEngines,
+  toBufferSource,
   Widevine,
 } from '@okova/lib';
+import { parseCertificate } from '@okova/lib/widevine/certificate';
+import { SignedDrmCertificate, SignedMessage } from '@okova/lib/widevine/proto';
 import { getMessageType } from '@okova/lib/widevine/message';
 import { WidevineDeviceCredentials } from '@okova/lib/widevine/device-credentials';
 import { PlayReadyDeviceCredentials } from '@okova/lib/playready/device-credentials';
 import { Session } from '@okova/lib/api';
 
 const SESSION_IDLE_TIMEOUT_MS = 5 * 60_000;
+
+type SessionEntry = {
+  session: Session;
+  tabId: number | undefined;
+  timer: ReturnType<typeof setTimeout>;
+  serverCertificate: string | undefined;
+};
 
 export default defineBackground({
   type: 'module',
@@ -24,10 +34,7 @@ export default defineBackground({
 
     const state: {
       client: Client | null;
-      sessions: Map<
-        string,
-        { session: Session; tabId: number | undefined; timer: ReturnType<typeof setTimeout> }
-      >;
+      sessions: Map<string, SessionEntry>;
     } = {
       client: null,
       sessions: new Map(),
@@ -244,25 +251,55 @@ export default defineBackground({
             sendResponse();
             return;
           }
+          const serverCertificate =
+            typeof message.serverCertificate === 'string' ? message.serverCertificate : undefined;
+          if (serverCertificate && cdm instanceof Widevine) {
+            await cdm.setServerCertificate(fromBase64(serverCertificate).toBuffer());
+          }
           setSupportedEngines([cdm]);
           const keySystemAccess = requestMediaKeySystemAccess(cdm.keySystem, []);
           const mediaKeys = await keySystemAccess.createMediaKeys();
           const session = mediaKeys.createSession();
           // Close after five minutes of inactivity, including silently removed frames.
           const timer = setTimeout(() => void closeSession(sessionKey), SESSION_IDLE_TIMEOUT_MS);
-          state.sessions.set(sessionKey, { session, tabId: sender.tab?.id, timer });
+          const entry: SessionEntry = {
+            session,
+            tabId: sender.tab?.id,
+            timer,
+            serverCertificate,
+          };
+          state.sessions.set(sessionKey, entry);
           await session.generateRequest(message.initDataType, fromBase64(initData).toBuffer());
           sendResponse();
           return;
         }
 
-        const session = state.sessions.get(sessionKey)?.session;
-        if (!session) {
+        const sessionEntry = state.sessions.get(sessionKey);
+        if (!sessionEntry) {
           sendResponse();
           return;
         }
 
+        const { session } = sessionEntry;
         if (message.action === 'license-request') {
+          const serverCertificate = message.serverCertificate;
+          if (
+            session.engine instanceof Widevine &&
+            typeof serverCertificate === 'string' &&
+            serverCertificate !== sessionEntry.serverCertificate
+          ) {
+            const { signedDrmCertificate } = await parseCertificate(serverCertificate);
+            // Replace any session-level override and regenerate with the new certificate.
+            await session.update(
+              toBufferSource(
+                SignedMessage.encode({
+                  type: SignedMessage.MessageType.SERVICE_CERTIFICATE,
+                  msg: SignedDrmCertificate.encode(signedDrmCertificate).finish(),
+                }).finish(),
+              ),
+            );
+            sessionEntry.serverCertificate = serverCertificate;
+          }
           const challenge = await session.waitForLicenseRequest();
           sendResponse(fromBuffer(challenge).toBase64());
         } else if (message.action === 'update') {
