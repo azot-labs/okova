@@ -15,6 +15,7 @@ import {
 } from '../src/lib/widevine/proto';
 import { Session, setSupportedEngines } from '../src/lib/api';
 import { WidevineDeviceCredentials } from '../src/lib/widevine/device-credentials';
+import { Widevine } from '../src/lib/widevine/engine';
 
 vi.mock('../src/lib/widevine/device-credentials', () => ({
   WidevineDeviceCredentials: class {},
@@ -98,6 +99,68 @@ const startBackground = () => {
       );
     });
 };
+
+const getSessionClient = (index: number) => {
+  const engine = sessions[index]?.engine;
+  if (!(engine instanceof Widevine)) throw new Error('Expected a Widevine session');
+  return engine.deviceCredentials;
+};
+
+test('new sessions use the current client while existing sessions retain their credentials', async () => {
+  const firstClient = new WidevineDeviceCredentials(new Uint8Array());
+  const secondClient = new WidevineDeviceCredentials(new Uint8Array());
+  const getClient = vi.mocked(appStorage.clients.active.getValue);
+  getClient.mockResolvedValue(firstClient);
+  const send = startBackground();
+  await send('generateRequest', 'first');
+  expect(getSessionClient(0)).toBe(firstClient);
+
+  getClient.mockResolvedValue(secondClient);
+  await send('generateRequest', 'second');
+  expect(getSessionClient(1)).toBe(secondClient);
+  await expect(send('license-request', 'first')).resolves.toBe(btoa(sessions[0]!.sessionId));
+  expect(getSessionClient(0)).toBe(firstClient);
+
+  getClient.mockResolvedValue(null);
+  await send('generateRequest', 'unselected');
+  expect(sessions).toHaveLength(2);
+  await expect(send('license-request', 'unselected')).resolves.toBeUndefined();
+
+  getClient.mockResolvedValue(firstClient);
+  await send('generateRequest', 'reselected');
+  expect(sessions).toHaveLength(3);
+  expect(getSessionClient(2)).toBe(firstClient);
+  await send('close', 'first');
+  await send('close', 'second');
+  await send('close', 'reselected');
+});
+
+test('a pending client load cannot replace the selection used by later sessions', async () => {
+  const firstClient = new WidevineDeviceCredentials(new Uint8Array());
+  const secondClient = new WidevineDeviceCredentials(new Uint8Array());
+  const pendingClient = Promise.withResolvers<WidevineDeviceCredentials>();
+  const loadStarted = Promise.withResolvers<void>();
+  vi.mocked(appStorage.clients.active.getValue)
+    .mockImplementationOnce(() => {
+      loadStarted.resolve();
+      return pendingClient.promise;
+    })
+    .mockResolvedValue(secondClient);
+  const send = startBackground();
+  const firstRequest = send('generateRequest', 'first');
+  await loadStarted.promise;
+  await send('generateRequest', 'second');
+  expect(getSessionClient(0)).toBe(secondClient);
+
+  pendingClient.resolve(firstClient);
+  await firstRequest;
+  await send('generateRequest', 'third');
+  expect(sessions).toHaveLength(3);
+  expect(getSessionClient(2)).toBe(secondClient);
+  await send('close', 'first');
+  await send('close', 'second');
+  await send('close', 'third');
+});
 
 test('same-PSSH sessions keep their challenges and updates across tabs, frames and documents', async () => {
   const send = startBackground();
