@@ -3,6 +3,13 @@ import { browser, type Browser } from 'wxt/browser';
 import { fakeBrowser } from 'wxt/testing';
 import background from '../src/extension/entrypoints/background';
 import { appStorage } from '../src/extension/utils/storage';
+import { fromBase64 } from '../src/lib/utils';
+import {
+  ClientIdentification,
+  EncryptedClientIdentification,
+  LicenseRequest,
+  SignedMessage,
+} from '../src/lib/widevine/proto';
 import { Session, setSupportedEngines } from '../src/lib/api';
 import { WidevineDeviceCredentials } from '../src/lib/widevine/device-credentials';
 
@@ -120,10 +127,23 @@ test('retains the session for a service certificate and cleans up failed license
   await send('generateRequest', 'one');
   await send('update', 'one', {}, { message: { 0: 8, 1: 5 } });
   expect(Session.prototype.close).not.toHaveBeenCalled();
+  expect(Session.prototype.waitForKeyStatusesChange).not.toHaveBeenCalled();
   await expect(send('license-request', 'one')).resolves.toEqual(expect.any(String));
 
-  vi.mocked(Session.prototype.update).mockRejectedValueOnce(new Error('Invalid license'));
-  await expect(send('update', 'one')).resolves.toBeUndefined();
+  const licenseUpdate = Promise.withResolvers<void>();
+  const updateStarted = Promise.withResolvers<void>();
+  vi.mocked(Session.prototype.update).mockImplementationOnce(() => {
+    updateStarted.resolve();
+    return licenseUpdate.promise;
+  });
+  const updating = send('update', 'one');
+  await updateStarted.promise;
+  expect(Session.prototype.waitForKeyStatusesChange).not.toHaveBeenCalled();
+  expect(Session.prototype.close).not.toHaveBeenCalled();
+
+  licenseUpdate.reject(new Error('Invalid license'));
+  await expect(updating).resolves.toBeUndefined();
+  expect(Session.prototype.waitForKeyStatusesChange).not.toHaveBeenCalled();
   expect(Session.prototype.close).toHaveBeenCalledOnce();
   await expect(send('license-request', 'one')).resolves.toBeUndefined();
   expect(vi.getTimerCount()).toBe(0);
@@ -193,3 +213,74 @@ test.each(['navigation', 'removal'])('cleans up only the affected tab on %s', as
   expect(Session.prototype.close).toHaveBeenCalledOnce();
   await send('close', 'two', { tab: tab(2) });
 });
+
+const SERVICE_CERTIFICATE = `CAUSxQUKvwIIAxIQKHA0VMAI9jYYredEPbbEyBiL5/mQBSKOAjCCAQoCggEBALUhErjQXQI/zF2V4sJRwcZJtBd82NK+7zVbsGdD3mYePSq8MYK3mUbVX9wI3+lUB4FemmJ0syKix/XgZ7tfCsB6idRa6pSyUW8HW2bvgR0NJuG5priU8rmFeWKqFxxPZmMNPkxgJxiJf14e+baq9a1Nuip+FBdt8TSh0xhbWiGKwFpMQfCB7/+Ao6BAxQsJu8dA7tzY8U1nWpGYD5LKfdxkagatrVEB90oOSYzAHwBTK6wheFC9kF6QkjZWt9/v70JIZ2fzPvYoPU9CVKtyWJOQvuVYCPHWaAgNRdiTwryi901goMDQoJk87wFgRwMzTDY4E5SGvJ2vJP1noH+a2UMCAwEAAToSc3RhZ2luZy5nb29nbGUuY29tEoADmD4wNSZ19AunFfwkm9rl1KxySaJmZSHkNlVzlSlyH/iA4KrvxeJ7yYDa6tq/P8OG0ISgLIJTeEjMdT/0l7ARp9qXeIoA4qprhM19ccB6SOv2FgLMpaPzIDCnKVww2pFbkdwYubyVk7jei7UPDe3BKTi46eA5zd4Y+oLoG7AyYw/pVdhaVmzhVDAL9tTBvRJpZjVrKH1lexjOY9Dv1F/FJp6X6rEctWPlVkOyb/SfEJwhAa/K81uDLyiPDZ1Flg4lnoX7XSTb0s+Cdkxd2b9yfvvpyGH4aTIfat4YkF9Nkvmm2mU224R1hx0WjocLsjA89wxul4TJPS3oRa2CYr5+DU4uSgdZzvgtEJ0lksckKfjAF0K64rPeytvDPD5fS69eFuy3Tq26/LfGcF96njtvOUA4P5xRFtICogySKe6WnCUZcYMDtQ0BMMM1LgawFNg4VA+KDCJ8ABHg9bOOTimO0sswHrRWSWX1XF15dXolCk65yEqz5lOfa2/fVomeopkU`;
+
+test.each(['setServerCertificate', 'update', 'late certificate'])(
+  'returns the encrypted challenge after %s without leaking into another session',
+  async (delivery) => {
+    vi.mocked(Session.prototype.generateRequest).mockRestore();
+    vi.mocked(Session.prototype.waitForLicenseRequest).mockRestore();
+    vi.mocked(Session.prototype.update).mockRestore();
+    const encryptId = vi.fn(async () =>
+      EncryptedClientIdentification.create({
+        providerId: 'staging.google.com',
+        encryptedClientId: new Uint8Array([1, 2, 3]),
+      }),
+    );
+    vi.mocked(appStorage.clients.active.getValue).mockResolvedValue(
+      Object.assign(new WidevineDeviceCredentials(new Uint8Array()), {
+        id: ClientIdentification.create({}),
+        encryptId,
+        signWithKey: async () => new Uint8Array([0xaa]),
+      }),
+    );
+    const send = startBackground();
+    const initData =
+      'AAAAW3Bzc2gAAAAA7e+LqXnWSs6jyCfc1R0h7QAAADsIARIQ62dqu8s0Xpa7z2FmMPGj2hoNd2lkZXZpbmVfdGVzdCIQZmtqM2xqYVNkZmFsa3IzaioCSEQyAA==';
+    await send(
+      'generateRequest',
+      'private',
+      {},
+      {
+        initData,
+        serverCertificate: delivery === 'setServerCertificate' ? SERVICE_CERTIFICATE : undefined,
+      },
+    );
+    await send('generateRequest', 'other', {}, { initData });
+    if (delivery === 'update') {
+      await send(
+        'update',
+        'private',
+        {},
+        {
+          message: fromBase64(SERVICE_CERTIFICATE).toBuffer(),
+        },
+      );
+    }
+    const readChallenge = async (token: string) => {
+      const response = await send(
+        'license-request',
+        token,
+        {},
+        {
+          initData,
+          serverCertificate:
+            token === 'private' && delivery !== 'update' ? SERVICE_CERTIFICATE : undefined,
+        },
+      );
+      if (typeof response !== 'string') throw new Error('Missing challenge');
+      return LicenseRequest.decode(SignedMessage.decode(fromBase64(response).toBuffer()).msg);
+    };
+    const challenge = await readChallenge('private');
+    expect(challenge.clientId).toBeNull();
+    expect(challenge.encryptedClientId?.providerId).toBe('staging.google.com');
+    expect(await readChallenge('private')).toEqual(challenge);
+    expect(encryptId).toHaveBeenCalledTimes(1);
+    const otherChallenge = await readChallenge('other');
+    expect(otherChallenge.clientId).not.toBeNull();
+    expect(otherChallenge.encryptedClientId).toBeNull();
+    await send('close', 'private');
+    await send('close', 'other');
+  },
+);

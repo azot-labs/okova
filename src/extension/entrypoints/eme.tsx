@@ -11,7 +11,12 @@ declare global {
 export default defineUnlistedScript(() => {
   const base64 = {
     parse: (s: any) => Uint8Array.from(atob(s), (c) => c.charCodeAt(0)),
-    stringify: (b: any) => btoa(String.fromCharCode(...new Uint8Array(b))),
+    stringify: (buffer: BufferSource) => {
+      const bytes = ArrayBuffer.isView(buffer)
+        ? new Uint8Array(buffer.buffer, buffer.byteOffset, buffer.byteLength)
+        : new Uint8Array(buffer);
+      return btoa(String.fromCharCode(...bytes));
+    },
   };
 
   const send = async (data: Record<string, unknown>): Promise<any> => {
@@ -21,6 +26,13 @@ export default defineUnlistedScript(() => {
       console.warn('[okova] DRM bridge request failed', error);
       return undefined;
     }
+  };
+
+  const mediaKeysCertificates = new WeakMap<MediaKeys, string>();
+  const sessionMediaKeys = new WeakMap<MediaKeySession, MediaKeys>();
+  const getServerCertificate = (session: MediaKeySession) => {
+    const mediaKeys = sessionMediaKeys.get(session);
+    return mediaKeys ? mediaKeysCertificates.get(mediaKeys) : undefined;
   };
 
   const sessionRequests = new WeakMap<
@@ -41,6 +53,7 @@ export default defineUnlistedScript(() => {
       const ready = send({
         sessionToken: token,
         action: 'generateRequest',
+        serverCertificate: getServerCertificate(session),
         sessionId: session.sessionId,
         initDataType,
         initData: session.initData,
@@ -103,9 +116,13 @@ export default defineUnlistedScript(() => {
         return;
       }
 
+      // Widevine's service-certificate request must reach the license server unchanged.
+      if (messageType === 'license-request' && base64.stringify(message) === 'CAQ=') return;
+
       const request = sessionRequests.get(session);
       await request?.ready;
       const response = await send({
+        serverCertificate: getServerCertificate(session),
         sessionToken: request?.token,
         action: messageType,
         initData: session.initData,
@@ -154,7 +171,9 @@ export default defineUnlistedScript(() => {
       session: MediaKeySession,
     ): Promise<BufferSource | undefined> => {
       const sessionId = session.sessionId;
-      const message = new Uint8Array(ArrayBuffer.isView(response) ? response.buffer : response);
+      const message = ArrayBuffer.isView(response)
+        ? new Uint8Array(response.buffer, response.byteOffset, response.byteLength)
+        : new Uint8Array(response);
       const messageBase64 = base64.stringify(message);
 
       console.groupCollapsed(`[okova] [${session.sessionId}] Update session with response`);
@@ -237,9 +256,21 @@ export default defineUnlistedScript(() => {
       });
     }
 
-    interceptMethod(MediaKeys.prototype, 'setServerCertificate', (_target, _this, _args) => {
-      console.log(`[okova] Setting server certificate`, _this, _args);
-      return _target.apply(_this, _args);
+    interceptMethod(
+      MediaKeys.prototype,
+      'setServerCertificate',
+      async (setServerCertificate, mediaKeys, [certificate]) => {
+        const encodedCertificate = base64.stringify(certificate);
+        const result = await setServerCertificate.call(mediaKeys, certificate);
+        if (result) mediaKeysCertificates.set(mediaKeys, encodedCertificate);
+        return result;
+      },
+    );
+
+    interceptMethod(MediaKeys.prototype, 'createSession', (createSession, mediaKeys, args) => {
+      const session = createSession.apply(mediaKeys, args);
+      sessionMediaKeys.set(session, mediaKeys);
+      return session;
     });
 
     interceptMethod(

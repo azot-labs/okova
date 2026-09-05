@@ -15,6 +15,13 @@ import { Session } from '@okova/lib/api';
 
 const SESSION_IDLE_TIMEOUT_MS = 5 * 60_000;
 
+type SessionEntry = {
+  session: Session;
+  tabId: number | undefined;
+  timer: ReturnType<typeof setTimeout>;
+  serverCertificate: string | undefined;
+};
+
 export default defineBackground({
   type: 'module',
   main: () => {
@@ -24,10 +31,7 @@ export default defineBackground({
 
     const state: {
       client: Client | null;
-      sessions: Map<
-        string,
-        { session: Session; tabId: number | undefined; timer: ReturnType<typeof setTimeout> }
-      >;
+      sessions: Map<string, SessionEntry>;
     } = {
       client: null,
       sessions: new Map(),
@@ -244,25 +248,47 @@ export default defineBackground({
             sendResponse();
             return;
           }
+          const serverCertificate =
+            typeof message.serverCertificate === 'string' ? message.serverCertificate : undefined;
+          if (serverCertificate && cdm instanceof Widevine) {
+            await cdm.setServerCertificate(fromBase64(serverCertificate).toBuffer());
+          }
           setSupportedEngines([cdm]);
           const keySystemAccess = requestMediaKeySystemAccess(cdm.keySystem, []);
           const mediaKeys = await keySystemAccess.createMediaKeys();
           const session = mediaKeys.createSession();
           // Close after five minutes of inactivity, including silently removed frames.
           const timer = setTimeout(() => void closeSession(sessionKey), SESSION_IDLE_TIMEOUT_MS);
-          state.sessions.set(sessionKey, { session, tabId: sender.tab?.id, timer });
+          const entry: SessionEntry = {
+            session,
+            tabId: sender.tab?.id,
+            timer,
+            serverCertificate,
+          };
+          state.sessions.set(sessionKey, entry);
           await session.generateRequest(message.initDataType, fromBase64(initData).toBuffer());
           sendResponse();
           return;
         }
 
-        const session = state.sessions.get(sessionKey)?.session;
-        if (!session) {
+        const sessionEntry = state.sessions.get(sessionKey);
+        if (!sessionEntry) {
           sendResponse();
           return;
         }
 
+        const { session } = sessionEntry;
         if (message.action === 'license-request') {
+          const serverCertificate = message.serverCertificate;
+          if (
+            session.engine instanceof Widevine &&
+            typeof serverCertificate === 'string' &&
+            serverCertificate !== sessionEntry.serverCertificate
+          ) {
+            await session.engine.setServerCertificate(fromBase64(serverCertificate).toBuffer());
+            sessionEntry.serverCertificate = serverCertificate;
+            await session.generateRequest(message.initDataType, fromBase64(initData).toBuffer());
+          }
           const challenge = await session.waitForLicenseRequest();
           sendResponse(fromBuffer(challenge).toBase64());
         } else if (message.action === 'update') {
