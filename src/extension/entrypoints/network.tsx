@@ -1,6 +1,7 @@
 export default defineUnlistedScript(() => {
+  const MAX_SIZE = 1024 * 1024 * 1; // 1 MB
+
   const filterHead = (url: string, headers: Record<string, string>) => {
-    const MAX_SIZE = 1024 * 1024 * 1; // 1 MB
     const size = headers['content-length'];
     const isSizeOk = Number(size) < MAX_SIZE;
     if (size && !isSizeOk) return false;
@@ -111,7 +112,9 @@ export default defineUnlistedScript(() => {
             text = this.responseText;
             break;
           case 'arraybuffer':
-            if (!(response instanceof ArrayBuffer)) return;
+            if (!(response instanceof ArrayBuffer) || response.byteLength >= MAX_SIZE) return;
+            // A timer task lets all page load handlers finish before decoding.
+            await new Promise<void>((resolve) => setTimeout(resolve, 0));
             text = new TextDecoder().decode(response);
             break;
           case 'blob':

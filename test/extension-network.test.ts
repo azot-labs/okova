@@ -47,6 +47,7 @@ beforeEach(() => {
 });
 
 afterEach(() => {
+  vi.useRealTimers();
   vi.restoreAllMocks();
   vi.unstubAllGlobals();
   vi.resetAllMocks();
@@ -78,6 +79,61 @@ test.each(['', 'text', 'arraybuffer', 'blob', 'document'] satisfies XMLHttpReque
       }),
       '*',
     );
+  },
+);
+
+test('decodes array buffers after load dispatch and preserves the completed response', async () => {
+  vi.useFakeTimers();
+  const decode = vi.spyOn(TextDecoder.prototype, 'decode');
+  const response = new TextEncoder().encode(manifest).buffer;
+  const xhr = new XMLHttpRequest();
+  Object.assign(xhr, { responseType: 'arraybuffer', response });
+  const onLoad = vi.fn(() => {
+    const decodeCount = decode.mock.calls.length;
+    const messageCount = postMessage.mock.calls.length;
+    // A page can reuse the XHR from its load handler.
+    Object.assign(xhr, { response: null, responseURL: 'https://example.com/next' });
+    return { decodeCount, messageCount };
+  });
+  xhr.addEventListener('load', onLoad);
+  xhr.dispatchEvent(new Event('load'));
+  expect(onLoad).toHaveBeenCalledOnce();
+  expect(onLoad).toHaveReturnedWith({ decodeCount: 0, messageCount: 0 });
+  await Promise.resolve();
+  expect(decode).not.toHaveBeenCalled();
+  await vi.runAllTimersAsync();
+  expect(decode).toHaveBeenCalledExactlyOnceWith(response);
+  expect(postMessage).toHaveBeenCalledWith(
+    expect.objectContaining({ params: expect.objectContaining({ url, text: manifest }) }),
+    '*',
+  );
+});
+
+test.each([
+  { sizeBytes: 1024 * 1024 - 1, shouldDecode: true },
+  { sizeBytes: 1024 * 1024, shouldDecode: false },
+  { sizeBytes: 1024 * 1024 + 1, shouldDecode: false },
+])(
+  'checks the actual array-buffer size of $sizeBytes bytes',
+  async ({ sizeBytes, shouldDecode }) => {
+    vi.useFakeTimers();
+    const decode = vi.spyOn(TextDecoder.prototype, 'decode');
+    for (const contentLength of ['', 'content-length: 1\r\n']) {
+      decode.mockClear();
+      postMessage.mockClear();
+      const response = new Uint8Array(sizeBytes);
+      response.set(new TextEncoder().encode(manifest));
+      const xhr = new XMLHttpRequest();
+      Object.assign(xhr, {
+        responseType: 'arraybuffer',
+        response: response.buffer,
+        headers: `content-type: application/octet-stream\r\n${contentLength}`,
+      });
+      xhr.dispatchEvent(new Event('load'));
+      await vi.runAllTimersAsync();
+      expect(decode).toHaveBeenCalledTimes(shouldDecode ? 1 : 0);
+      expect(postMessage).toHaveBeenCalledTimes(shouldDecode ? 1 : 0);
+    }
   },
 );
 
