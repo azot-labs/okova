@@ -152,7 +152,8 @@ const parseInput = (data: string | Uint8Array) => {
   }
 
   const decoded = fromBase64(data).toBuffer();
-  const xml = tryGetUtf16Le(decoded) ?? new TextDecoder().decode(decoded);
+  const utf16 = tryGetUtf16Le(decoded);
+  const xml = utf16?.trim().startsWith('<') ? utf16 : new TextDecoder().decode(decoded);
   if (!xml.trim().startsWith('<')) {
     throw new InvalidWrmHeader('Data is not a valid WRMHEADER');
   }

@@ -1,4 +1,5 @@
 import { WrmHeader } from './playready/wrmheader';
+import { readPlayreadyObject } from './playready/object';
 import { fromBase64, fromBuffer, fromHex } from './utils';
 import { WidevinePsshData } from './widevine/proto';
 
@@ -53,6 +54,11 @@ export const createPsshBox = (
   if (options.keyIds !== undefined) throw new Error('Version 0 boxes cannot contain box key IDs');
   return { ...common, version: 0, keyIds: [] };
 };
+
+/** Recognize the box marker even when its size/version fields are malformed. */
+export const isPsshBoxSequence = (bytes: Uint8Array) =>
+  bytes.length >= 8 &&
+  new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength).getUint32(4) === 0x70737368;
 
 /** Parse a sequence of full PSSH boxes. Raw DRM headers and other MP4 boxes are rejected. */
 export const parsePsshBoxes = (input: Uint8Array | string): ParsedPsshBox[] => {
@@ -156,33 +162,11 @@ const swapGuidByteOrder = (bytes: Uint8Array) => {
 };
 
 const readPlayreadyHeaders = (data: Uint8Array) => {
-  const view = new DataView(data.buffer, data.byteOffset, data.byteLength);
-  if (data.length < 6 || view.getUint32(0, true) !== data.length) {
-    throw new Error('Invalid PlayReady Object length');
-  }
-  const headers: WrmHeader[] = [];
-  let cursor = 6;
-  const count = view.getUint16(4, true);
-  for (let index = 0; index < count; index++) {
-    if (cursor + 4 > data.length) throw new Error('Truncated PlayReady record');
-    const type = view.getUint16(cursor, true);
-    const length = view.getUint16(cursor + 2, true);
-    cursor += 4;
-    if (cursor + length > data.length) throw new Error('Truncated PlayReady record');
-    if (type === 1) {
-      if (length % 2) throw new Error('Invalid UTF-16LE PlayReady header');
-      const xml = new TextDecoder('utf-16le', { fatal: true }).decode(
-        data.subarray(cursor, cursor + length),
-      );
-      const header = new WrmHeader(xml);
-      if (header.version === 'UNKNOWN') throw new Error('Unsupported PlayReady header version');
-      headers.push(header);
-    }
-    cursor += length;
-  }
-  if (cursor !== data.length || !headers.length)
-    throw new Error('Invalid PlayReady Object records');
-  return headers;
+  return readPlayreadyObject(data).map((xml) => {
+    const header = new WrmHeader(xml);
+    if (header.version === 'UNKNOWN') throw new Error('Unsupported PlayReady header version');
+    return header;
+  });
 };
 
 /** Inspect box KIDs first, falling back to Widevine protobuf or PlayReady Object KIDs. */

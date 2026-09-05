@@ -75,19 +75,21 @@ export const fromBuffer = (data: Uint8Array) => ({
   },
 });
 
-const parseHex = (hex: string) => hex.match(/.{1,2}/g)!.map((byte) => parseInt(byte, 16));
-
-export const fromHex = (data: string) => ({
-  toBase64: () => {
-    return btoa(String.fromCharCode(...parseHex(data)));
-  },
-  toBuffer: () => {
-    return new Uint8Array(parseHex(data)) as unknown as Uint8Array;
-  },
-  toText: () => {
-    return decode(new Uint8Array(parseHex(data)));
-  },
-});
+/** Decode whole bytes. Empty input produces an empty buffer. */
+export const fromHex = (data: string) => {
+  if (data.length % 2 !== 0 || !/^[\da-f]*$/i.test(data)) {
+    throw new Error('Hex input must contain an even number of hexadecimal digits');
+  }
+  const bytes = new Uint8Array(data.length / 2);
+  for (let index = 0; index < bytes.length; index++) {
+    bytes[index] = Number.parseInt(data.slice(index * 2, index * 2 + 2), 16);
+  }
+  return {
+    toBuffer: () => new Uint8Array(bytes),
+    toBase64: () => fromBuffer(bytes).toBase64(),
+    toText: () => decode(bytes),
+  };
+};
 
 export const parseBufferSource = (data: BytesLike) => toBytes(data);
 
