@@ -29,8 +29,7 @@ beforeAll(async () => {
 });
 
 afterEach(async () => {
-  for (const session of sessions.values()) await session.close();
-  sessions.clear();
+  await sessions.clear();
   clients.clear();
   Object.assign(config, originalConfig);
   vi.unstubAllGlobals();
@@ -156,4 +155,23 @@ test.each([
   } finally {
     await session.close();
   }
+});
+
+test('remote capacity applies across separate PlayReady engines', async () => {
+  config.clients = ['capacity.prd'];
+  config.users = {};
+  config.sessionLimits = { ...originalConfig.sessionLimits, maxSessions: 16 };
+  clients.set(resolve('capacity.prd'), deviceCredentials);
+  const responses = await Promise.all(
+    Array.from({ length: 17 }, () =>
+      sessionApi.request('/', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: '{}',
+      }),
+    ),
+  );
+  expect(responses.filter((response) => response.status === 200)).toHaveLength(16);
+  expect(responses.filter((response) => response.status === 503)).toHaveLength(1);
+  expect(sessions.size).toBe(16);
 });

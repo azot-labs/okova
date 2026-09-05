@@ -19,8 +19,7 @@ beforeEach(async () => {
 });
 
 afterEach(async () => {
-  for (const session of sessions.values()) await session.close();
-  sessions.clear();
+  await sessions.clear();
   clients.clear();
   Object.assign(config, originalConfig);
   await rm(directory, { recursive: true, force: true });

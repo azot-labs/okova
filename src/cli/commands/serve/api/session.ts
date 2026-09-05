@@ -5,15 +5,7 @@ import { createMiddleware } from 'hono/factory';
 import { z } from 'zod';
 import { zValidator } from '@hono/zod-validator';
 
-import {
-  fromBuffer,
-  MediaKeyMessageEvent,
-  PlayReady,
-  requestMediaKeySystemAccess,
-  setSupportedEngines,
-  Widevine,
-  type Session,
-} from '../../../../lib';
+import { fromBuffer, MediaKeyMessageEvent, PlayReady, Widevine, Session } from '../../../../lib';
 import { WidevineDeviceCredentials } from '../../../../lib/widevine/device-credentials';
 import { PlayReadyDeviceCredentials } from '../../../../lib/playready/device-credentials';
 import { clients, config, resolveClient, sessions } from '../state';
@@ -37,6 +29,25 @@ const secretKeyMiddleware = createMiddleware(async (c, next) => {
 });
 
 app.use(secretKeyMiddleware);
+app.use(async (c, next) => {
+  const release = sessions.beginRequest();
+  if (!release) return c.json({ error: 'Concurrent request limit reached' }, 503);
+  try {
+    await next();
+  } finally {
+    release();
+  }
+});
+
+const reserveSession = createMiddleware(async (c, next) => {
+  const release = sessions.reserve();
+  if (!release) return c.json({ error: 'Session capacity reached' }, 503);
+  try {
+    await next();
+  } finally {
+    release();
+  }
+});
 
 const busySessions = new WeakSet<Session>();
 
@@ -58,6 +69,7 @@ const exclusiveSessionMutation = createMiddleware(async (c, next) => {
 
 app.post(
   '/',
+  reserveSession,
   zValidator(
     'json',
     z.object({
@@ -108,12 +120,8 @@ app.post(
         ? new Widevine({ deviceCredentials: client })
         : new PlayReady({ deviceCredentials: client, customData: c.req.valid('json').customData });
 
-    setSupportedEngines([cdm]);
-    const keySystemAccess = requestMediaKeySystemAccess(cdm.keySystem, []);
-    const mediaKeys = await keySystemAccess.createMediaKeys();
-
     const sessionType = c.req.valid('json').sessionType as MediaKeySessionType | undefined;
-    const session = mediaKeys.createSession(sessionType);
+    const session = new Session(sessionType, cdm);
 
     const sessionKey = `${secretKey ?? ''}:${session.sessionId}`;
     sessions.set(sessionKey, session);
@@ -294,8 +302,20 @@ app.get('/:id/keys', zValidator('param', z.object({ id: z.string() })), async (c
   if (!session) {
     return c.json({ error: 'Session not found. Unable to get keys.' }, 400);
   }
-  const keys = await session.waitForKeyStatusesChange();
-  return c.json(Object.fromEntries(keys));
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), config.sessionLimits.keyWaitTimeoutMs);
+  try {
+    const keys = await session.waitForKeyStatusesChange({
+      signal: AbortSignal.any([c.req.raw.signal, controller.signal]),
+    });
+    return c.json(Object.fromEntries(keys));
+  } catch (error) {
+    if (c.req.raw.signal.aborted) return c.json({ error: 'Request aborted' }, 408);
+    if (controller.signal.aborted) return c.json({ error: 'Timed out waiting for keys' }, 504);
+    return c.json({ error: error instanceof Error ? error.message : 'Session closed' }, 400);
+  } finally {
+    clearTimeout(timeout);
+  }
 });
 
 app.post(

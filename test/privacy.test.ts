@@ -22,10 +22,10 @@ beforeEach(async () => {
   clients.set(resolve('test.wvd'), await loadWidevineDeviceCredentials());
 });
 
-afterEach(() => {
+afterEach(async () => {
   Object.assign(config, originalConfig);
   clients.clear();
-  sessions.clear();
+  await sessions.clear();
   vi.unstubAllGlobals();
 });
 
