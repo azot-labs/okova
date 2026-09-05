@@ -125,6 +125,18 @@ describe('Session', () => {
     expect(Array.from(await session.waitForLicenseRequest())).toEqual(Array.from(LICENSE_REQUEST));
   });
 
+  test('preserves already available key snapshots after close', async () => {
+    const session = new Session('temporary', new FakeEngine());
+    await session.update(new Uint8Array([1]));
+    const keys = await session.waitForKeyStatusesChange();
+
+    await session.close();
+
+    expect(session.keys.size).toBe(0);
+    expect(keys).toEqual(new Map([[KEY_ID, KEY_VALUE]]));
+    await expect(session.waitForKeyStatusesChange()).rejects.toThrow('Session closed');
+  });
+
   test('rejects new work after close', async () => {
     const session = new Session('temporary', new FakeEngine());
 

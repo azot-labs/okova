@@ -178,20 +178,22 @@ class RemoteSession extends BaseMediaKeysEngineSession {
 
   async close() {
     if (this.isClosed) return;
+    await this.#http.post(`/sessions/${this.sessionId}/close`);
+    if (this.isClosed) return;
     this.isClosed = true;
     this.keys.clear();
     this.keyStatuses.clear();
-    await this.#http.post(`/sessions/${this.sessionId}/close`);
     this.#dispose(this.sessionId);
     this.dispatchEvent(new Event('closed'));
   }
 
   async remove() {
     if (this.isClosed) return;
+    await this.#http.delete(`/sessions/${this.sessionId}`);
+    if (this.isClosed) return;
     this.isClosed = true;
     this.keys.clear();
     this.keyStatuses.clear();
-    await this.#http.delete(`/sessions/${this.sessionId}`);
     this.#dispose(this.sessionId);
     this.dispatchEvent(new Event('closed'));
     this.dispatchEvent(new Event('removed'));

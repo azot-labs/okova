@@ -434,7 +434,7 @@ export class Session extends EventTarget implements MediaKeySession {
 
   async waitForKeyStatusesChange() {
     if (this.#closed) throw new Error('Session closed');
-    if (this.keys.size) return this.keys;
+    if (this.keys.size) return new Map(this.keys);
 
     return new Promise<MediaKeysMap>((resolve, reject) => {
       const cleanup = () => {
