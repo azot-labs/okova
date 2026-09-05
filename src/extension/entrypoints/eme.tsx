@@ -97,10 +97,9 @@ export default defineUnlistedScript(() => {
       return;
     };
 
-    const onMessage = async (event: Event) => {
-      const { type, message, messageType } = event as MediaKeyMessageEvent;
+    const onMessage = async (event: MediaKeyMessageEvent) => {
+      const { message, messageType } = event;
       const session = event.target as MediaKeySession;
-      if (type === 'keystatuseschange') return onKeyStatusesChange(session);
       session.messages?.set(messageType, base64.stringify(message));
 
       console.groupCollapsed(
@@ -145,25 +144,7 @@ export default defineUnlistedScript(() => {
       console.log(`Message from our CDM: ${response}`);
       console.groupEnd();
 
-      const createMessageEvent = (
-        session: MediaKeySession,
-        data: ArrayBuffer | Uint8Array,
-        dataType: MediaKeyMessageType,
-      ) => {
-        class FakeMediaKeyMessageEvent {
-          constructor(
-            public type = 'message',
-            public isTrusted = true,
-            public currentTarget = session,
-            public srcElement = session,
-            public target = session,
-            public message = ArrayBuffer.isView(data) ? data.buffer : data,
-            public messageType = dataType,
-          ) {}
-        }
-        return new FakeMediaKeyMessageEvent() as unknown as MediaKeyMessageEvent;
-      };
-      return createMessageEvent(session, challenge, messageType);
+      return challenge.buffer;
     };
 
     const onUpdate = async (
@@ -209,39 +190,72 @@ export default defineUnlistedScript(() => {
       return;
     };
 
-    function interceptProperty<T extends Record<string, any>, K extends keyof T>(
-      object: T,
-      key: K,
-      handlers: {
-        get?: (target: T, value: T[K]) => T[K];
-        set?: (target: T, value: T[K]) => void;
-        call?: (target: T[K], thisArg: T, argArray: Parameters<T[K]>) => ReturnType<T[K]>;
-      },
-    ) {
-      // Get the original descriptor if it exists
-      const originalDescriptor = Object.getOwnPropertyDescriptor(object, key);
-      let storedValue: T[K];
+    const nativeAddEventListener = MediaKeySession.prototype.addEventListener;
+    const interceptedSessions = new WeakSet<MediaKeySession>();
+    const forwardedEvents = new WeakSet<Event>();
 
-      return Object.defineProperty(object, key, {
-        configurable: true,
-        enumerable: true,
-        get: function (this: T) {
-          // If there's an original getter, use it
-          if (originalDescriptor?.get) storedValue = originalDescriptor.get.call(this);
-          const result = handlers.get ? handlers.get(this, storedValue) : storedValue;
-          return result;
-        },
-        set: function (this: T, newValue: T[K]) {
-          // If the property is expected to be a function (like onmessage),
-          // we can wrap it in a proxy to intercept calls
-          if (typeof newValue === 'function') {
-            storedValue = new Proxy(newValue, { apply: handlers.call }) as T[K];
-          } else {
-            storedValue = newValue;
+    const forwardMessage = async (session: MediaKeySession, event: MediaKeyMessageEvent) => {
+      let message = event.message;
+      try {
+        message = (await onMessage(event)) ?? message;
+      } catch (error) {
+        console.warn('[okova] Failed to replace CDM message', error);
+      }
+      const replacement = new MediaKeyMessageEvent(event.type, {
+        message,
+        messageType: event.messageType,
+        bubbles: event.bubbles,
+        cancelable: event.cancelable,
+        composed: event.composed,
+      });
+      forwardedEvents.add(replacement);
+      session.dispatchEvent(replacement);
+    };
+
+    const interceptSessionEvents = (session: MediaKeySession) => {
+      if (interceptedSessions.has(session)) return;
+      interceptedSessions.add(session);
+      // Stop native delivery before any application listener runs. After the bridge
+      // responds, let the browser dispatch the replacement to the original listeners.
+      nativeAddEventListener.call(
+        session,
+        'message',
+        (event) => {
+          if (forwardedEvents.has(event) || !(event instanceof MediaKeyMessageEvent)) return;
+          if (
+            event.messageType === 'license-release' ||
+            event.messageType === 'license-renewal' ||
+            (event.messageType === 'license-request' && base64.stringify(event.message) === 'CAQ=')
+          ) {
+            void onMessage(event);
+            return;
           }
-          // If there's an original setter, call it
-          originalDescriptor?.set?.call(this, storedValue);
-          handlers.set?.(this, storedValue);
+          event.stopImmediatePropagation();
+          void forwardMessage(session, event);
+        },
+        true,
+      );
+      nativeAddEventListener.call(
+        session,
+        'keystatuseschange',
+        () => {
+          void onKeyStatusesChange(session);
+        },
+        true,
+      );
+    };
+
+    // Install interception before native event-handler registration, preserving
+    // the browser's getter, callback receiver, and listener ordering.
+    for (const property of ['onmessage', 'onkeystatuseschange']) {
+      const descriptor = Object.getOwnPropertyDescriptor(MediaKeySession.prototype, property);
+      const nativeSet = descriptor?.set;
+      if (!nativeSet) continue;
+      Object.defineProperty(MediaKeySession.prototype, property, {
+        ...descriptor,
+        set(this: MediaKeySession, value: unknown) {
+          interceptSessionEvents(this);
+          nativeSet.call(this, value);
         },
       });
     }
@@ -270,6 +284,7 @@ export default defineUnlistedScript(() => {
     interceptMethod(MediaKeys.prototype, 'createSession', (createSession, mediaKeys, args) => {
       const session = createSession.apply(mediaKeys, args);
       sessionMediaKeys.set(session, mediaKeys);
+      interceptSessionEvents(session);
       return session;
     });
 
@@ -282,36 +297,9 @@ export default defineUnlistedScript(() => {
       },
     );
 
-    interceptMethod(MediaKeySession.prototype, 'addEventListener', (_target, _this, _args) => {
-      const [type, listener, useCapture] = _args;
-      const listenerWrapper: EventListenerOrEventListenerObject = async (event) => {
-        const modifiedEvent = await onMessage(event);
-        const isFn = (fn: unknown) => typeof fn === 'function';
-        const handler = isFn(listener) ? listener : listener.handleEvent.bind(listener);
-        return handler(modifiedEvent || event);
-      };
-      return _target.apply(_this, [type, listenerWrapper, useCapture]);
-    });
-
-    interceptProperty(MediaKeySession.prototype, 'onmessage', {
-      set: (target, value) => {
-        console.log('[okova] MediaKeySession.onmessage set:', value);
-      },
-      get: (target, value) => {
-        console.log('[okova] MediaKeySession.onmessage get');
-        return value;
-      },
-      call: async (_target, _this, [event]) => {
-        const modifiedEvent = await onMessage(event);
-        return _target?.apply(_this, [modifiedEvent || event]);
-      },
-    });
-
-    interceptProperty(MediaKeySession.prototype, 'onkeystatuseschange', {
-      call: async (_target, _this, [event]) => {
-        onKeyStatusesChange(event.target as MediaKeySession);
-        return _target?.apply(_this, [event]);
-      },
+    interceptMethod(MediaKeySession.prototype, 'addEventListener', (target, session, args) => {
+      interceptSessionEvents(session);
+      return target.apply(session, args);
     });
 
     interceptMethod(MediaKeySession.prototype, 'update', async (_target, _this, [response]) => {
