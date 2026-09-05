@@ -202,25 +202,25 @@ test('captures keys after logging a status with spoofing disabled', async () => 
   expect(await appStorage.recentKeys.getValue()).toEqual(capturedKeys);
 
   await sendMessage({ action: 'generateRequest', initDataType: 'cenc' });
-  expect(createSession).toHaveBeenCalledOnce();
+  expect(createSession).toHaveBeenCalledTimes(2);
+  await sendMessage({ action: 'close' });
 });
 
-test('cache hits expose only captured keys matching the PSSH with current site metadata', async () => {
-  await appStorage.allKeys.setValue([
-    { ...key, value: 'usable' },
-    { ...key, id: '112233445566778899aabbccddeeff00' },
-    { ...key, id: '2233445566778899aabbccddeeff0011', pssh: 'other-pssh' },
-  ]);
+test('stored captures are not relabeled as current-site results', async () => {
+  await appStorage.allKeys.setValue([key]);
   const loadClient = vi.spyOn(appStorage.clients.active, 'getValue');
   const sendMessage = startBackground();
-  const url = 'https://other.example/video';
-  const mpd = 'https://other.example/manifest.mpd';
 
-  await sendMessage({ action: 'generateRequest', initDataType: 'cenc', url, mpd });
+  await sendMessage({
+    action: 'license-request',
+    keySystem: 'com.widevine.alpha',
+    url: 'https://other.example/video',
+    mpd: 'https://other.example/manifest.mpd',
+  });
 
-  const cachedKeys = [{ ...key, id: '112233445566778899aabbccddeeff00', url, mpd }];
-  expect(await appStorage.recentKeys.getValue()).toEqual(cachedKeys);
-  expect(await appStorage.recentKeysByDomain.getValue()).toEqual({ 'other.example': cachedKeys });
+  expect(await appStorage.allKeys.getValue()).toEqual([key]);
+  expect((await appStorage.recentKeys.getValue()) ?? []).toEqual([]);
+  expect((await appStorage.recentKeysByDomain.getValue()) ?? {}).toEqual({});
   expect(loadClient).not.toHaveBeenCalled();
 });
 
@@ -231,4 +231,44 @@ test('retains different values and content metadata for a reused KID', async () 
   expect(await appStorage.allKeys.getValue()).toEqual([key, otherValue, otherContent]);
   await appStorage.allKeys.remove(otherValue);
   expect(await appStorage.allKeys.getValue()).toEqual([key, otherContent]);
+});
+
+test.each([
+  { url: key.url, pssh: key.pssh, preservesCapture: true },
+  { url: 'https://example.com/another-video', pssh: key.pssh, preservesCapture: false },
+  { url: key.url, pssh: 'another-pssh', preservesCapture: false },
+])('scopes captured recent keys to the status event context: $url, $pssh', async (context) => {
+  await appStorage.settings.setValue({
+    spoofing: false,
+    emeInterception: true,
+    requestInterception: false,
+    theme: 'auto',
+  });
+  await appStorage.recentKeys.setValue([key]);
+  await appStorage.recentKeysByDomain.setForUrl(key.url, [key]);
+  const sendMessage = startBackground();
+  const otherId = '112233445566778899aabbccddeeff00';
+  await sendMessage({
+    action: 'keystatuseschange',
+    url: context.url,
+    initData: context.pssh,
+    keyStatuses: {
+      [fromHex(key.id).toBase64()]: 'usable',
+      [fromHex(otherId).toBase64()]: 'expired',
+    },
+  });
+  const status = (id: string, value: string) => ({
+    ...key,
+    id,
+    value,
+    url: context.url,
+    pssh: context.pssh,
+    createdAt: expect.any(Number),
+  });
+  const expected = [
+    context.preservesCapture ? key : status(key.id, 'usable'),
+    status(otherId, 'expired'),
+  ];
+  expect(await appStorage.recentKeys.getValue()).toEqual(expected);
+  expect(await appStorage.recentKeysByDomain.getValue()).toEqual({ 'example.com': expected });
 });

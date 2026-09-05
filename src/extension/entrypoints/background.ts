@@ -350,7 +350,7 @@ export default defineBackground({
           updateBadgeForTabInBackground(sender.tab);
         };
 
-        // Inspect before the history shortcut so later responses can add rotated keys.
+        // Inspect each response so repeated initialization data can yield new keys.
         if (
           settings?.emeInterception &&
           message.action === 'update' &&
@@ -378,26 +378,6 @@ export default defineBackground({
         }
 
         const { initData } = message;
-        const allKeys = await appStorage.allKeys.raw.getValue();
-        const keys = allKeys?.filter(
-          (keyInfo) =>
-            keyInfo.pssh === initData &&
-            isCapturedKey(keyInfo) &&
-            (message.keySystem !== 'org.w3.clearkey' || keyInfo.url === message.url),
-        );
-        const hasKey = !!keys?.length;
-        if (hasKey && (!sessionKey || !state.sessions.has(sessionKey))) {
-          const currentSiteKeys = keys.map((keyInfo: KeyInfo) => ({
-            ...keyInfo,
-            url: message.url ?? keyInfo.url,
-            mpd: message.mpd ?? keyInfo.mpd,
-          }));
-          stage = 'history';
-          await setRecentKeys(currentSiteKeys);
-          await clearFailure();
-          sendResponse();
-          return;
-        }
 
         if (settings?.emeInterception && message.action === 'keystatuseschange') {
           const keyStatuses = message.keyStatuses as Record<string, string>;
@@ -410,7 +390,17 @@ export default defineBackground({
             createdAt: new Date().getTime(),
           }));
           stage = 'history';
-          await setRecentKeys(keys);
+          const recentKeys = getRecentKeysForUrl(
+            message.url,
+            await appStorage.recentKeysByDomain.getValue(),
+            await appStorage.recentKeys.getValue(),
+          );
+          // Status events must not replace extracted keys or borrow another capture's metadata.
+          const capturedKeys = recentKeys.filter(
+            (key) => isCapturedKey(key) && key.url === message.url && key.pssh === initData,
+          );
+          const capturedIds = new Set(capturedKeys.map((key) => key.id));
+          await setRecentKeys([...capturedKeys, ...keys.filter((key) => !capturedIds.has(key.id))]);
           await appStorage.allKeys.add(...keys);
           await clearFailure();
           sendResponse();

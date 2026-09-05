@@ -515,15 +515,6 @@ test('cleanup failures preserve the original diagnostic and still respond', asyn
 });
 
 test('an old document cannot clear a new document failure after navigation', async () => {
-  const key = {
-    id: '00112233445566778899aabbccddeeff',
-    value: 'ffeeddccbbaa99887766554433221100',
-    url: 'https://example.com/video',
-    mpd: '',
-    pssh: 'cHNzaA==',
-    createdAt: Date.now(),
-  };
-  await appStorage.allKeys.setValue([key]);
   const updated = vi.spyOn(browser.tabs.onUpdated, 'addListener');
   const send = startBackground();
   const started = Promise.withResolvers<void>();
@@ -534,7 +525,14 @@ test('an old document cannot clear a new document failure after navigation', asy
     await resumeWrite.promise;
     await setRecentKeys(keys);
   });
-  const oldRequest = send('generateRequest', 'old', { tab: tab(1), documentId: 'old' });
+  const oldRequest = send(
+    'keystatuseschange',
+    'old',
+    { tab: tab(1), documentId: 'old' },
+    {
+      keyStatuses: { 'AAECAw==': 'usable' },
+    },
+  );
   await started.promise;
   updated.mock.calls[0]![0](1, { status: 'loading' }, tab(1));
   vi.mocked(appStorage.clients.active.getValue).mockResolvedValue(null);
@@ -695,3 +693,52 @@ test('a recovered ClearKey history write clears its diagnostic', async () => {
   });
   expect(await getDrmFailureStorage(1).getValue()).toBeNull();
 });
+
+test.each(['https://example.com/video', 'https://other.example/video'])(
+  'acquires fresh keys for a previously captured PSSH at %s',
+  async (url) => {
+    const oldKey = {
+      id: '00112233445566778899aabbccddeeff',
+      value: '000102030405060708090a0b0c0d0e0f',
+      url: 'https://example.com/video',
+      mpd: 'https://example.com/old.mpd',
+      pssh: 'cHNzaA==',
+      createdAt: 1,
+    };
+    await appStorage.allKeys.setValue([oldKey]);
+    const readHistory = vi.spyOn(appStorage.allKeys.raw, 'getValue');
+    const send = startBackground();
+    const context = { keySystem: 'com.widevine.alpha', url, mpd: `${url}/new.mpd` };
+    await send('generateRequest', 'fresh', {}, context);
+    expect(Session.prototype.generateRequest).toHaveBeenCalledOnce();
+    await expect(send('license-request', 'fresh', {}, context)).resolves.toBe(
+      btoa(sessions[0]!.sessionId),
+    );
+    expect(readHistory).not.toHaveBeenCalled();
+    const captured = {
+      ...oldKey,
+      value: 'ffeeddccbbaa99887766554433221100',
+      url,
+      mpd: context.mpd,
+      createdAt: Date.now(),
+    };
+    await expect(send('update', 'fresh', {}, context)).resolves.toEqual({ keys: [captured] });
+    expect(await appStorage.recentKeys.getValue()).toEqual([captured]);
+    await send(
+      'keystatuseschange',
+      'fresh',
+      {},
+      {
+        ...context,
+        keyStatuses: { [fromBuffer(Buffer.from(captured.id, 'hex')).toBase64()]: 'usable' },
+      },
+    );
+    expect(await appStorage.recentKeys.getValue()).toEqual([captured]);
+    expect(await appStorage.recentKeysByDomain.getValue()).toEqual({
+      [new URL(url).hostname]: [captured],
+    });
+    expect(await appStorage.allKeys.getValue()).toEqual([oldKey, captured]);
+    expect(Session.prototype.close).toHaveBeenCalledOnce();
+    expect(vi.getTimerCount()).toBe(0);
+  },
+);
