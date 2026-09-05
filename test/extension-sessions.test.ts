@@ -662,7 +662,7 @@ test('retains reused ClearKey IDs across origins and status events', async () =>
     await send('update', 'clear', {}, { ...context, message });
     await send('keystatuseschange', 'clear', {}, { ...context, keyStatuses: { 'AA==': 'usable' } });
     expect(await appStorage.recentKeys.getValue()).toMatchObject([
-      { id: '00', value: 'usable', url: capture.url },
+      { id: '00', value: capture.value, url: capture.url },
     ]);
   }
   const history = await appStorage.allKeys.getValue();
@@ -724,6 +724,19 @@ test.each(['https://example.com/video', 'https://other.example/video'])(
     };
     await expect(send('update', 'fresh', {}, context)).resolves.toEqual({ keys: [captured] });
     expect(await appStorage.recentKeys.getValue()).toEqual([captured]);
+    await send(
+      'keystatuseschange',
+      'fresh',
+      {},
+      {
+        ...context,
+        keyStatuses: { [fromBuffer(Buffer.from(captured.id, 'hex')).toBase64()]: 'usable' },
+      },
+    );
+    expect(await appStorage.recentKeys.getValue()).toEqual([captured]);
+    expect(await appStorage.recentKeysByDomain.getValue()).toEqual({
+      [new URL(url).hostname]: [captured],
+    });
     expect(await appStorage.allKeys.getValue()).toEqual([oldKey, captured]);
     expect(Session.prototype.close).toHaveBeenCalledOnce();
     expect(vi.getTimerCount()).toBe(0);

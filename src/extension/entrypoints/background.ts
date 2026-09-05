@@ -1,4 +1,4 @@
-import { appStorage, getRecentKeysForUrl } from '@/utils/storage';
+import { appStorage, getRecentKeysForUrl, isCapturedKey } from '@/utils/storage';
 import { getDrmFailureStorage } from '@/utils/storage';
 import type { DrmStage, KeyInfo } from '@/utils/storage';
 import {
@@ -390,7 +390,17 @@ export default defineBackground({
             createdAt: new Date().getTime(),
           }));
           stage = 'history';
-          await setRecentKeys(keys);
+          const recentKeys = getRecentKeysForUrl(
+            message.url,
+            await appStorage.recentKeysByDomain.getValue(),
+            await appStorage.recentKeys.getValue(),
+          );
+          // Status events must not replace extracted keys or borrow another capture's metadata.
+          const capturedKeys = recentKeys.filter(
+            (key) => isCapturedKey(key) && key.url === message.url && key.pssh === initData,
+          );
+          const capturedIds = new Set(capturedKeys.map((key) => key.id));
+          await setRecentKeys([...capturedKeys, ...keys.filter((key) => !capturedIds.has(key.id))]);
           await appStorage.allKeys.add(...keys);
           await clearFailure();
           sendResponse();

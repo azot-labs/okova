@@ -232,3 +232,43 @@ test('retains different values and content metadata for a reused KID', async () 
   await appStorage.allKeys.remove(otherValue);
   expect(await appStorage.allKeys.getValue()).toEqual([key, otherContent]);
 });
+
+test.each([
+  { url: key.url, pssh: key.pssh, preservesCapture: true },
+  { url: 'https://example.com/another-video', pssh: key.pssh, preservesCapture: false },
+  { url: key.url, pssh: 'another-pssh', preservesCapture: false },
+])('scopes captured recent keys to the status event context: $url, $pssh', async (context) => {
+  await appStorage.settings.setValue({
+    spoofing: false,
+    emeInterception: true,
+    requestInterception: false,
+    theme: 'auto',
+  });
+  await appStorage.recentKeys.setValue([key]);
+  await appStorage.recentKeysByDomain.setForUrl(key.url, [key]);
+  const sendMessage = startBackground();
+  const otherId = '112233445566778899aabbccddeeff00';
+  await sendMessage({
+    action: 'keystatuseschange',
+    url: context.url,
+    initData: context.pssh,
+    keyStatuses: {
+      [fromHex(key.id).toBase64()]: 'usable',
+      [fromHex(otherId).toBase64()]: 'expired',
+    },
+  });
+  const status = (id: string, value: string) => ({
+    ...key,
+    id,
+    value,
+    url: context.url,
+    pssh: context.pssh,
+    createdAt: expect.any(Number),
+  });
+  const expected = [
+    context.preservesCapture ? key : status(key.id, 'usable'),
+    status(otherId, 'expired'),
+  ];
+  expect(await appStorage.recentKeys.getValue()).toEqual(expected);
+  expect(await appStorage.recentKeysByDomain.getValue()).toEqual({ 'example.com': expected });
+});
