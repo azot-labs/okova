@@ -29,7 +29,12 @@ export default defineUnlistedScript(() => {
   };
 
   const mediaKeysCertificates = new WeakMap<MediaKeys, string>();
+  const mediaKeysSystems = new WeakMap<MediaKeys, string>();
   const sessionMediaKeys = new WeakMap<MediaKeySession, MediaKeys>();
+  const getKeySystem = (session: MediaKeySession) => {
+    const mediaKeys = sessionMediaKeys.get(session);
+    return mediaKeys ? mediaKeysSystems.get(mediaKeys) : undefined;
+  };
   const getServerCertificate = (session: MediaKeySession) => {
     const mediaKeys = sessionMediaKeys.get(session);
     return mediaKeys ? mediaKeysCertificates.get(mediaKeys) : undefined;
@@ -53,6 +58,7 @@ export default defineUnlistedScript(() => {
       const ready = send({
         sessionToken: token,
         action: 'generateRequest',
+        keySystem: getKeySystem(session),
         serverCertificate: getServerCertificate(session),
         sessionId: session.sessionId,
         initDataType,
@@ -111,7 +117,10 @@ export default defineUnlistedScript(() => {
       console.log(`Message: ${session.messages?.get(messageType)}`);
       console.groupEnd();
 
-      if (['license-release', 'license-renewal'].includes(messageType)) {
+      if (
+        getKeySystem(session) === 'org.w3.clearkey' ||
+        ['license-release', 'license-renewal'].includes(messageType)
+      ) {
         return;
       }
 
@@ -169,6 +178,7 @@ export default defineUnlistedScript(() => {
         sessionToken: request?.token,
         sessionId,
         action: 'update',
+        keySystem: getKeySystem(session),
         initData: session.initData,
         initDataType: session.initDataType,
         message,
@@ -223,6 +233,7 @@ export default defineUnlistedScript(() => {
         (event) => {
           if (forwardedEvents.has(event) || !(event instanceof MediaKeyMessageEvent)) return;
           if (
+            getKeySystem(session) === 'org.w3.clearkey' ||
             event.messageType === 'license-release' ||
             event.messageType === 'license-renewal' ||
             (event.messageType === 'license-request' && base64.stringify(event.message) === 'CAQ=')
@@ -268,6 +279,18 @@ export default defineUnlistedScript(() => {
       return Object.defineProperty(object, method, {
         value: new Proxy(object[method], { apply: call }),
       });
+    }
+
+    if (typeof MediaKeySystemAccess !== 'undefined') {
+      interceptMethod(
+        MediaKeySystemAccess.prototype,
+        'createMediaKeys',
+        async (createMediaKeys, access, args) => {
+          const mediaKeys = await createMediaKeys.apply(access, args);
+          mediaKeysSystems.set(mediaKeys, access.keySystem);
+          return mediaKeys;
+        },
+      );
     }
 
     interceptMethod(
