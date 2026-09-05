@@ -3,7 +3,6 @@ import type { KeyInfo } from '@/utils/storage';
 import {
   fromBase64,
   fromBuffer,
-  type MediaKeysEngine,
   PlayReady,
   requestMediaKeySystemAccess,
   setSupportedEngines,
@@ -22,16 +21,34 @@ export default defineBackground({
     });
 
     const state: {
-      cdm: MediaKeysEngine | null;
       client: Client | null;
-      sessions: Map<string, Session>;
-      events: Map<string, MediaKeyMessageEvent[]>;
+      sessions: Map<
+        string,
+        { session: Session; tabId: number | undefined; timer: ReturnType<typeof setTimeout> }
+      >;
     } = {
-      cdm: null,
       client: null,
       sessions: new Map(),
-      events: new Map<string, MediaKeyMessageEvent[]>(),
     };
+
+    const closeSession = async (id: string) => {
+      const entry = state.sessions.get(id);
+      if (!entry) return;
+      state.sessions.delete(id);
+      clearTimeout(entry.timer);
+      try {
+        await entry.session.close();
+      } catch (error) {
+        console.warn('[okova] Unable to close DRM session', error);
+      }
+    };
+
+    const closeTabSessions = (tabId: number) => {
+      for (const [id, entry] of state.sessions) {
+        if (entry.tabId === tabId) void closeSession(id);
+      }
+    };
+    browser.tabs.onRemoved.addListener(closeTabSessions);
 
     const loadClient = async () => {
       if (state.client) return state.client;
@@ -127,7 +144,8 @@ export default defineBackground({
       void updateBadgeForTabId(tabId);
     });
 
-    browser.tabs.onUpdated.addListener((_tabId, changeInfo, tab) => {
+    browser.tabs.onUpdated.addListener((tabId, changeInfo, tab) => {
+      if (changeInfo.status === 'loading') closeTabSessions(tabId);
       if (changeInfo.url || changeInfo.status === 'complete') {
         updateBadgeForTabInBackground(tab);
       }
@@ -141,7 +159,21 @@ export default defineBackground({
     const parseBinary = (data: Record<string, number>) => new Uint8Array(Object.values(data));
 
     browser.runtime.onMessage.addListener((message, sender, sendResponse) => {
+      const sessionKey =
+        typeof message.sessionToken === 'string' && message.sessionToken
+          ? JSON.stringify([
+              sender.tab?.id,
+              sender.frameId,
+              sender.documentId,
+              message.sessionToken,
+            ])
+          : undefined;
       (async () => {
+        if (message.action === 'close') {
+          if (sessionKey) await closeSession(sessionKey);
+          sendResponse();
+          return;
+        }
         console.log('[okova] Received message', message);
 
         const settings = await appStorage.settings.getValue();
@@ -157,7 +189,7 @@ export default defineBackground({
           (keyInfo) => keyInfo.pssh === initData && isCapturedKey(keyInfo),
         );
         const hasKey = !!keys?.length;
-        if (hasKey) {
+        if (hasKey && (!sessionKey || !state.sessions.has(sessionKey))) {
           const currentSiteKeys = keys.map((keyInfo: KeyInfo) => ({
             ...keyInfo,
             url: message.url ?? keyInfo.url,
@@ -190,105 +222,76 @@ export default defineBackground({
           return;
         }
 
-        const cdm = await loadCdm();
-        if (!cdm) {
+        if (!sessionKey) {
           sendResponse();
           return;
         }
 
-        setSupportedEngines([cdm]);
-        const keySystemAccess = requestMediaKeySystemAccess(cdm.keySystem, []);
-        const mediaKeys = await keySystemAccess.createMediaKeys();
-
         if (message.action === 'generateRequest') {
-          const { initDataType, initData } = message;
-          const keySession = mediaKeys.createSession();
-          state.sessions.set(initData, keySession);
-          if (!state.events.has(keySession.sessionId)) state.events.set(keySession.sessionId, []);
-          keySession.addEventListener(
-            'message',
-            (event) => {
-              const messageEvent = event as MediaKeyMessageEvent;
-              console.log(messageEvent);
-              state.events.get(keySession.sessionId)?.push(messageEvent);
-            },
-            false,
-          );
-          await keySession.generateRequest(initDataType, fromBase64(initData).toBuffer());
+          if (state.sessions.has(sessionKey)) {
+            sendResponse();
+            return;
+          }
+          const cdm = await loadCdm();
+          if (!cdm) {
+            sendResponse();
+            return;
+          }
+          setSupportedEngines([cdm]);
+          const keySystemAccess = requestMediaKeySystemAccess(cdm.keySystem, []);
+          const mediaKeys = await keySystemAccess.createMediaKeys();
+          const session = mediaKeys.createSession();
+          // Bound abandoned requests, including frames removed without closing their sessions.
+          const timer = setTimeout(() => void closeSession(sessionKey), 5 * 60_000);
+          state.sessions.set(sessionKey, { session, tabId: sender.tab?.id, timer });
+          await session.generateRequest(message.initDataType, fromBase64(initData).toBuffer());
           sendResponse();
-        } else if (message.action === 'individualization-request') {
-          // TODO: Handle individualization request
+          return;
+        }
+
+        const session = state.sessions.get(sessionKey)?.session;
+        if (!session) {
           sendResponse();
-        } else if (message.action === 'license-request') {
-          const { initData } = message;
-          const session = state.sessions.get(initData);
-          console.log('[okova] Received message license-request', session);
-          if (!session) return;
-          const event = state.events
-            .get(session.sessionId)
-            ?.find((e) => e.messageType === 'license-request');
-          if (!event?.message) return console.log(`[okova] No message`);
-          const messageBase64 = fromBuffer(new Uint8Array(event.message)).toBase64();
-          console.log(state.events.get(session.sessionId));
-          console.log(`[okova] Sending challenge`, messageBase64, event);
-          sendResponse(messageBase64);
+          return;
+        }
+
+        if (message.action === 'license-request') {
+          const challenge = await session.waitForLicenseRequest();
+          sendResponse(fromBuffer(challenge).toBase64());
         } else if (message.action === 'update') {
-          const { initData } = message;
-
-          let isServiceCertificate = false;
-          if (cdm instanceof Widevine) {
-            console.log(`[okova] Checking for service certificate`);
-            let type: number | undefined;
-            try {
-              type = getMessageType(parseBinary(message.message));
-            } catch (error) {
-              console.error('[okova] Failed to parse Widevine message', error);
-              sendResponse();
-              return;
-            }
-            const serviceCertificateMessageType = 5;
-            isServiceCertificate = type === serviceCertificateMessageType;
-            console.log({ isServiceCertificate });
-            // if (type === serviceCertificateMessageType) {
-            //   console.log('[okova] Service certificate. Skipping');
-            //   sendResponse();
-            // }
-          }
-
-          const session = state.sessions.get(initData);
-          if (!session) {
-            console.log('[okova] Unable to find session');
-            sendResponse();
-          }
-
+          const response = parseBinary(message.message);
+          const isServiceCertificate =
+            session.engine instanceof Widevine && getMessageType(response) === 5;
+          await session.update(response);
           if (isServiceCertificate) {
-            console.log(`[okova] Updating session with service certificate`, message.messageBase64);
-            session?.update(parseBinary(message.message));
             sendResponse();
-          } else {
-            console.log(`[okova] Updating session`, message.messageBase64);
-            session?.update(parseBinary(message.message));
-            console.log(`[okova] Waiting for keys`);
-            const keys = await session?.waitForKeyStatusesChange();
-            console.log(keys);
+            return;
+          }
 
-            const results = keys
-              ? Array.from(keys, ([id, value]) => ({
-                  id,
-                  value,
-                  url: message.url,
-                  mpd: message.mpd,
-                  pssh: message.initData,
-                  createdAt: new Date().getTime(),
-                }))
-              : [];
-            console.log('[okova] Received keys', results);
+          try {
+            const keys = await session.waitForKeyStatusesChange();
+            const results = Array.from(keys, ([id, value]) => ({
+              id,
+              value,
+              url: message.url,
+              mpd: message.mpd,
+              pssh: message.initData,
+              createdAt: new Date().getTime(),
+            }));
             await setRecentKeys(results);
             await appStorage.allKeys.add(...results);
             sendResponse({ keys: results });
+          } finally {
+            await closeSession(sessionKey);
           }
+        } else {
+          sendResponse();
         }
-      })();
+      })().catch(async (error: unknown) => {
+        if (sessionKey) await closeSession(sessionKey);
+        console.warn('[okova] DRM request failed', error);
+        sendResponse();
+      });
       return true;
     });
   },

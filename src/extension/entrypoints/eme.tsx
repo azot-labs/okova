@@ -23,6 +23,11 @@ export default defineUnlistedScript(() => {
     }
   };
 
+  const sessionRequests = new WeakMap<
+    MediaKeySession,
+    { token: string; ready: Promise<unknown> }
+  >();
+
   const patchEncryptedMediaExtensions = async () => {
     const onGenerateRequest = async (
       initDataType: string,
@@ -32,12 +37,22 @@ export default defineUnlistedScript(() => {
       session.initDataType = initDataType;
       session.initData = base64.stringify(initData);
       session.messages = new Map();
-      send({
+      const token = crypto.randomUUID();
+      const ready = send({
+        sessionToken: token,
         action: 'generateRequest',
         sessionId: session.sessionId,
         initDataType,
         initData: session.initData,
       });
+
+      sessionRequests.set(session, { token, ready });
+      void session.closed.then(async () => {
+        await ready;
+        await send({ action: 'close', sessionToken: token });
+        sessionRequests.delete(session);
+      });
+      await ready;
 
       console.groupCollapsed(`[okova] [${session.sessionId}] Generated request`);
       console.log(`Initialization Data Type: ${session.initDataType}`);
@@ -58,6 +73,7 @@ export default defineUnlistedScript(() => {
       }
 
       await send({
+        sessionToken: sessionRequests.get(session)?.token,
         sessionId: session.sessionId,
         action: 'keystatuseschange',
         initData: session.initData,
@@ -87,7 +103,10 @@ export default defineUnlistedScript(() => {
         return;
       }
 
+      const request = sessionRequests.get(session);
+      await request?.ready;
       const response = await send({
+        sessionToken: request?.token,
         action: messageType,
         initData: session.initData,
         initDataType: session.initDataType,
@@ -144,7 +163,10 @@ export default defineUnlistedScript(() => {
       console.log(`Response: ${messageBase64}`);
       console.groupEnd();
 
+      const request = sessionRequests.get(session);
+      await request?.ready;
       const result = await send({
+        sessionToken: request?.token,
         sessionId,
         action: 'update',
         initData: session.initData,
@@ -157,7 +179,7 @@ export default defineUnlistedScript(() => {
       if (result) {
         const { keys } = result;
         console.groupCollapsed(`[okova] [${session.sessionId}] Received keys from our CDM`);
-        for (const [id, value] of keys) console.log(`${id}:${value}`);
+        for (const { id, value } of keys) console.log(`${id}:${value}`);
         console.groupEnd();
       } else {
         setTimeout(() => {
@@ -225,7 +247,7 @@ export default defineUnlistedScript(() => {
       'generateRequest',
       async (generateRequest, session, [initDataType, initData]) => {
         await generateRequest.apply(session, [initDataType, initData]);
-        onGenerateRequest(initDataType, initData, session);
+        await onGenerateRequest(initDataType, initData, session);
       },
     );
 

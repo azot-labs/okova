@@ -64,7 +64,17 @@ const startBackground = () => {
 
   return (message: Record<string, unknown>) =>
     new Promise<unknown>((resolve) => {
-      listener({ url: key.url, mpd: key.mpd, initData: key.pssh, ...message }, {}, resolve);
+      listener(
+        {
+          sessionToken: 'test-session',
+          url: key.url,
+          mpd: key.mpd,
+          initData: key.pssh,
+          ...message,
+        },
+        {},
+        resolve,
+      );
     });
 };
 
