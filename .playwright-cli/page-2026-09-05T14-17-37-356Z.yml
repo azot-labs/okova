@@ -1,0 +1,14 @@
+- main [ref=e3]:
+  - generic [ref=e4]: Dashboard
+  - generic [ref=e6]:
+    - generic [ref=e7]:
+      - link "Clients" [ref=e8] [cursor=pointer]:
+        - /url: /popup.html/clients
+      - link "Keys" [ref=e15] [cursor=pointer]:
+        - /url: /popup.html/keys
+      - link "Settings" [ref=e22] [cursor=pointer]:
+        - /url: /popup.html/settings
+    - generic [ref=e30] [cursor=pointer]: Import client
+    - generic [ref=e37]:
+      - heading "Keys will appear here" [level=1] [ref=e38]
+      - heading "Go to streaming service and play media to get keys" [level=2] [ref=e39]

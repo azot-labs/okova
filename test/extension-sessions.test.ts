@@ -2,7 +2,7 @@ import { afterEach, beforeEach, expect, test, vi } from 'vitest';
 import { browser, type Browser } from 'wxt/browser';
 import { fakeBrowser } from 'wxt/testing';
 import background from '../src/extension/entrypoints/background';
-import { appStorage } from '../src/extension/utils/storage';
+import { appStorage, getDrmFailureStorage } from '../src/extension/utils/storage';
 import * as certificateUtils from '../src/lib/widevine/certificate';
 import { fromBase64, fromBuffer } from '../src/lib/utils';
 import {
@@ -422,6 +422,13 @@ test.each(['expiry', 'removal', 'navigation'])(
     }
     await expect(update).resolves.toBeUndefined();
     await expect(send('license-request', 'waiting', sender)).resolves.toBeUndefined();
+    if (action === 'expiry') {
+      expect(await getDrmFailureStorage(1).getValue()).toMatchObject({
+        stage: 'keys',
+        error: 'Session closed',
+      });
+      await getDrmFailureStorage(1).removeValue();
+    }
     expect(await browser.storage.session.get(null)).toEqual({});
     expect(vi.getTimerCount()).toBe(0);
   },
@@ -448,4 +455,61 @@ test('tab closure does not leave a record from an interrupted storage write', as
   resumeWrite.resolve();
   await expect(challenge).resolves.toBeUndefined();
   expect(await browser.storage.session.get(null)).toEqual({});
+});
+
+test.each([
+  ['generateRequest', 'challenge', 'Invalid PSSH'],
+  ['update', 'license', 'Invalid license'],
+] as const)(
+  'persists the failed %s stage for only its tab and clears it on retry',
+  async (method, stage, error) => {
+    const send = startBackground();
+    const sender = { tab: { ...tab(1), url: 'https://example.com/video' } };
+    if (method === 'update') await send('generateRequest', 'failed', sender);
+    vi.mocked(Session.prototype[method]).mockRejectedValueOnce(new Error(error));
+    await expect(send(method, 'failed', sender)).resolves.toBeUndefined();
+    expect(await getDrmFailureStorage(1).getValue()).toEqual({
+      stage,
+      error,
+      url: 'https://example.com/video',
+      createdAt: Date.now(),
+    });
+    expect(await getDrmFailureStorage(2).getValue()).toBeNull();
+    await send('generateRequest', 'retry', sender);
+    expect(await getDrmFailureStorage(1).getValue()).toBeNull();
+    await send('close', 'retry', sender);
+  },
+);
+
+test('reports missing clients and clears diagnostics on navigation', async () => {
+  vi.mocked(appStorage.clients.active.getValue).mockResolvedValue(null);
+  const updated = vi.spyOn(browser.tabs.onUpdated, 'addListener');
+  const send = startBackground();
+  await send('generateRequest', 'missing', { tab: tab(1) });
+  expect(await getDrmFailureStorage(1).getValue()).toMatchObject({
+    stage: 'client',
+    error: expect.stringContaining('No active DRM client'),
+  });
+  updated.mock.calls[0]![0](1, { status: 'loading' }, tab(1));
+  await vi.waitFor(async () => expect(await getDrmFailureStorage(1).getValue()).toBeNull());
+});
+
+test('cleanup failures preserve the original diagnostic and still respond', async () => {
+  const send = startBackground();
+  vi.mocked(Session.prototype.generateRequest).mockRejectedValueOnce(new Error('Invalid PSSH'));
+  const remove = browser.storage.session.remove.bind(browser.storage.session);
+  vi.spyOn(browser.storage.session, 'remove').mockImplementation(
+    async (keys: string | string[]) => {
+      if (typeof keys === 'string' && keys.startsWith('pending-session:')) {
+        throw new Error('Cleanup failed');
+      }
+      if (typeof keys === 'string') await remove(keys);
+      else await remove(keys);
+    },
+  );
+  await expect(send('generateRequest', 'failed', { tab: tab(1) })).resolves.toBeUndefined();
+  expect(await getDrmFailureStorage(1).getValue()).toMatchObject({
+    stage: 'challenge',
+    error: 'Invalid PSSH',
+  });
 });

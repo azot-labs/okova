@@ -1,5 +1,6 @@
 import { appStorage, Client, KeyInfo, RecentKeysByDomain, Settings } from '@/utils/storage';
-import { createSignal, onMount } from 'solid-js';
+import { getDrmFailureStorage, type DrmFailure } from '@/utils/storage';
+import { createSignal, onCleanup, onMount } from 'solid-js';
 import { createStore } from 'solid-js/store';
 
 const clientsSignal = createSignal<Client[]>([]);
@@ -13,6 +14,9 @@ export const useRecentKeys = () => recentKeysSignal;
 
 const recentKeysByDomainSignal = createSignal<RecentKeysByDomain>({});
 export const useRecentKeysByDomain = () => recentKeysByDomainSignal;
+
+const drmFailureSignal = createSignal<DrmFailure | null>(null);
+export const useDrmFailure = () => drmFailureSignal;
 
 const activeTabUrlSignal = createSignal<string | null>(null);
 export const useActiveTabUrl = () => activeTabUrlSignal;
@@ -34,6 +38,14 @@ export const useSyncStateWithStorage = () => {
   const [, setRecentKeysByDomain] = useRecentKeysByDomain();
   const [, setActiveTabUrl] = useActiveTabUrl();
 
+  const [, setDrmFailure] = useDrmFailure();
+  let unwatchFailure: (() => void) | undefined;
+  let isDisposed = false;
+  onCleanup(() => {
+    isDisposed = true;
+    unwatchFailure?.();
+  });
+
   onMount(async () => {
     const settings = await appStorage.settings.getValue();
     if (settings) {
@@ -45,9 +57,20 @@ export const useSyncStateWithStorage = () => {
     }
 
     appStorage.clients.getValue().then((clients) => setClients(clients));
-    browser.tabs
-      .query({ active: true, currentWindow: true })
-      .then(([tab]) => setActiveTabUrl(tab?.url ?? null));
+    browser.tabs.query({ active: true, currentWindow: true }).then(async ([tab]) => {
+      if (isDisposed) return;
+      setActiveTabUrl(tab?.url ?? null);
+      setDrmFailure(null);
+      if (tab?.id === undefined) return;
+      const failureStorage = getDrmFailureStorage(tab.id);
+      let hasUpdate = false;
+      unwatchFailure = failureStorage.watch((failure) => {
+        hasUpdate = true;
+        setDrmFailure(failure);
+      });
+      const failure = await failureStorage.getValue();
+      if (!isDisposed && !hasUpdate) setDrmFailure(failure);
+    });
     appStorage.recentKeys.getValue().then((recentKeys) => recentKeys && setRecentKeys(recentKeys));
     appStorage.recentKeys.watch((newKeys) => setRecentKeys(newKeys || []));
     appStorage.recentKeysByDomain
