@@ -68,8 +68,12 @@ const fetchDecryptionKeys = async (params: FetchDecryptionKeysParams) => {
   session.addEventListener('message', handleMessage);
   try {
     const keysReady = session.waitForKeys();
-    await session.generateRequest(initData, initDataType);
-    return await Promise.race([keysReady, flowFailed]);
+    // Observe key and flow failures before request generation can fail or emit messages.
+    const requestGenerated = Promise.resolve().then(() =>
+      session.generateRequest(initData, initDataType),
+    );
+    const [keys] = await Promise.all([Promise.race([keysReady, flowFailed]), requestGenerated]);
+    return keys;
   } finally {
     session.removeEventListener('message', handleMessage);
     try {

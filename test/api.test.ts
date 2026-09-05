@@ -89,9 +89,11 @@ describe.each(['successful', 'failed'])('fetchDecryptionKeys with %s cleanup', (
 
       const { promise: closeFinished, resolve: finishClose } = Promise.withResolvers<void>();
       const { promise: closeStarted, resolve: startClose } = Promise.withResolvers<void>();
+      const closeSession = session.close.bind(session);
       const close = vi.spyOn(session, 'close').mockImplementation(async () => {
         startClose();
         await closeFinished;
+        await closeSession();
         if (cleanup === 'failed') throw new Error('Session close failed');
       });
       let isSettled = false;

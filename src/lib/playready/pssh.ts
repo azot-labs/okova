@@ -129,14 +129,4 @@ export class Pssh {
 
     return null;
   }
-
-  #isPsshBox(bytes: Uint8Array) {
-    if (bytes.length < 8) return false;
-
-    const reader = new BinaryReader(bytes);
-    const boxLength = reader.readUint32();
-    const boxType = new TextDecoder().decode(reader.readBytes(4));
-
-    return boxType === this.#PSSH_TYPE && boxLength <= bytes.length;
-  }
 }
