@@ -145,25 +145,11 @@ export default defineUnlistedScript(() => {
       console.log(`Message from our CDM: ${response}`);
       console.groupEnd();
 
-      const createMessageEvent = (
-        session: MediaKeySession,
-        data: ArrayBuffer | Uint8Array,
-        dataType: MediaKeyMessageType,
-      ) => {
-        class FakeMediaKeyMessageEvent {
-          constructor(
-            public type = 'message',
-            public isTrusted = true,
-            public currentTarget = session,
-            public srcElement = session,
-            public target = session,
-            public message = ArrayBuffer.isView(data) ? data.buffer : data,
-            public messageType = dataType,
-          ) {}
-        }
-        return new FakeMediaKeyMessageEvent() as unknown as MediaKeyMessageEvent;
-      };
-      return createMessageEvent(session, challenge, messageType);
+      // Keep the browser event's identity, prototype, and native event methods.
+      Object.defineProperty(event, 'message', {
+        configurable: true,
+        value: challenge.buffer,
+      });
     };
 
     const onUpdate = async (
@@ -284,11 +270,15 @@ export default defineUnlistedScript(() => {
 
     interceptMethod(MediaKeySession.prototype, 'addEventListener', (_target, _this, _args) => {
       const [type, listener, useCapture] = _args;
-      const listenerWrapper: EventListenerOrEventListenerObject = async (event) => {
-        const modifiedEvent = await onMessage(event);
-        const isFn = (fn: unknown) => typeof fn === 'function';
-        const handler = isFn(listener) ? listener : listener.handleEvent.bind(listener);
-        return handler(modifiedEvent || event);
+      if (!listener || (type !== 'message' && type !== 'keystatuseschange')) {
+        return _target.apply(_this, _args);
+      }
+      const listenerWrapper: EventListener = async function (this: MediaKeySession, event) {
+        await onMessage(event);
+        if (typeof listener === 'function') {
+          return listener.call(this, event);
+        }
+        return listener.handleEvent(event);
       };
       return _target.apply(_this, [type, listenerWrapper, useCapture]);
     });
@@ -302,8 +292,8 @@ export default defineUnlistedScript(() => {
         return value;
       },
       call: async (_target, _this, [event]) => {
-        const modifiedEvent = await onMessage(event);
-        return _target?.apply(_this, [modifiedEvent || event]);
+        await onMessage(event);
+        return _target?.apply(_this, [event]);
       },
     });
 

@@ -10,9 +10,13 @@ afterEach(() => {
   vi.useRealTimers();
 });
 
-test.each(['captured keys', 'rejected license', 'bridge failure'])(
-  'passes the original response to native update after %s',
-  async (result) => {
+test.each(
+  ['captured keys', 'rejected license', 'bridge failure'].flatMap((result) =>
+    ['buffer', 'typed array slice', 'DataView slice'].map((input) => ({ result, input })),
+  ),
+)(
+  'passes only the supplied $input bytes to the bridge and native update after $result',
+  async ({ result, input }) => {
     vi.useFakeTimers();
     const nativeUpdate = vi.fn<(response: BufferSource) => Promise<void>>().mockResolvedValue();
     class NativeSession extends EventTarget {
@@ -39,10 +43,19 @@ test.each(['captured keys', 'rejected license', 'bridge failure'])(
     eme.main();
 
     const session = new NativeSession();
-    const response = new Uint8Array([8, 2]);
+    const backing = new Uint8Array([99, 8, 2, 99]);
+    let response: BufferSource = new Uint8Array([8, 2]).buffer;
+    if (input === 'typed array slice') response = backing.subarray(1, 3);
+    if (input === 'DataView slice') response = new DataView(backing.buffer, 1, 2);
     const updating = session.update(response);
     await Promise.resolve();
-    expect(sendDrmMessage).toHaveBeenCalledWith(expect.objectContaining({ action: 'update' }));
+    expect(sendDrmMessage).toHaveBeenCalledWith(
+      expect.objectContaining({
+        action: 'update',
+        message: new Uint8Array([8, 2]),
+        messageBase64: btoa('\x08\x02'),
+      }),
+    );
     expect(nativeUpdate).not.toHaveBeenCalled();
 
     if (result === 'captured keys') {
@@ -242,3 +255,64 @@ test('associates accepted certificate views with MediaKeys and preserves certifi
     }),
   );
 });
+
+test.each(['function', 'object', 'onmessage'])(
+  'preserves the message event and %s listener receiver when replacing the challenge',
+  async (registration) => {
+    class NativeMessageEvent extends Event {
+      readonly messageType = 'license-request';
+      get message() {
+        return new Uint8Array([1, 2, 3]).buffer;
+      }
+    }
+    class NativeSession extends EventTarget {
+      sessionId = 'native-session';
+      keyStatuses = new Map();
+      async generateRequest() {}
+      async update() {}
+      set onmessage(listener: EventListener) {
+        EventTarget.prototype.addEventListener.call(this, 'message', listener);
+      }
+    }
+    class NativeKeys {
+      createSession() {
+        return new NativeSession();
+      }
+      async setServerCertificate() {
+        return true;
+      }
+    }
+    vi.stubGlobal('MediaKeySession', NativeSession);
+    vi.stubGlobal('MediaKeys', NativeKeys);
+    vi.stubGlobal('MediaKeyMessageEvent', NativeMessageEvent);
+    vi.mocked(sendDrmMessage).mockResolvedValue(btoa('replacement challenge'));
+    eme.main();
+
+    const session = new NativeSession();
+    const received = Promise.withResolvers<{ event: Event; receiver: unknown }>();
+    const listener = function (this: unknown, event: Event) {
+      received.resolve({ event, receiver: this });
+    };
+    const listenerObject = { handleEvent: listener };
+    if (registration === 'function') session.addEventListener('message', listener);
+    if (registration === 'object') session.addEventListener('message', listenerObject);
+    if (registration === 'onmessage') session.onmessage = listener;
+
+    const originalEvent = new NativeMessageEvent('message', { cancelable: true });
+    session.dispatchEvent(originalEvent);
+    const { event, receiver } = await received.promise;
+    expect(receiver).toBe(registration === 'object' ? listenerObject : session);
+    expect(event).toBe(originalEvent);
+    expect(event).toBeInstanceOf(Event);
+    expect(event).toBeInstanceOf(MediaKeyMessageEvent);
+    expect(event.target).toBe(session);
+    expect(event.isTrusted).toBe(originalEvent.isTrusted);
+    expect(originalEvent.messageType).toBe('license-request');
+    expect(new TextDecoder().decode(originalEvent.message)).toBe('replacement challenge');
+    expect(() => event.preventDefault()).not.toThrow();
+    expect(event.defaultPrevented).toBe(true);
+    expect(() => event.stopPropagation()).not.toThrow();
+    expect(() => event.stopImmediatePropagation()).not.toThrow();
+    expect(() => event.composedPath()).not.toThrow();
+  },
+);
