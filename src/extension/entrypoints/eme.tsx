@@ -1,3 +1,5 @@
+import { sendDrmMessage } from '@/utils/drm-bridge';
+
 declare global {
   interface MediaKeySession {
     initData?: string;
@@ -12,15 +14,13 @@ export default defineUnlistedScript(() => {
     stringify: (b: any) => btoa(String.fromCharCode(...new Uint8Array(b))),
   };
 
-  const send = async (data: any) => {
-    window.postMessage({ type: 'drm-message', log: data }, '*');
-    return new Promise<any>((resolve) => {
-      window.addEventListener(
-        'drm-message-response',
-        (event) => resolve((event as any).detail),
-        false,
-      );
-    });
+  const send = async (data: Record<string, unknown>): Promise<any> => {
+    try {
+      return await sendDrmMessage(data);
+    } catch (error) {
+      console.warn('[okova] DRM bridge request failed', error);
+      return undefined;
+    }
   };
 
   const patchEncryptedMediaExtensions = async () => {
