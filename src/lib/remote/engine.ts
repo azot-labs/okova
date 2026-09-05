@@ -1,6 +1,7 @@
 import type { MediaKeysMap } from '../api';
 import { BaseMediaKeysEngine, BaseMediaKeysEngineSession } from '../api';
 import { fromBase64, fromBuffer } from '../utils';
+import { parseCertificate, verifyCertificate } from '../widevine/certificate';
 
 type RemoteParams = {
   keySystem: string;
@@ -120,26 +121,36 @@ class RemoteSession extends BaseMediaKeysEngineSession {
   #http: ReturnType<typeof createHttpClient>;
   #dispose: (sessionId: string) => void;
   #closed: boolean;
+  #getServerCertificate: () => string | undefined;
 
   constructor(
     sessionId: string,
     sessionType: MediaKeySessionType,
     http: ReturnType<typeof createHttpClient>,
     dispose: (sessionId: string) => void,
+    getServerCertificate: () => string | undefined,
   ) {
     super(sessionType);
     this.sessionId = sessionId;
     this.#http = http;
     this.#dispose = dispose;
     this.#closed = false;
+    this.#getServerCertificate = getServerCertificate;
   }
 
   async generateRequest(initData: Uint8Array, initDataType: string = 'cenc') {
     if (this.#closed) throw new Error('session closed');
+    const serverCertificate = this.#getServerCertificate();
     const data = await this.#http.post(`/sessions/${this.sessionId}/generate-request`, {
       initDataType,
+      serverCertificate,
       initData: fromBuffer(initData).toBase64(),
     });
+    if (serverCertificate !== undefined && data?.serverCertificateAccepted !== true) {
+      throw new Error(
+        'Remote server did not acknowledge the server certificate; privacy mode may be unsupported',
+      );
+    }
     const message = fromBase64(data.message).toBuffer();
     this.emitMessage({
       message,
@@ -211,6 +222,7 @@ export class Remote extends BaseMediaKeysEngine {
 
   #http: ReturnType<typeof createHttpClient>;
   #client?: string;
+  #serverCertificate?: string;
 
   constructor(params: RemoteParams) {
     super();
@@ -220,7 +232,16 @@ export class Remote extends BaseMediaKeysEngine {
     this.sessions = new Map();
   }
 
-  async setServerCertificate(): Promise<boolean> {
+  async setServerCertificate(serverCertificate: Uint8Array): Promise<boolean> {
+    if (this.keySystem !== 'com.widevine.alpha') {
+      throw new Error(`Server certificates are unsupported for ${this.keySystem}`);
+    }
+    const certificate = new Uint8Array(serverCertificate);
+    const { signedDrmCertificate } = await parseCertificate(certificate);
+    if (!(await verifyCertificate(signedDrmCertificate))) {
+      throw new Error('Certificate invalid: signature mismatch');
+    }
+    this.#serverCertificate = fromBuffer(certificate).toBase64();
     return true;
   }
 
@@ -230,9 +251,13 @@ export class Remote extends BaseMediaKeysEngine {
       sessionType,
       client: this.#client,
     });
-    const session = new RemoteSession(data.id, sessionType, this.#http, (sessionId) => {
-      this.sessions.delete(sessionId);
-    });
+    const session = new RemoteSession(
+      data.id,
+      sessionType,
+      this.#http,
+      (sessionId) => this.sessions.delete(sessionId),
+      () => this.#serverCertificate,
+    );
     this.sessions.set(session.sessionId, session);
     return session;
   }
