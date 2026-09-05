@@ -3,7 +3,7 @@
   "version": "0.12.8",
   "description": "Advanced DRM inspection toolkit",
   "type": "module",
-  "packageManager": "pnpm@11.2.0",
+  "packageManager": "pnpm@12.1.0",
   "files": [
     "dist",
     "scripts"
