@@ -13,7 +13,11 @@ type LicenseCommandParams = {
 
 export const license = async (params: LicenseCommandParams) => {
   const headers = Object.fromEntries(
-    params.headers?.map((header) => header.split(':').map((s) => s.trim())) || [],
+    params.headers?.map((header) => {
+      const separator = header.indexOf(':');
+      if (separator === -1) return [header.trim()];
+      return [header.slice(0, separator).trim(), header.slice(separator + 1).trim()];
+    }) || [],
   );
   const client = await importClient(params.clientPath || process.cwd());
   const cdm =
