@@ -1,4 +1,4 @@
-import { DOMParser, XMLSerializer } from '@xmldom/xmldom';
+import { DOMParser, XMLSerializer, type Document, type Element } from '@xmldom/xmldom';
 import * as utils from '@noble/curves/utils.js';
 import { BaseMediaKeysEngineSession } from '../api';
 import {
@@ -41,34 +41,28 @@ import { WrmHeader } from './wrmheader';
 
 const DEFAULT_CLIENT_VERSION = '10.0.16384.10011';
 
-const getLocalName = (node: any) => node.localName ?? node.nodeName?.split(':').pop() ?? '';
+const getLocalName = (node: Element) => node.localName ?? node.nodeName.split(':').pop() ?? '';
 
-const findDirectChildByLocalName = (parent: any, localName: string) => {
-  for (let index = 0; index < parent.childNodes.length; index++) {
-    const child = parent.childNodes[index];
-    if (child.nodeType === child.ELEMENT_NODE && getLocalName(child) === localName) {
-      return child;
-    }
+const findDirectChildByLocalName = (parent: Element, localName: string) =>
+  findDescendantsByLocalName(parent, localName).find((child) => child.parentNode === parent) ??
+  null;
+
+const findDescendantsByLocalName = (parent: Document | Element, localName: string) =>
+  Array.from(parent.getElementsByTagName('*')).filter(
+    (element) => getLocalName(element) === localName,
+  );
+
+const findFirstDescendantByLocalName = (parent: Document | Element, localName: string) =>
+  findDescendantsByLocalName(parent, localName)[0] ?? null;
+
+const requireDirectChild = (parent: Element, localName: string) => {
+  const children = findDescendantsByLocalName(parent, localName).filter(
+    (child) => child.parentNode === parent,
+  );
+  if (children.length !== 1) {
+    throw new InvalidLicense(`Expected one ${localName} in ${getLocalName(parent)}`);
   }
-  return null;
-};
-
-const findDescendantsByLocalName = (parent: any, localName: string) => {
-  const matches: any[] = [];
-  const elements = parent.getElementsByTagName('*');
-
-  for (let index = 0; index < elements.length; index++) {
-    const element = elements[index];
-    if (getLocalName(element) === localName) {
-      matches.push(element);
-    }
-  }
-
-  return matches;
-};
-
-const findFirstDescendantByLocalName = (parent: any, localName: string) => {
-  return findDescendantsByLocalName(parent, localName)[0] ?? null;
+  return children[0]!;
 };
 
 type PlayReadySessionCredentials =
@@ -144,7 +138,11 @@ export class PlayReadySession extends BaseMediaKeysEngineSession {
       y: 68827801477692731286297993103001909218341737652466656881935707825713852622178n,
     };
 
-    this.parser = new DOMParser();
+    this.parser = new DOMParser({
+      onError: (_level, message) => {
+        throw new InvalidLicense(message);
+      },
+    });
     this.serializer = new XMLSerializer();
     this.#contentKeys = [];
     this.#dispose = dispose;
@@ -329,12 +327,32 @@ export class PlayReadySession extends BaseMediaKeysEngineSession {
 
   async parseLicense(rawLicense: string) {
     this.assertOpen();
-    const xmlDoc = this.parser.parseFromString(rawLicense, 'application/xml');
+    let xmlDoc: Document;
+    try {
+      xmlDoc = this.parser.parseFromString(rawLicense, 'application/xml');
+    } catch {
+      throw new InvalidLicense('Invalid license response XML');
+    }
     this.#throwIfSoapFault(xmlDoc);
-    await this.#verifySignedLicenseResponse(xmlDoc);
+    let root = xmlDoc.documentElement;
+    if (root && getLocalName(root) === 'Envelope') {
+      const body = requireDirectChild(root, 'Body');
+      root = requireDirectChild(body, 'AcquireLicenseResponse');
+    }
+    if (!root || getLocalName(root) !== 'AcquireLicenseResponse') {
+      throw new InvalidLicense('License root must be AcquireLicenseResponse or a SOAP Envelope');
+    }
+    const result = requireDirectChild(root, 'AcquireLicenseResult');
+    const response = requireDirectChild(result, 'Response');
+    const licenseResponse = requireDirectChild(response, 'LicenseResponse');
+    await this.#verifySignedLicenseResponse(response);
     this.assertOpen();
-    this.#mergeRevocationInfo(xmlDoc);
-    const licenseElements = findDescendantsByLocalName(xmlDoc, 'License');
+    const licenses = findDirectChildByLocalName(licenseResponse, 'Licenses');
+    const licenseElements = licenses
+      ? findDescendantsByLocalName(licenses, 'License').filter(
+          (license) => license.parentNode === licenses,
+        )
+      : [];
 
     const keys: Key[] = [];
 
@@ -413,10 +431,11 @@ export class PlayReadySession extends BaseMediaKeysEngineSession {
       }
     }
     this.assertOpen();
+    this.#mergeRevocationInfo(licenseResponse);
     return keys;
   }
 
-  #throwIfSoapFault(xmlDoc: any) {
+  #throwIfSoapFault(xmlDoc: Document) {
     const faultElement = findFirstDescendantByLocalName(xmlDoc, 'Fault');
     if (!faultElement) return;
 
@@ -428,10 +447,7 @@ export class PlayReadySession extends BaseMediaKeysEngineSession {
     throw new ServerException(faultString);
   }
 
-  async #verifySignedLicenseResponse(xmlDoc: any) {
-    const responseElement = findFirstDescendantByLocalName(xmlDoc, 'Response');
-    if (!responseElement) return;
-
+  async #verifySignedLicenseResponse(responseElement: Element) {
     const licenseResponseElement = findDirectChildByLocalName(responseElement, 'LicenseResponse');
     const signatureElement = findDirectChildByLocalName(responseElement, 'Signature');
     if (!licenseResponseElement || !signatureElement) return;
@@ -484,7 +500,7 @@ export class PlayReadySession extends BaseMediaKeysEngineSession {
     }
   }
 
-  #mergeRevocationInfo(xmlDoc: any) {
+  #mergeRevocationInfo(xmlDoc: Element) {
     const revInfoElement = findFirstDescendantByLocalName(xmlDoc, 'RevInfo');
     if (!revInfoElement) return;
 

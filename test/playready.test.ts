@@ -50,14 +50,14 @@ const buildRevocationListData = (listId: string, version: number) => {
 };
 
 const buildRevInfoResponse = (entries: Array<{ listId: string; version: number }>) =>
-  '<AcquireLicenseResponse><LicenseResponse><RevInfo>' +
+  '<AcquireLicenseResponse><AcquireLicenseResult><Response><LicenseResponse><RevInfo>' +
   entries
     .map(
       ({ listId, version }) =>
         `<Revocation><ListID>${listId}</ListID><ListData>${buildRevocationListData(listId, version)}</ListData></Revocation>`,
     )
     .join('') +
-  '</RevInfo></LicenseResponse></AcquireLicenseResponse>';
+  '</RevInfo></LicenseResponse></Response></AcquireLicenseResult></AcquireLicenseResponse>';
 
 const buildSignedLicenseResponse = async (
   signingKey: EccKey,
@@ -68,7 +68,7 @@ const buildSignedLicenseResponse = async (
 ) => {
   const xml = [
     '<AcquireLicenseResponse xmlns="http://schemas.microsoft.com/DRM/2007/03/protocols">',
-    '<Response>',
+    '<AcquireLicenseResult><Response>',
     '<LicenseResponse>',
     '<Version>1</Version>',
     '<SigningCertificateChain>AA==</SigningCertificateChain>',
@@ -81,7 +81,7 @@ const buildSignedLicenseResponse = async (
     '</SignedInfo>',
     '<SignatureValue></SignatureValue>',
     '</Signature>',
-    '</Response>',
+    '</Response></AcquireLicenseResult>',
     '</AcquireLicenseResponse>',
   ].join('');
 
@@ -157,6 +157,92 @@ test('playready engine sessions include revocation-list versions and persist mer
   );
 });
 
+const wrapLicenseResponse = (content: string) =>
+  `<AcquireLicenseResponse><AcquireLicenseResult><Response><LicenseResponse>${content}</LicenseResponse></Response></AcquireLicenseResult></AcquireLicenseResponse>`;
+
+test.each([
+  '<html><body>upstream error</body></html>',
+  '<AcquireLicenseResponse/>',
+  '<AcquireLicenseResponse><AcquireLicenseResult/></AcquireLicenseResponse>',
+  '<AcquireLicenseResponse><AcquireLicenseResult><Response/></AcquireLicenseResult></AcquireLicenseResponse>',
+  `<html>${wrapLicenseResponse('')}</html>`,
+  '<Envelope><Body/></Envelope>',
+  wrapLicenseResponse('').replace('</Response>', '<LicenseResponse/></Response>'),
+  wrapLicenseResponse('<RevInfo>').replace('</LicenseResponse>', '</RevInfo>'),
+])('playready rejects invalid responses without changing session state: %s', async (xml) => {
+  const mergeRevocationInfo = vi.fn();
+  const session = new PlayReadySession(
+    'temporary',
+    {
+      certificateChain: new Uint8Array(),
+      encryptionKey: EccKey.generate().dumps(),
+      signingKey: EccKey.generate().dumps(),
+    },
+    undefined,
+    { mergeRevocationInfo },
+  );
+  const parseLicense = vi
+    .spyOn(session, 'parseLicense')
+    .mockResolvedValueOnce([new Key(new Uint8Array(16), 1, 3, new Uint8Array(16).fill(0xaa))]);
+  await session.update(new Uint8Array());
+  parseLicense.mockRestore();
+  const state = session.pause();
+  const keys = new Map(session.keys);
+  const statuses = new Map(session.keyStatuses);
+  const onKeysChange = vi.fn();
+  session.addEventListener('keyschange', onKeysChange);
+  session.addEventListener('keystatuseschange', onKeysChange);
+
+  await expect(session.parseLicense(xml)).rejects.toBeInstanceOf(InvalidLicense);
+  await expect(session.update(new TextEncoder().encode(xml))).rejects.toBeInstanceOf(
+    InvalidLicense,
+  );
+
+  expect(session.pause()).toBe(state);
+  expect(session.keys).toEqual(keys);
+  expect(session.keyStatuses).toEqual(statuses);
+  expect(onKeysChange).not.toHaveBeenCalled();
+  expect(mergeRevocationInfo).not.toHaveBeenCalled();
+});
+
+test.each([
+  wrapLicenseResponse(''),
+  wrapLicenseResponse('<Licenses/>'),
+  wrapLicenseResponse('<Acknowledgement><TransactionID>1</TransactionID></Acknowledgement>'),
+  `<soap:Envelope xmlns:soap="http://schemas.xmlsoap.org/soap/envelope/"><soap:Body>${wrapLicenseResponse('')}</soap:Body></soap:Envelope>`,
+  wrapLicenseResponse('')
+    .replaceAll('<Response>', '<pr:Response>')
+    .replaceAll('</Response>', '</pr:Response>')
+    .replace(
+      '<AcquireLicenseResponse>',
+      '<AcquireLicenseResponse xmlns:pr="http://schemas.microsoft.com/DRM/2007/03/protocols/messages">',
+    ),
+])('playready accepts valid responses without content keys: %s', async (xml) => {
+  const session = createPlayReady().createSession() as PlayReadySession;
+  await expect(session.parseLicense(xml)).resolves.toEqual([]);
+  await expect(session.update(new TextEncoder().encode(xml))).resolves.toBeUndefined();
+});
+
+test('playready does not merge revocation data when a license is invalid', async () => {
+  const mergeRevocationInfo = vi.fn();
+  const session = new PlayReadySession(
+    'temporary',
+    {
+      certificateChain: new Uint8Array(),
+      encryptionKey: EccKey.generate().dumps(),
+      signingKey: EccKey.generate().dumps(),
+    },
+    undefined,
+    { mergeRevocationInfo },
+  );
+  await expect(
+    session.parseLicense(
+      wrapLicenseResponse('<RevInfo/><Licenses><License>AA==</License></Licenses>'),
+    ),
+  ).rejects.toThrow();
+  expect(mergeRevocationInfo).not.toHaveBeenCalled();
+});
+
 test('playready parseLicense rejects unsupported cipher types', async () => {
   const session = new PlayReadySession('temporary', {
     certificateChain: new Uint8Array(),
@@ -192,7 +278,7 @@ test('playready parseLicense rejects unsupported cipher types', async () => {
 
   await expect(
     session.parseLicense(
-      '<AcquireLicenseResponse><LicenseResponse><Licenses><License>AA==</License></Licenses></LicenseResponse></AcquireLicenseResponse>',
+      '<AcquireLicenseResponse><AcquireLicenseResult><Response><LicenseResponse><Licenses><License>AA==</License></Licenses></LicenseResponse></Response></AcquireLicenseResult></AcquireLicenseResponse>',
     ),
   ).rejects.toThrowError(new InvalidLicense('Unsupported cipher type 999'));
 });
@@ -236,7 +322,7 @@ test('playready parseLicense rejects licenses with invalid integrity signatures'
 
   await expect(
     session.parseLicense(
-      '<AcquireLicenseResponse><LicenseResponse><Licenses><License>AA==</License></Licenses></LicenseResponse></AcquireLicenseResponse>',
+      '<AcquireLicenseResponse><AcquireLicenseResult><Response><LicenseResponse><Licenses><License>AA==</License></Licenses></LicenseResponse></Response></AcquireLicenseResult></AcquireLicenseResponse>',
     ),
   ).rejects.toThrowError(new InvalidLicense('License integrity signature does not match'));
   expect(decryptSpy).toHaveBeenCalledTimes(1);
@@ -266,7 +352,7 @@ test('playready parseLicense rejects licenses issued for another device key', as
 
   await expect(
     session.parseLicense(
-      '<AcquireLicenseResponse><LicenseResponse><Licenses><License>AA==</License></Licenses></LicenseResponse></AcquireLicenseResponse>',
+      '<AcquireLicenseResponse><AcquireLicenseResult><Response><LicenseResponse><Licenses><License>AA==</License></Licenses></LicenseResponse></Response></AcquireLicenseResult></AcquireLicenseResponse>',
     ),
   ).rejects.toThrowError(new InvalidLicense('Public encryption key does not match'));
 });
