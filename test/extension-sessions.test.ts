@@ -493,3 +493,51 @@ test.each([true, false])(
     expect(Session.prototype.update).not.toHaveBeenCalled();
   },
 );
+
+test.each(['com.widevine.alpha', 'com.microsoft.playready', undefined])(
+  'does not capture ClearKey-shaped JSON for key system %s',
+  async (keySystem) => {
+    const send = startBackground();
+    await send('generateRequest', 'other', {}, { keySystem });
+    const message = new TextEncoder().encode(
+      JSON.stringify({ keys: [{ kty: 'oct', kid: 'AA', k: 'tQ0bJVWb6b0KPL6KtZIy_A' }] }),
+    );
+    await expect(send('update', 'other', {}, { keySystem, message })).resolves.toBeUndefined();
+    expect(Session.prototype.waitForKeyStatusesChange).not.toHaveBeenCalled();
+    expect((await appStorage.allKeys.getValue()) ?? []).toEqual([]);
+    expect((await appStorage.recentKeys.getValue()) ?? []).toEqual([]);
+  },
+);
+
+test('retains reused ClearKey IDs across origins and status events', async () => {
+  const send = startBackground();
+  const captures = [
+    {
+      url: 'https://first.example/video',
+      k: 'tQ0bJVWb6b0KPL6KtZIy_A',
+      value: 'b50d1b25559be9bd0a3cbe8ab59232fc',
+    },
+    {
+      url: 'https://second.example/video',
+      k: 'AAECAwQFBgcICQoLDA0ODw',
+      value: '000102030405060708090a0b0c0d0e0f',
+    },
+  ];
+  for (const capture of captures) {
+    const context = { keySystem: 'org.w3.clearkey', url: capture.url };
+    const message = new TextEncoder().encode(
+      JSON.stringify({ keys: [{ kty: 'oct', kid: 'AA', k: capture.k }] }),
+    );
+    await send('update', 'clear', {}, { ...context, message });
+    await send('keystatuseschange', 'clear', {}, { ...context, keyStatuses: { 'AA==': 'usable' } });
+    expect(await appStorage.recentKeys.getValue()).toMatchObject([
+      { id: '00', value: capture.value, url: capture.url },
+    ]);
+  }
+  const history = await appStorage.allKeys.getValue();
+  expect(history).toHaveLength(2);
+  expect(history).toMatchObject(captures.map(({ url, value }) => ({ id: '00', url, value })));
+  if (!history?.[1]) throw new Error('Missing second capture');
+  await appStorage.allKeys.remove(history[1]);
+  expect(await appStorage.allKeys.getValue()).toMatchObject([{ value: captures[0]?.value }]);
+});

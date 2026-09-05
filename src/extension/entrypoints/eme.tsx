@@ -1,4 +1,5 @@
 import { sendDrmMessage } from '@/utils/drm-bridge';
+import { isClearKeyRequest } from '@/utils/clearkey';
 
 declare global {
   interface MediaKeySession {
@@ -95,6 +96,7 @@ export default defineUnlistedScript(() => {
         sessionToken: sessionRequests.get(session)?.token,
         sessionId: session.sessionId,
         action: 'keystatuseschange',
+        keySystem: getKeySystem(session),
         initData: session.initData,
         initDataType: session.initDataType,
         mpd: window.MPD_LIST.get(session.initData!),
@@ -232,6 +234,15 @@ export default defineUnlistedScript(() => {
         'message',
         (event) => {
           if (forwardedEvents.has(event) || !(event instanceof MediaKeyMessageEvent)) return;
+          // MediaKeys may have been created before this script was injected.
+          if (
+            getKeySystem(session) === undefined &&
+            event.messageType === 'license-request' &&
+            isClearKeyRequest(event.message)
+          ) {
+            const mediaKeys = sessionMediaKeys.get(session);
+            if (mediaKeys) mediaKeysSystems.set(mediaKeys, 'org.w3.clearkey');
+          }
           if (
             getKeySystem(session) === 'org.w3.clearkey' ||
             event.messageType === 'license-release' ||

@@ -2,10 +2,23 @@ import { z } from 'zod';
 import { fromBase64 } from '@okova/lib/utils';
 
 const base64url = z.string().regex(/^[A-Za-z0-9_-]+$/);
+const clearKeyRequest = z.object({
+  kids: z.array(base64url).min(1),
+  type: z.enum(['temporary', 'persistent-license']),
+});
 const clearKeyResponse = z.object({
   keys: z.array(z.object({ kty: z.literal('oct'), kid: base64url, k: base64url })),
   type: z.enum(['temporary', 'persistent-license']).optional(),
 });
+
+export const isClearKeyRequest = (request: BufferSource) => {
+  try {
+    const text = new TextDecoder('utf-8', { fatal: true }).decode(request);
+    return clearKeyRequest.safeParse(JSON.parse(text)).success;
+  } catch {
+    return false;
+  }
+};
 
 // Response inspection is best effort; unrelated or malformed licenses pass through.
 export const parseClearKeyResponse = (response: BufferSource) => {

@@ -1,5 +1,5 @@
 import { expect, test } from 'vitest';
-import { parseClearKeyResponse } from '../src/extension/utils/clearkey';
+import { isClearKeyRequest, parseClearKeyResponse } from '../src/extension/utils/clearkey';
 
 const key = { kty: 'oct', kid: 'LwVHf8JLtPrv2GUXFW2v_A', k: 'tQ0bJVWb6b0KPL6KtZIy_A' };
 const encode = (value: unknown) => new TextEncoder().encode(JSON.stringify(value));
@@ -39,4 +39,19 @@ test('ignores binary licenses, invalid JSON, and empty key sets', () => {
   expect(parseClearKeyResponse(new Uint8Array([8, 2, 255]))).toBeUndefined();
   expect(parseClearKeyResponse(new TextEncoder().encode('{'))).toBeUndefined();
   expect(parseClearKeyResponse(encode({ keys: [] }))).toEqual([]);
+});
+
+test('recognizes ClearKey requests without mistaking init data or binary challenges for them', () => {
+  expect(isClearKeyRequest(encode({ kids: [key.kid], type: 'temporary' }))).toBe(true);
+  expect(isClearKeyRequest(encode({ kids: [key.kid], type: 'persistent-license' }))).toBe(true);
+  for (const data of [
+    null,
+    { kids: [key.kid] },
+    { kids: [], type: 'temporary' },
+    { kids: [123], type: 'temporary' },
+    { keys: [key] },
+  ]) {
+    expect(isClearKeyRequest(encode(data))).toBe(false);
+  }
+  expect(isClearKeyRequest(new Uint8Array([8, 1, 255]))).toBe(false);
 });

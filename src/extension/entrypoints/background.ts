@@ -329,7 +329,11 @@ export default defineBackground({
         };
 
         // Inspect before the history shortcut so later responses can add rotated keys.
-        if (settings?.emeInterception && message.action === 'update') {
+        if (
+          settings?.emeInterception &&
+          message.action === 'update' &&
+          message.keySystem === 'org.w3.clearkey'
+        ) {
           const clearKeys = parseClearKeyResponse(parseBinary(message.message));
           if (clearKeys?.length) {
             const results = clearKeys.map((key) => ({
@@ -350,7 +354,10 @@ export default defineBackground({
         const { initData } = message;
         const allKeys = await appStorage.allKeys.raw.getValue();
         const keys = allKeys?.filter(
-          (keyInfo) => keyInfo.pssh === initData && isCapturedKey(keyInfo),
+          (keyInfo) =>
+            keyInfo.pssh === initData &&
+            isCapturedKey(keyInfo) &&
+            (message.keySystem !== 'org.w3.clearkey' || keyInfo.url === message.url),
         );
         const hasKey = !!keys?.length;
         if (hasKey && (!sessionKey || !state.sessions.has(sessionKey))) {

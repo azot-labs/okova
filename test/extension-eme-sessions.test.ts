@@ -360,66 +360,89 @@ test.each(
   },
 );
 
-test('keeps ClearKey challenges and responses unchanged and reports the key system', async () => {
-  const nativeUpdate = vi.fn<(response: BufferSource) => Promise<void>>().mockResolvedValue();
-  const nativeGenerateRequest = vi
-    .fn<(type: string, data: BufferSource) => Promise<void>>()
-    .mockResolvedValue();
-  class NativeSession extends EventTarget {
-    sessionId = 'clear-session';
-    keyStatuses = new Map();
-    closed = Promise.withResolvers<void>().promise;
-    generateRequest(type: string, data: BufferSource) {
-      return nativeGenerateRequest(type, data);
+test.each(['before', 'after'])(
+  'keeps ClearKey unchanged when MediaKeys was created %s injection',
+  async (creation) => {
+    const nativeUpdate = vi.fn<(response: BufferSource) => Promise<void>>().mockResolvedValue();
+    const nativeGenerateRequest = vi
+      .fn<(type: string, data: BufferSource) => Promise<void>>()
+      .mockResolvedValue();
+    class NativeSession extends EventTarget {
+      sessionId = 'clear-session';
+      keyStatuses = new Map();
+      closed = Promise.withResolvers<void>().promise;
+      generateRequest(type: string, data: BufferSource) {
+        return nativeGenerateRequest(type, data);
+      }
+      update(response: BufferSource) {
+        return nativeUpdate(response);
+      }
     }
-    update(response: BufferSource) {
-      return nativeUpdate(response);
+    class NativeKeys {
+      createSession() {
+        return new NativeSession();
+      }
+      async setServerCertificate() {
+        return true;
+      }
     }
-  }
-  class NativeKeys {
-    createSession() {
-      return new NativeSession();
+    class NativeAccess {
+      keySystem = 'org.w3.clearkey';
+      async createMediaKeys() {
+        return new NativeKeys();
+      }
     }
-    async setServerCertificate() {
-      return true;
-    }
-  }
-  class NativeAccess {
-    keySystem = 'org.w3.clearkey';
-    async createMediaKeys() {
-      return new NativeKeys();
-    }
-  }
-  vi.stubGlobal('MediaKeySession', NativeSession);
-  vi.stubGlobal('MediaKeys', NativeKeys);
-  vi.stubGlobal('MediaKeySystemAccess', NativeAccess);
-  vi.stubGlobal('window', { MPD_LIST: new Map() });
-  vi.mocked(sendDrmMessage).mockImplementation(async (message) => {
-    if (message.action === 'license-request') return btoa('wrong challenge');
-    if (message.action === 'update') return { keys: [] };
-  });
-  eme.main();
-  const session = (await new NativeAccess().createMediaKeys()).createSession();
-  await session.generateRequest('keyids', new TextEncoder().encode('{"kids":["AA"]}'));
-  expect(sendDrmMessage).toHaveBeenLastCalledWith(
-    expect.objectContaining({ action: 'generateRequest', keySystem: 'org.w3.clearkey' }),
-  );
-  const received = Promise.withResolvers<Event>();
-  session.addEventListener('message', received.resolve);
-  const challenge = new TextEncoder().encode('{"kids":["AA"],"type":"temporary"}').buffer;
-  const event = new MediaKeyMessageEvent('message', {
-    message: challenge,
-    messageType: 'license-request',
-  });
-  session.dispatchEvent(event);
-  expect(await received.promise).toBe(event);
-  expect(sendDrmMessage).toHaveBeenCalledTimes(1);
-  const response = new TextEncoder().encode(
-    '{"keys":[{"kty":"oct","kid":"AA","k":"tQ0bJVWb6b0KPL6KtZIy_A"}]}',
-  );
-  await session.update(response);
-  expect(sendDrmMessage).toHaveBeenLastCalledWith(
-    expect.objectContaining({ action: 'update', keySystem: 'org.w3.clearkey', message: response }),
-  );
-  expect(nativeUpdate).toHaveBeenCalledExactlyOnceWith(response);
-});
+    vi.stubGlobal('MediaKeySession', NativeSession);
+    vi.stubGlobal('MediaKeys', NativeKeys);
+    vi.stubGlobal('MediaKeySystemAccess', NativeAccess);
+    vi.stubGlobal('window', { MPD_LIST: new Map() });
+    vi.mocked(sendDrmMessage).mockImplementation(async (message) => {
+      if (message.action === 'license-request') return btoa('wrong challenge');
+      if (message.action === 'update') return { keys: [] };
+    });
+    const originalDescriptor = Object.getOwnPropertyDescriptor(
+      NativeAccess.prototype,
+      'createMediaKeys',
+    );
+    const earlyKeys =
+      creation === 'before' ? await new NativeAccess().createMediaKeys() : undefined;
+    eme.main();
+    expect(
+      Object.getOwnPropertyDescriptor(NativeAccess.prototype, 'createMediaKeys'),
+    ).toMatchObject({
+      writable: originalDescriptor?.writable,
+      configurable: originalDescriptor?.configurable,
+      enumerable: originalDescriptor?.enumerable,
+    });
+    const session = (earlyKeys ?? (await new NativeAccess().createMediaKeys())).createSession();
+    await session.generateRequest('keyids', new TextEncoder().encode('{"kids":["AA"]}'));
+    expect(sendDrmMessage).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        action: 'generateRequest',
+        keySystem: creation === 'before' ? undefined : 'org.w3.clearkey',
+      }),
+    );
+    const received = Promise.withResolvers<Event>();
+    session.addEventListener('message', received.resolve);
+    const challenge = new TextEncoder().encode('{"kids":["AA"],"type":"temporary"}').buffer;
+    const event = new MediaKeyMessageEvent('message', {
+      message: challenge,
+      messageType: 'license-request',
+    });
+    session.dispatchEvent(event);
+    expect(await received.promise).toBe(event);
+    expect(sendDrmMessage).toHaveBeenCalledTimes(1);
+    const response = new TextEncoder().encode(
+      '{"keys":[{"kty":"oct","kid":"AA","k":"tQ0bJVWb6b0KPL6KtZIy_A"}]}',
+    );
+    await session.update(response);
+    expect(sendDrmMessage).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        action: 'update',
+        keySystem: 'org.w3.clearkey',
+        message: response,
+      }),
+    );
+    expect(nativeUpdate).toHaveBeenCalledExactlyOnceWith(response);
+  },
+);
