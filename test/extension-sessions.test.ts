@@ -3,9 +3,12 @@ import { browser, type Browser } from 'wxt/browser';
 import { fakeBrowser } from 'wxt/testing';
 import background from '../src/extension/entrypoints/background';
 import { appStorage } from '../src/extension/utils/storage';
-import { fromBase64 } from '../src/lib/utils';
+import * as certificateUtils from '../src/lib/widevine/certificate';
+import { fromBase64, fromBuffer } from '../src/lib/utils';
 import {
   ClientIdentification,
+  DrmCertificate,
+  SignedDrmCertificate,
   EncryptedClientIdentification,
   LicenseRequest,
   SignedMessage,
@@ -216,15 +219,21 @@ test.each(['navigation', 'removal'])('cleans up only the affected tab on %s', as
 
 const SERVICE_CERTIFICATE = `CAUSxQUKvwIIAxIQKHA0VMAI9jYYredEPbbEyBiL5/mQBSKOAjCCAQoCggEBALUhErjQXQI/zF2V4sJRwcZJtBd82NK+7zVbsGdD3mYePSq8MYK3mUbVX9wI3+lUB4FemmJ0syKix/XgZ7tfCsB6idRa6pSyUW8HW2bvgR0NJuG5priU8rmFeWKqFxxPZmMNPkxgJxiJf14e+baq9a1Nuip+FBdt8TSh0xhbWiGKwFpMQfCB7/+Ao6BAxQsJu8dA7tzY8U1nWpGYD5LKfdxkagatrVEB90oOSYzAHwBTK6wheFC9kF6QkjZWt9/v70JIZ2fzPvYoPU9CVKtyWJOQvuVYCPHWaAgNRdiTwryi901goMDQoJk87wFgRwMzTDY4E5SGvJ2vJP1noH+a2UMCAwEAAToSc3RhZ2luZy5nb29nbGUuY29tEoADmD4wNSZ19AunFfwkm9rl1KxySaJmZSHkNlVzlSlyH/iA4KrvxeJ7yYDa6tq/P8OG0ISgLIJTeEjMdT/0l7ARp9qXeIoA4qprhM19ccB6SOv2FgLMpaPzIDCnKVww2pFbkdwYubyVk7jei7UPDe3BKTi46eA5zd4Y+oLoG7AyYw/pVdhaVmzhVDAL9tTBvRJpZjVrKH1lexjOY9Dv1F/FJp6X6rEctWPlVkOyb/SfEJwhAa/K81uDLyiPDZ1Flg4lnoX7XSTb0s+Cdkxd2b9yfvvpyGH4aTIfat4YkF9Nkvmm2mU224R1hx0WjocLsjA89wxul4TJPS3oRa2CYr5+DU4uSgdZzvgtEJ0lksckKfjAF0K64rPeytvDPD5fS69eFuy3Tq26/LfGcF96njtvOUA4P5xRFtICogySKe6WnCUZcYMDtQ0BMMM1LgawFNg4VA+KDCJ8ABHg9bOOTimO0sswHrRWSWX1XF15dXolCk65yEqz5lOfa2/fVomeopkU`;
 
-test.each(['setServerCertificate', 'update', 'late certificate'])(
+test.each([
+  'setServerCertificate',
+  'update',
+  'late certificate',
+  'replacement wrapped',
+  'replacement unwrapped',
+])(
   'returns the encrypted challenge after %s without leaking into another session',
   async (delivery) => {
     vi.mocked(Session.prototype.generateRequest).mockRestore();
     vi.mocked(Session.prototype.waitForLicenseRequest).mockRestore();
     vi.mocked(Session.prototype.update).mockRestore();
-    const encryptId = vi.fn(async () =>
+    const encryptId = vi.fn(async (certificate: SignedDrmCertificate) =>
       EncryptedClientIdentification.create({
-        providerId: 'staging.google.com',
+        providerId: DrmCertificate.decode(certificate.drmCertificate).providerId,
         encryptedClientId: new Uint8Array([1, 2, 3]),
       }),
     );
@@ -248,6 +257,36 @@ test.each(['setServerCertificate', 'update', 'late certificate'])(
       },
     );
     await send('generateRequest', 'other', {}, { initData });
+    const isReplacement = delivery.startsWith('replacement');
+    if (isReplacement) {
+      const { signedDrmCertificate, drmCertificate } =
+        await certificateUtils.parseCertificate(SERVICE_CERTIFICATE);
+      drmCertificate.providerId = 'previous.example.com';
+      signedDrmCertificate.drmCertificate = DrmCertificate.encode(drmCertificate).finish();
+      // Only the synthetic previous certificate bypasses signature verification.
+      vi.spyOn(certificateUtils, 'verifyCertificate').mockResolvedValueOnce(true);
+      await send(
+        'update',
+        'private',
+        {},
+        {
+          message: SignedMessage.encode({
+            type: SignedMessage.MessageType.SERVICE_CERTIFICATE,
+            msg: SignedDrmCertificate.encode(signedDrmCertificate).finish(),
+          }).finish(),
+        },
+      );
+      expect(encryptId).toHaveBeenCalledTimes(1);
+      await expect(encryptId.mock.results[0]?.value).resolves.toMatchObject({
+        providerId: 'previous.example.com',
+      });
+    }
+    const replacementCertificate =
+      delivery === 'replacement unwrapped'
+        ? fromBuffer(
+            SignedMessage.decode(fromBase64(SERVICE_CERTIFICATE).toBuffer()).msg,
+          ).toBase64()
+        : SERVICE_CERTIFICATE;
     if (delivery === 'update') {
       await send(
         'update',
@@ -266,7 +305,7 @@ test.each(['setServerCertificate', 'update', 'late certificate'])(
         {
           initData,
           serverCertificate:
-            token === 'private' && delivery !== 'update' ? SERVICE_CERTIFICATE : undefined,
+            token === 'private' && delivery !== 'update' ? replacementCertificate : undefined,
         },
       );
       if (typeof response !== 'string') throw new Error('Missing challenge');
@@ -276,7 +315,7 @@ test.each(['setServerCertificate', 'update', 'late certificate'])(
     expect(challenge.clientId).toBeNull();
     expect(challenge.encryptedClientId?.providerId).toBe('staging.google.com');
     expect(await readChallenge('private')).toEqual(challenge);
-    expect(encryptId).toHaveBeenCalledTimes(1);
+    expect(encryptId).toHaveBeenCalledTimes(isReplacement ? 2 : 1);
     const otherChallenge = await readChallenge('other');
     expect(otherChallenge.clientId).not.toBeNull();
     expect(otherChallenge.encryptedClientId).toBeNull();

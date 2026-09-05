@@ -6,8 +6,11 @@ import {
   PlayReady,
   requestMediaKeySystemAccess,
   setSupportedEngines,
+  toBufferSource,
   Widevine,
 } from '@okova/lib';
+import { parseCertificate } from '@okova/lib/widevine/certificate';
+import { SignedDrmCertificate, SignedMessage } from '@okova/lib/widevine/proto';
 import { getMessageType } from '@okova/lib/widevine/message';
 import { WidevineDeviceCredentials } from '@okova/lib/widevine/device-credentials';
 import { PlayReadyDeviceCredentials } from '@okova/lib/playready/device-credentials';
@@ -285,9 +288,17 @@ export default defineBackground({
             typeof serverCertificate === 'string' &&
             serverCertificate !== sessionEntry.serverCertificate
           ) {
-            await session.engine.setServerCertificate(fromBase64(serverCertificate).toBuffer());
+            const { signedDrmCertificate } = await parseCertificate(serverCertificate);
+            // Replace any session-level override and regenerate with the new certificate.
+            await session.update(
+              toBufferSource(
+                SignedMessage.encode({
+                  type: SignedMessage.MessageType.SERVICE_CERTIFICATE,
+                  msg: SignedDrmCertificate.encode(signedDrmCertificate).finish(),
+                }).finish(),
+              ),
+            );
             sessionEntry.serverCertificate = serverCertificate;
-            await session.generateRequest(message.initDataType, fromBase64(initData).toBuffer());
           }
           const challenge = await session.waitForLicenseRequest();
           sendResponse(fromBuffer(challenge).toBase64());
