@@ -45,22 +45,23 @@ export default defineUnlistedScript(() => {
     return worker;
   };
 
+  const inspectFetchResponse = async (response: Response) => {
+    const url = response.url;
+    const headers = Object.fromEntries(response.headers.entries());
+    if (!filterHead(url, headers)) return;
+
+    const text = await response.clone().text();
+    if (filterData(url, text)) postMessage(url, headers, text);
+  };
+
   const patchFetch = () => {
     if (typeof fetch === 'function') {
       const originalFetch = fetch;
       const cachedFetch = async function fetch(resource: URL | RequestInfo, options?: RequestInit) {
         const response = await originalFetch(resource, options);
-
-        const clone = response.clone();
-        const url = clone.url;
-        const headers = Object.fromEntries(clone.headers.entries());
-        const hasHeadMatch = filterHead(url, headers);
-        if (hasHeadMatch) {
-          const text = await clone.text();
-          const hasDataMatch = filterData(url, text);
-          if (hasDataMatch) postMessage(url, headers, text);
-        }
-
+        void inspectFetchResponse(response).catch((error) => {
+          console.warn('[okova] Fetch response inspection failed', error);
+        });
         return response;
       };
       Object.assign(cachedFetch, originalFetch);
@@ -81,10 +82,14 @@ export default defineUnlistedScript(() => {
     class PatchedXHR extends XMLHttpRequest {
       constructor() {
         super();
-        this.addEventListener('load', this.#handleResponse.bind(this));
+        this.addEventListener('load', () => {
+          void this.#handleResponse().catch((error) => {
+            console.warn('[okova] XHR response inspection failed', error);
+          });
+        });
       }
 
-      #handleResponse() {
+      async #handleResponse() {
         const url = this.responseURL;
         const headersString = this.getAllResponseHeaders();
         const headersArray = headersString.trim().split(/[\r\n]+/);
@@ -96,12 +101,31 @@ export default defineUnlistedScript(() => {
           const value = parts.join(': ');
           headers[header] = value;
         }
-        const hasHeadMatch = filterHead(url, headers);
-        if (hasHeadMatch && this.responseType === 'text') {
-          const text = this.response;
-          const hasDataMatch = filterData(url, text);
-          if (hasDataMatch) postMessage(url, headers, text);
+        if (!filterHead(url, headers)) return;
+
+        const response: unknown = this.response;
+        let text: string;
+        switch (this.responseType) {
+          case '':
+          case 'text':
+            text = this.responseText;
+            break;
+          case 'arraybuffer':
+            if (!(response instanceof ArrayBuffer)) return;
+            text = new TextDecoder().decode(response);
+            break;
+          case 'blob':
+            if (!(response instanceof Blob)) return;
+            text = await response.text();
+            break;
+          case 'document':
+            if (!this.responseXML) return;
+            text = new XMLSerializer().serializeToString(this.responseXML);
+            break;
+          default:
+            return;
         }
+        if (filterData(url, text)) postMessage(url, headers, text);
       }
     }
     window.XMLHttpRequest = PatchedXHR;
@@ -130,17 +154,18 @@ export default defineUnlistedScript(() => {
           fetch = async function(...args) {
             const response = await originalFetch.apply(this, args);
 
-            const size = response.headers.get('content-length');
-            const MAX_SIZE = 1024 * 1024 * 1; // 1 MB
-            const isSizeOk = Number(size) < MAX_SIZE;
-            if (size && !isSizeOk) return response;
+            const inspectResponse = async () => {
+              const size = response.headers.get('content-length');
+              const MAX_SIZE = 1024 * 1024 * 1; // 1 MB
+              const isSizeOk = Number(size) < MAX_SIZE;
+              if (size && !isSizeOk) return;
 
-            const type = response.headers.get('content-type');
-            const isTypeOk = type?.includes('xml') || type?.includes('dash') || type?.includes('octet-stream');
-            if (!isTypeOk) return response;
+              const type = response.headers.get('content-type');
+              const isTypeOk = type?.includes('xml') || type?.includes('dash') || type?.includes('octet-stream');
+              if (!isTypeOk) return;
 
-            const clone = response.clone();
-            clone.text().then(text => {
+              const clone = response.clone();
+              const text = await clone.text();
               const message = {
                 jsonrpc: '2.0',
                 method: 'response',
@@ -156,6 +181,9 @@ export default defineUnlistedScript(() => {
               } else {
                 window.postMessage(message, '*');
               }
+            };
+            void inspectResponse().catch(error => {
+              console.warn('[okova] Fetch response inspection failed', error);
             });
             return response;
           };
