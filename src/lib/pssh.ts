@@ -1,7 +1,6 @@
 import { WrmHeader } from './playready/wrmheader';
 import { fromBase64, fromBuffer, fromHex } from './utils';
 import { WidevinePsshData } from './widevine/proto';
-import { decodeExactly } from './widevine/protobuf';
 
 export const PSSH_SYSTEM_IDS = {
   widevine: 'edef8ba979d64acea3c827dcd51d21ed',
@@ -191,7 +190,8 @@ export const getPsshKeyIds = (box: ParsedPsshBox): string[] => {
   if (box.version === 1 && box.keyIds.length) return box.keyIds.map(normalizeId);
   switch (normalizeId(box.systemId)) {
     case PSSH_SYSTEM_IDS.widevine:
-      return decodeExactly(box.data, WidevinePsshData, 'Widevine PSSH data').keyIds.map((keyId) =>
+      // Decode the full payload; valid protobuf fields need not follow the encoder's order.
+      return WidevinePsshData.decode(box.data).keyIds.map((keyId) =>
         normalizeId(keyId.length === 32 ? new TextDecoder().decode(keyId) : keyId),
       );
     case PSSH_SYSTEM_IDS.playready:
@@ -209,7 +209,7 @@ export const setPsshKeyIds = (box: ParsedPsshBox, keyIds: readonly PsshId[]): Pa
     throw new Error('KID replacement is supported only for Widevine PSSH boxes');
   }
   const ids = keyIds.map(normalizeId);
-  const payload = decodeExactly(box.data, WidevinePsshData, 'Widevine PSSH data');
+  const payload = WidevinePsshData.decode(box.data);
   payload.keyIds = ids.map((id) => fromHex(id).toBuffer());
   const data = WidevinePsshData.encode(payload).finish();
   return box.version === 1 ? { ...box, data, keyIds: ids } : { ...box, data, keyIds: [] };
@@ -262,7 +262,7 @@ export const convertPsshBox = (
   if (!keyIds.length) throw new Error('PSSH conversion requires at least one KID');
   let data: Uint8Array;
   if (target === 'playready') {
-    const payload = decodeExactly(box.data, WidevinePsshData, 'Widevine PSSH data');
+    const payload = WidevinePsshData.decode(box.data);
     if (
       payload.protectionScheme !== 0 &&
       payload.protectionScheme !== CENC &&

@@ -18,6 +18,46 @@ const KID = '00112233445566778899aabbccddeeff';
 const OTHER_KID = 'ffeeddccbbaa99887766554433221100';
 const widevine = () => setPsshKeyIds(createPsshBox({ systemId: PSSH_SYSTEM_IDS.widevine }), [KID]);
 
+test.each(['reordered known fields', 'unknown field before known fields'])(
+  'Widevine inspection, editing, and conversion accept %s',
+  (order) => {
+    const kidField = new Uint8Array([0x12, 0x10, ...Buffer.from(KID, 'hex')]);
+    const algorithmField = [0x08, 0x01];
+    const unknownField = [0xf8, 0x07, 0x01];
+    const data = new Uint8Array(
+      order === 'reordered known fields'
+        ? [...kidField, ...algorithmField]
+        : [...unknownField, ...algorithmField, ...kidField],
+    );
+    const box = createPsshBox({ systemId: PSSH_SYSTEM_IDS.widevine, data });
+
+    expect(getPsshKeyIds(box)).toEqual([KID]);
+    const edited = setPsshKeyIds(box, [OTHER_KID]);
+    expect(getPsshKeyIds(edited)).toEqual([OTHER_KID]);
+    expect(WidevinePsshData.decode(edited.data).algorithm).toBe(WidevinePsshData.Algorithm.AESCTR);
+    if (order === 'unknown field before known fields') {
+      expect(Array.from(edited.data.slice(-3))).toEqual(unknownField);
+    }
+    expect(getPsshKeyIds(convertPsshBox(box, 'playready'))).toEqual([KID]);
+    expect(box.data).toEqual(data);
+  },
+);
+
+test.each([
+  { name: 'truncated KID', data: [0x12, 0x10, 0x01] },
+  { name: 'trailing incomplete varint', data: [0x08, 0x01, 0xf8, 0x07, 0x80] },
+  { name: 'trailing incomplete bytes', data: [0x08, 0x01, 0xfa, 0x07, 0x02, 0x01] },
+  { name: 'unexpected end group', data: [0x08, 0x01, 0x0c] },
+])('Widevine operations reject $name', ({ data }) => {
+  const box = createPsshBox({
+    systemId: PSSH_SYSTEM_IDS.widevine,
+    data: new Uint8Array([0x12, 0x10, ...Buffer.from(KID, 'hex'), ...data]),
+  });
+  expect(() => getPsshKeyIds(box)).toThrow();
+  expect(() => setPsshKeyIds(box, [OTHER_KID])).toThrow();
+  expect(() => convertPsshBox(box, 'playready')).toThrow();
+});
+
 test('construction and parsing own their payload bytes, including Node Buffers', () => {
   const input = Buffer.from([1, 2, 3]);
   const box = createPsshBox({ systemId: KID, data: input });
