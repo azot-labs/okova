@@ -28,8 +28,8 @@ export class PlayReady extends BaseMediaKeysEngine {
     throw new Error('Server certificates are unsupported for PlayReady');
   }
 
-  #handleSessionDisposed = (sessionId: string) => {
-    this.sessions.delete(sessionId);
+  #handleSessionDisposed = (sessionId: string, session: MediaKeysEngineSession) => {
+    if (this.sessions.get(sessionId) === session) this.sessions.delete(sessionId);
   };
 
   #assertSessionCapacity() {
@@ -39,6 +39,9 @@ export class PlayReady extends BaseMediaKeysEngine {
   }
 
   #trackSession(session: MediaKeysEngineSession) {
+    if (this.sessions.has(session.sessionId)) {
+      throw new Error(`Session ${session.sessionId} is already open`);
+    }
     this.sessions.set(session.sessionId, session);
     return session;
   }

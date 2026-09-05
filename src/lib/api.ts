@@ -1,6 +1,7 @@
 import type { EncryptedPacket } from './decrypt';
 import { decryptPacketWithKeys } from './decrypt';
-import { fromHex, parseBufferSource } from './utils';
+import { parseBufferSource } from './utils';
+import { KeyStatusMap } from './key-status-map';
 export type {
   EncryptedPacket,
   EncryptionPattern,
@@ -78,7 +79,7 @@ export abstract class BaseMediaKeysEngineSession
 {
   protected isClosed = false;
 
-  sessionId = '';
+  readonly sessionId: string;
   sessionType: MediaKeySessionType;
   keyStatuses: Map<MediaKeyId, MediaKeyStatus>;
   keys: MediaKeysMap;
@@ -91,8 +92,9 @@ export abstract class BaseMediaKeysEngineSession
     | ((this: MediaKeysEngineSession, ev: CustomEvent<MediaKeyStatusesChangeEventInit>) => any)
     | null;
 
-  protected constructor(sessionType: MediaKeySessionType = 'temporary') {
+  protected constructor(sessionType: MediaKeySessionType = 'temporary', sessionId = '') {
     super();
+    this.sessionId = sessionId;
     this.sessionType = sessionType;
     this.keyStatuses = new Map();
     this.keys = new Map();
@@ -230,19 +232,19 @@ export const waitForKeys = (
 };
 
 const syncSessionKeys = (
-  target: Map<BufferSource, MediaKeyStatus>,
+  target: Map<MediaKeyId, MediaKeyStatus>,
   source: Map<MediaKeyId, MediaKeyStatus>,
 ) => {
   target.clear();
   for (const [keyId, status] of source) {
-    target.set(fromHex(keyId).toBuffer() as BufferSource, status);
+    target.set(keyId.toLowerCase(), status);
   }
 };
 
 export class Session extends EventTarget implements MediaKeySession {
   expiration: number;
-  closed: Promise<MediaKeySessionClosedReason>;
-  keyStatuses: Map<BufferSource, MediaKeyStatus>;
+  readonly closed: Promise<MediaKeySessionClosedReason>;
+  readonly keyStatuses: MediaKeyStatusMap;
 
   onmessage: ((this: MediaKeySession, ev: MediaKeyMessageEvent) => any) | null;
   onkeyschange: ((this: MediaKeySession, ev: Event) => any) | null;
@@ -257,6 +259,8 @@ export class Session extends EventTarget implements MediaKeySession {
   initDataType?: string | undefined;
 
   #closed: boolean;
+  #closePromise: Promise<void> | null = null;
+  #keyStatuses = new Map<MediaKeyId, MediaKeyStatus>();
   #engineSession: MediaKeysEngineSession | null;
   #engineSessionPromise: Promise<MediaKeysEngineSession>;
   #messageQueue: MediaKeyMessageEventInit[];
@@ -271,7 +275,7 @@ export class Session extends EventTarget implements MediaKeySession {
     this.closed = new Promise<MediaKeySessionClosedReason>((resolve) => {
       this.addEventListener('closed', () => resolve('closed-by-application'));
     });
-    this.keyStatuses = new Map();
+    this.keyStatuses = new KeyStatusMap(this.#keyStatuses);
 
     this.onmessage = null;
     this.onkeyschange = null;
@@ -301,9 +305,9 @@ export class Session extends EventTarget implements MediaKeySession {
   }
 
   async #getEngineSession() {
-    if (this.#closed) throw new Error('Session closed');
+    if (this.#closed || this.#closePromise) throw new Error('Session closed');
     const session = await this.#engineSessionPromise;
-    if (this.#closed) throw new Error('Session closed');
+    if (this.#closed || this.#closePromise) throw new Error('Session closed');
     return session;
   }
 
@@ -337,7 +341,7 @@ export class Session extends EventTarget implements MediaKeySession {
   #handleKeyStatusesChange = (event: Event) => {
     const { detail } = event as CustomEvent<MediaKeyStatusesChangeEventInit>;
     this.keys = new Map(detail.keys);
-    syncSessionKeys(this.keyStatuses, detail.keyStatuses);
+    syncSessionKeys(this.#keyStatuses, detail.keyStatuses);
 
     const keyStatusesChangeEvent = new Event('keystatuseschange');
     this.dispatchEvent(keyStatusesChangeEvent);
@@ -348,7 +352,7 @@ export class Session extends EventTarget implements MediaKeySession {
     if (this.#closed) return;
     this.#closed = true;
     this.keys.clear();
-    this.keyStatuses.clear();
+    this.#keyStatuses.clear();
     this.initData = undefined;
     this.initDataType = undefined;
     this.#messageQueue.length = 0;
@@ -368,7 +372,7 @@ export class Session extends EventTarget implements MediaKeySession {
 
   #syncFromEngineSession(session: MediaKeysEngineSession) {
     this.keys = new Map(session.keys);
-    syncSessionKeys(this.keyStatuses, session.keyStatuses);
+    syncSessionKeys(this.#keyStatuses, session.keyStatuses);
   }
 
   async load(_sessionId: string): Promise<boolean> {
@@ -391,9 +395,19 @@ export class Session extends EventTarget implements MediaKeySession {
   }
 
   async close(): Promise<void> {
-    const session = await this.#getEngineSession();
-    await session.close();
-    this.#handleClosed();
+    if (this.#closed) return;
+    if (!this.#closePromise) {
+      this.#closePromise = this.#engineSessionPromise
+        .then(async (session) => {
+          if (!this.#closed) await session.close();
+          this.#handleClosed();
+        })
+        .catch((error: unknown) => {
+          this.#closePromise = null;
+          throw error;
+        });
+    }
+    return this.#closePromise;
   }
 
   async remove(): Promise<void> {

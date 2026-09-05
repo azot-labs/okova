@@ -12,6 +12,20 @@ export class Widevine extends BaseMediaKeysEngine {
   serverCertificate?: SignedDrmCertificate;
 
   static DeviceCredentials = WidevineDeviceCredentials;
+  #sessionNumber = 0;
+
+  #handleSessionDisposed = (sessionId: string, session: MediaKeysEngineSession) => {
+    if (this.sessions.get(sessionId) === session) this.sessions.delete(sessionId);
+  };
+
+  #trackSession(session: WidevineSession) {
+    if (this.sessions.has(session.sessionId)) {
+      throw new Error(`Session ${session.sessionId} is already open`);
+    }
+    this.sessions.set(session.sessionId, session);
+    this.#sessionNumber = Math.max(this.#sessionNumber, session.sessionNumber);
+    return session;
+  }
 
   constructor({ deviceCredentials }: { deviceCredentials: WidevineDeviceCredentials }) {
     super();
@@ -31,25 +45,20 @@ export class Widevine extends BaseMediaKeysEngine {
     const session = new WidevineSession(
       sessionType,
       this.deviceCredentials,
-      (sessionId) => {
-        this.sessions.delete(sessionId);
-      },
+      this.#handleSessionDisposed,
       () => this.serverCertificate,
+      this.#sessionNumber + 1,
     );
-    this.sessions.set(session.sessionId, session);
-    return session;
+    return this.#trackSession(session);
   }
 
   resumeSession(state: string) {
     const session = WidevineSession.resume(
       state,
       this.deviceCredentials,
-      (sessionId) => {
-        this.sessions.delete(sessionId);
-      },
+      this.#handleSessionDisposed,
       () => this.serverCertificate,
     );
-    this.sessions.set(session.sessionId, session);
-    return session;
+    return this.#trackSession(session);
   }
 }

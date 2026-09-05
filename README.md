@@ -146,6 +146,24 @@ async function main() {
 }
 ```
 
+### Saving and resuming native sessions
+
+Widevine and PlayReady can serialize an open session with `pause()`. This takes
+a snapshot; the original session stays open. Close it before restoring into the
+same engine, since `resumeSession()` rejects an already-open session ID:
+
+```ts
+const state = session.pause();
+await session.close();
+const resumed = engine.resumeSession(state);
+```
+
+Snapshots are versioned and validated when resumed. Existing unversioned
+snapshots remain readable. Resume with the same device credentials. Native
+Widevine `load()` returns `false`; it does not implement persistent-license
+storage. The EME wrapper's `keyStatuses` is read-only and matches KIDs by their
+bytes. Repeated `close()` calls are safe.
+
 ### PlayReady custom challenge data
 
 Pass application-specific data as a string when creating the engine:

@@ -1,5 +1,7 @@
-import type { MediaKeyMessageEventInit } from '../api';
+import { z } from 'zod';
+import type { MediaKeyMessageEventInit, MediaKeysEngineSession } from '../api';
 import { BaseMediaKeysEngineSession } from '../api';
+import { hexBytesSchema, keyStatusSchema, sessionStateSchema } from '../session-state';
 import {
   License,
   LicenseRequest,
@@ -72,8 +74,31 @@ const generateKeyControlNonce = () => {
 
 type ServiceCertificateProvider = () => SignedDrmCertificate | undefined;
 
+const stateSchema = sessionStateSchema.extend({
+  keySystem: z.literal('com.widevine.alpha').default('com.widevine.alpha'),
+  sessionNumber: z
+    .number()
+    .int()
+    .positive()
+    .max(Number.MAX_SAFE_INTEGER - 1)
+    .default(1),
+  serviceCertificate: z.base64().optional(),
+  contexts: z.record(z.string(), z.object({ enc: z.base64(), auth: z.base64() })),
+  keys: z.record(
+    hexBytesSchema,
+    z.object({
+      id: hexBytesSchema,
+      value: hexBytesSchema,
+      type: z.string().default('CONTENT'),
+      level: z.string().optional(),
+      trackLabel: z.string().optional(),
+      permissions: z.array(z.string()).default([]),
+    }),
+  ),
+  keyStatuses: z.record(hexBytesSchema, keyStatusSchema),
+});
+
 export class WidevineSession extends BaseMediaKeysEngineSession {
-  sessionId: string;
   expiration: number;
   closed: Promise<MediaKeySessionClosedReason>;
   sessionType: SessionType;
@@ -86,18 +111,18 @@ export class WidevineSession extends BaseMediaKeysEngineSession {
   log: Logger;
 
   #contentKeys: Map<string, Key>;
-  #dispose: (sessionId: string) => void;
+  #dispose: (sessionId: string, session: MediaKeysEngineSession) => void;
   #getServiceCertificate: ServiceCertificateProvider;
 
   constructor(
     sessionType: SessionType = 'temporary',
     deviceCredentials: WidevineDeviceCredentials,
-    dispose: (sessionId: string) => void = () => {},
+    dispose: (sessionId: string, session: MediaKeysEngineSession) => void = () => {},
     getServiceCertificate: ServiceCertificateProvider = () => undefined,
     sessionNumber = 1,
+    sessionId = generateSessionId(deviceCredentials.type ?? 'android'),
   ) {
-    super(sessionType);
-    this.sessionId = generateSessionId(deviceCredentials.type ?? 'android');
+    super(sessionType, sessionId);
     this.expiration = NaN;
     this.closed = new Promise<MediaKeySessionClosedReason>((resolve) => {
       this.addEventListener('closed', () => resolve('closed-by-application'));
@@ -212,10 +237,9 @@ export class WidevineSession extends BaseMediaKeysEngineSession {
     return { entity, bytes };
   }
 
-  async load(sessionId: string): Promise<boolean> {
+  async load(_sessionId: string): Promise<boolean> {
     this.assertOpen();
-    this.sessionId = sessionId;
-    return Promise.resolve(true);
+    return false;
   }
 
   async update(response: Uint8Array): Promise<void> {
@@ -326,7 +350,7 @@ export class WidevineSession extends BaseMediaKeysEngineSession {
     this.#contentKeys.clear();
     this.contexts.clear();
     this.serviceCertificate = undefined;
-    this.#dispose(this.sessionId);
+    this.#dispose(this.sessionId, this);
     this.dispatchEvent(new Event('closed'));
   }
 
@@ -337,6 +361,8 @@ export class WidevineSession extends BaseMediaKeysEngineSession {
   pause() {
     this.assertOpen();
     const values = {
+      version: 1,
+      keySystem: 'com.widevine.alpha',
       sessionId: this.sessionId,
       sessionNumber: this.sessionNumber,
       sessionType: this.sessionType,
@@ -357,7 +383,14 @@ export class WidevineSession extends BaseMediaKeysEngineSession {
       keys: Object.fromEntries(
         Array.from(this.#contentKeys.entries(), ([keyId, key]) => [
           keyId,
-          { id: key.id, value: key.value },
+          {
+            id: key.id,
+            value: key.value,
+            type: key.type,
+            level: key.level,
+            trackLabel: key.trackLabel,
+            permissions: key.permissions,
+          },
         ]),
       ),
       keyStatuses: Object.fromEntries(this.keyStatuses),
@@ -377,18 +410,18 @@ export class WidevineSession extends BaseMediaKeysEngineSession {
   static resume(
     state: string,
     deviceCredentials: WidevineDeviceCredentials,
-    dispose?: (sessionId: string) => void,
+    dispose?: (sessionId: string, session: MediaKeysEngineSession) => void,
     getServiceCertificate: ServiceCertificateProvider = () => undefined,
   ) {
-    const values = JSON.parse(state);
+    const values = stateSchema.parse(JSON.parse(state));
     const session = new WidevineSession(
       values.sessionType,
       deviceCredentials,
       dispose,
       getServiceCertificate,
       values.sessionNumber,
+      values.sessionId,
     );
-    session.sessionId = values.sessionId;
     session.initData = values.initData ? fromBase64(values.initData).toBuffer() : undefined;
     session.initDataType = values.initDataType;
     session.serviceCertificate = values.serviceCertificate
@@ -398,26 +431,21 @@ export class WidevineSession extends BaseMediaKeysEngineSession {
       Object.entries(values.contexts).map(([key, value]) => [
         key,
         {
-          enc: fromBase64((value as { enc: string; auth: string }).enc).toBuffer(),
-          auth: fromBase64((value as { enc: string; auth: string }).auth).toBuffer(),
+          enc: fromBase64(value.enc).toBuffer(),
+          auth: fromBase64(value.auth).toBuffer(),
         },
       ]),
     );
     session.#contentKeys = new Map(
-      Object.entries(values.keys).map(([keyId, value]) => {
-        const persistedKey = value as Key;
-        return [keyId, new Key(persistedKey.id, persistedKey.value)];
-      }),
+      Object.entries(values.keys).map(([keyId, key]) => [
+        keyId,
+        new Key(key.id, key.value, key.type, key.level, key.trackLabel, key.permissions),
+      ]),
     );
     session.keys = new Map(
       Array.from(session.#contentKeys.entries(), ([keyId, key]) => [keyId, key.value]),
     );
-    session.keyStatuses = new Map(
-      Object.entries(values.keyStatuses).map(([keyId, status]) => [
-        keyId,
-        status as MediaKeyStatus,
-      ]),
-    );
+    session.keyStatuses = new Map(Object.entries(values.keyStatuses));
     return session;
   }
 }
