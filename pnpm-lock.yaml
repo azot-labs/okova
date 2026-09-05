@@ -219,8 +219,8 @@ importers:
   examples/remote-session:
     dependencies:
       okova:
-        specifier: ^0.10.5
-        version: 0.10.5
+        specifier: workspace:*
+        version: link:../..
 
   examples/session:
     dependencies:

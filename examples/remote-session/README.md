@@ -4,13 +4,17 @@ It's a minimal example of using `okova` to connect to remote Okova API instance 
 
 ## Quick start
 
-Install dependencies:
+Build the library from the repository root, then install the example dependencies.
+The example uses this checkout of `okova` so its certificate transport matches the server:
 
 ```shell
 pnpm install
+pnpm run build:lib
+cd examples/remote-session
+pnpm install
 ```
 
-Go to `index.js` and set your API base URL, secret and client name. Then you can create a session, generate a license request and get keys.
+Go to `index.js` and set your API base URL, secret and client name. The example fetches a service certificate from `LICENSE_URL`, sets it on `cdm`, then creates a session and requests keys.
 
 Run script:
 
