@@ -12,6 +12,6 @@
   "license": "ISC",
   "description": "",
   "dependencies": {
-    "okova": "^0.13.0"
+    "okova": "workspace:*"
   }
 }

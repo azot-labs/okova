@@ -222,8 +222,8 @@ importers:
   examples/instance:
     dependencies:
       okova:
-        specifier: ^0.12.8
-        version: 0.12.8
+        specifier: workspace:*
+        version: link:../..
 
   examples/remote-session:
     dependencies:
@@ -234,8 +234,8 @@ importers:
   examples/session:
     dependencies:
       okova:
-        specifier: ^0.12.8
-        version: 0.12.8
+        specifier: workspace:*
+        version: link:../..
 
 packages:
 
@@ -407,12 +407,6 @@ packages:
     engines: {node: '>=20'}
     peerDependencies:
       hono: ^4
-
-  '@hono/zod-validator@0.8.0':
-    resolution: {integrity: sha512-5uS4S1/LKtZQYvD4BtpPUFkOv8d1wNxHHrChm26buMiEYc1FrHWvDUaKVBwkiVtvSExHSpLGDvcnpI2Copyj9w==}
-    peerDependencies:
-      hono: '>=4.10.0'
-      zod: ^3.25.0 || ^4.0.0
 
   '@hono/zod-validator@0.9.1':
     resolution: {integrity: sha512-iiv6w0qrIc0arfvCtUqBWsvl4fXjzaTcQcCJTTtCnkawF9HHGE+KjEl0ox3gQJ6rKZEgE3mLExlQCF72M+mNuw==}
@@ -2437,11 +2431,6 @@ packages:
   ohash@2.0.12:
     resolution: {integrity: sha512-65S/5gk9YSsaRjcyf7Nfa6h/d3E8/1gslpXfI4W7Dxn/oap8IKRuNT5VXkLQ1YFKIEg4apRY4Pj6aiwFzrDdmw==}
 
-  okova@0.12.8:
-    resolution: {integrity: sha512-yCY4GMl3p/EsWhwUbj22/qHtp+rUEHFp+qA/uvdAD5SIrwIDvafQ41raroE71tf5bEUto8LpnFy3Qtn6vveO3g==}
-    engines: {node: '>=22.19'}
-    hasBin: true
-
   on-exit-leak-free@2.1.2:
     resolution: {integrity: sha512-0eJJY6hXLGf1udHwfNftBqH+g73EU4B504nZeKpz1sYRKafAghwxEJunB2O7rDZkL4PGfsMVnTXZ2EjibbqcsA==}
     engines: {node: '>=14.0.0'}
@@ -3500,11 +3489,6 @@ snapshots:
   '@hono/node-server@2.1.1(hono@4.13.7)':
     dependencies:
       hono: 4.13.7
-
-  '@hono/zod-validator@0.8.0(hono@4.13.7)(zod@4.5.4)':
-    dependencies:
-      hono: 4.13.7
-      zod: 4.5.4
 
   '@hono/zod-validator@0.9.1(hono@4.13.7)(zod@4.5.4)':
     dependencies:
@@ -5107,23 +5091,6 @@ snapshots:
   obug@2.1.4: {}
 
   ohash@2.0.12: {}
-
-  okova@0.12.8:
-    dependencies:
-      '@hono/node-server': 2.1.1(hono@4.13.7)
-      '@hono/zod-validator': 0.8.0(hono@4.13.7)(zod@4.5.4)
-      '@noble/ciphers': 2.4.0
-      '@noble/curves': 2.4.0
-      '@peculiar/asn1-pkcs8': 2.9.4
-      '@peculiar/asn1-rsa': 2.9.4
-      '@peculiar/asn1-schema': 2.9.4
-      '@peculiar/asn1-x509': 2.9.4
-      '@xmldom/xmldom': 0.9.12
-      barsic: 0.2.0
-      hono: 4.13.7
-      protobufjs: 8.8.0
-      semver: 7.8.5
-      zod: 4.5.4
 
   on-exit-leak-free@2.1.2: {}
 
