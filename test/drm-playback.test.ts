@@ -245,3 +245,115 @@ test('encodes a large sliced response without including surrounding bytes or ove
   expect(decoded.length).toBe(length);
   expect(decoded.every((byte) => byte === 7)).toBe(true);
 });
+
+test('reinstalling playback leaves the installed adapter unchanged', async () => {
+  const installedRequest = navigator.requestMediaKeySystemAccess;
+  installDrmPlayback();
+  expect(navigator.requestMediaKeySystemAccess).toBe(installedRequest);
+  const session = await createSession();
+  await session.generateRequest('cenc', createInitData());
+  expect(nativeGenerate).toHaveBeenCalledOnce();
+  expect(
+    vi
+      .mocked(sendDrmMessage)
+      .mock.calls.filter(([message]) => message.action === 'playback-config'),
+  ).toHaveLength(1);
+});
+
+test('rejects updates before or during initialization and duplicate generation', async () => {
+  const session = await createSession();
+  await expect(session.update(new Uint8Array([1]))).rejects.toMatchObject({
+    name: 'InvalidStateError',
+  });
+  const generated = Promise.withResolvers<void>();
+  nativeGenerate.mockReturnValueOnce(generated.promise);
+  const generating = session.generateRequest('cenc', createInitData());
+  await expect(session.update(new Uint8Array([1]))).rejects.toMatchObject({
+    name: 'InvalidStateError',
+  });
+  await expect(session.generateRequest('cenc', createInitData())).rejects.toMatchObject({
+    name: 'InvalidStateError',
+  });
+  generated.resolve();
+  await generating;
+});
+
+test('failed generation leaves updates invalid without replaying its error', async () => {
+  nativeGenerate.mockRejectedValueOnce(new Error('Native generation failed'));
+  const session = await createSession();
+  await expect(session.generateRequest('cenc', createInitData())).rejects.toThrow(
+    'Native generation failed',
+  );
+  await expect(session.update(new Uint8Array([1]))).rejects.toMatchObject({
+    name: 'InvalidStateError',
+  });
+  await expect(session.generateRequest('cenc', createInitData())).rejects.toMatchObject({
+    name: 'InvalidStateError',
+  });
+  expect(nativeUpdate).not.toHaveBeenCalled();
+});
+
+test('closing before challenge delivery suppresses the message', async () => {
+  const session = await createSession();
+  const listener = vi.fn();
+  session.addEventListener('message', listener);
+  await session.generateRequest('cenc', createInitData());
+  await session.close();
+  await vi.runAllTimersAsync();
+  expect(listener).not.toHaveBeenCalled();
+  await expect(session.update(new Uint8Array([1]))).rejects.toMatchObject({
+    name: 'InvalidStateError',
+  });
+});
+
+test('closing during native generation prevents a background session from being created', async () => {
+  const session = await createSession();
+  const generated = Promise.withResolvers<void>();
+  nativeGenerate.mockReturnValueOnce(generated.promise);
+  const generating = session.generateRequest('cenc', createInitData());
+  await session.close();
+  generated.resolve();
+  await expect(generating).rejects.toMatchObject({ name: 'InvalidStateError' });
+  expect(sendDrmMessage).not.toHaveBeenCalledWith(
+    expect.objectContaining({ action: 'generateRequest' }),
+  );
+});
+
+test.for(['org.w3.clearkey', 'com.apple.fps'])(
+  'passes %s directly to the browser',
+  async (keySystem) => {
+    const configurations = [{ videoCapabilities: [{ contentType }] }];
+    if (keySystem === 'org.w3.clearkey') {
+      await navigator.requestMediaKeySystemAccess(keySystem, configurations);
+    } else {
+      await expect(
+        navigator.requestMediaKeySystemAccess(keySystem, configurations),
+      ).rejects.toMatchObject({ name: 'NotSupportedError' });
+    }
+    expect(nativeRequest).toHaveBeenCalledWith(keySystem, configurations);
+    expect(sendDrmMessage).not.toHaveBeenCalled();
+  },
+);
+
+test.for(['com.microsoft.playready.recommendation.3000', 'com.microsoft.playready.hardware'])(
+  'rejects hardware DRM %s',
+  async (keySystem) => {
+    await expect(navigator.requestMediaKeySystemAccess(keySystem, [{}])).rejects.toMatchObject({
+      name: 'NotSupportedError',
+    });
+    expect(nativeRequest).not.toHaveBeenCalled();
+    expect(sendDrmMessage).not.toHaveBeenCalled();
+  },
+);
+
+test('propagates playback configuration bridge failures', async () => {
+  vi.mocked(sendDrmMessage).mockRejectedValueOnce(new Error('Bridge unavailable'));
+  await expect(createSession()).rejects.toThrow('Bridge unavailable');
+  expect(nativeRequest).not.toHaveBeenCalled();
+});
+
+test('rejects empty server certificates', async () => {
+  const access = await navigator.requestMediaKeySystemAccess('com.widevine.alpha', [{}]);
+  const mediaKeys = await access.createMediaKeys();
+  await expect(mediaKeys.setServerCertificate(new Uint8Array())).rejects.toBeInstanceOf(TypeError);
+});

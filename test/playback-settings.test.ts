@@ -15,7 +15,6 @@ const preferences = {
 test.for([
   { saved: { clientPlayback: true }, expected: true },
   { saved: { clientPlayback: false }, expected: false },
-  { saved: { clientPlayback: true, clientPlayback: false }, expected: false },
   { saved: {}, expected: false },
 ])(
   'reads playback preferences without losing existing choices: $saved',
@@ -30,3 +29,27 @@ test.for([
     expect(JSON.parse(stored.settings)).toEqual({ ...preferences, clientPlayback: expected });
   },
 );
+
+test('returns null when settings have never been saved', async () => {
+  await expect(appStorage.settings.getValue()).resolves.toBeNull();
+});
+
+test('normalizes playback defaults in watched settings too', async () => {
+  const changes: unknown[] = [];
+  const unwatch = appStorage.settings.watch((value, previous) => changes.push({ value, previous }));
+  try {
+    await browser.storage.local.set({ settings: JSON.stringify(preferences) });
+    await browser.storage.local.set({
+      settings: JSON.stringify({ ...preferences, clientPlayback: true }),
+    });
+    expect(changes).toEqual([
+      { value: { ...preferences, clientPlayback: false }, previous: null },
+      {
+        value: { ...preferences, clientPlayback: true },
+        previous: { ...preferences, clientPlayback: false },
+      },
+    ]);
+  } finally {
+    unwatch();
+  }
+});

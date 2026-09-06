@@ -24,6 +24,7 @@ export const useActiveTabUrl = () => activeTabUrlSignal;
 const defaultSettings: Settings = {
   emeInterception: true,
   spoofing: false,
+  clientPlayback: false,
   requestInterception: false,
   theme: 'auto',
 };

@@ -92,7 +92,7 @@ export const Settings = () => {
             after={
               <Switch
                 disabled={!settings.emeInterception || !settings.spoofing}
-                checked={settings.clientPlayback ?? false}
+                checked={settings.clientPlayback}
                 onChange={(event) => updateSettings({ clientPlayback: event.target.checked })}
               />
             }

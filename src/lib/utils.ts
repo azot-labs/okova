@@ -145,9 +145,7 @@ export const bytesToString = (bytes: Uint8Array) => {
   return String.fromCharCode.apply(null, Array.from(bytes));
 };
 
-export const bytesToBase64 = (uint8array: Uint8Array) => {
-  return btoa(String.fromCharCode.apply(null, Array.from(uint8array)));
-};
+export const bytesToBase64 = (data: BytesLike) => fromBuffer(toBytes(data)).toBase64();
 
 export const stringToBytes = (string: string) => {
   return Uint8Array.from(string.split('').map((x) => x.charCodeAt(0)));

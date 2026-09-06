@@ -1,6 +1,6 @@
 import { z } from 'zod';
 import { CLIENT_KEY_SYSTEMS, type ClientKeySystem } from '@okova/lib/key-system';
-import { toBytes, fromBuffer, fromHex, fromBase64 } from '@okova/lib/utils';
+import { toBytes, bytesToBase64, fromHex, fromBase64 } from '@okova/lib/utils';
 import { getPsshKeyIds, parsePsshBoxes, PSSH_SYSTEM_IDS } from '@okova/lib/pssh';
 import { playbackSessions } from './playback-sessions';
 import { sendDrmMessage } from './drm-bridge';
@@ -10,6 +10,7 @@ type PlaybackKeySystem = ClientKeySystem | 'com.microsoft.playready';
 type SessionRequest =
   | { action: 'generateRequest' | 'license-request' | 'close' }
   | { action: 'update'; message: Uint8Array; messageBase64: string };
+const INSTALLED = Symbol.for('okova.drm-playback.installed');
 const CLEARKEY = 'org.w3.clearkey';
 const hexKey = z.string().regex(/^[a-f\d]{32}$/i);
 const licenseKeys = z.object({ keys: z.array(z.object({ id: hexKey, value: hexKey })).min(1) });
@@ -29,6 +30,7 @@ const unsupported = (message: string) => new DOMException(message, 'NotSupported
 
 /** Temporary-session adapter. Native ClearKey owns attachment and decryption. */
 export const installDrmPlayback = () => {
+  if (Reflect.get(navigator, INSTALLED)) return;
   const requestAccess = navigator.requestMediaKeySystemAccess.bind(navigator);
   const nativeCreateKeys = MediaKeySystemAccess.prototype.createMediaKeys;
   const nativeCreateSession = MediaKeys.prototype.createSession;
@@ -45,7 +47,7 @@ export const installDrmPlayback = () => {
       if (!toBytes(certificate).length) throw new TypeError('Empty server certificate');
       if (keySystem !== WIDEVINE) return false;
       // The background Widevine client validates and uses this certificate.
-      serverCertificate = fromBuffer(toBytes(certificate)).toBase64();
+      serverCertificate = bytesToBase64(certificate);
       return true;
     };
     mediaKeys.createSession = (sessionType = 'temporary') => {
@@ -57,7 +59,8 @@ export const installDrmPlayback = () => {
       const forwardedMessages = new WeakSet<Event>();
       let closed = false;
       let initData: string | undefined;
-      let ready: Promise<ArrayBuffer> | undefined;
+      let initialized = false;
+      let isCallable = false;
       const sendSessionRequest = (request: SessionRequest) =>
         sendDrmMessage({
           ...request,
@@ -74,11 +77,12 @@ export const installDrmPlayback = () => {
         if (!forwardedMessages.has(event)) event.stopImmediatePropagation();
       });
       session.generateRequest = (initDataType, data) => {
-        if (ready || closed)
+        if (initialized || closed)
           return Promise.reject(
             new DOMException('Session already initialized or closed', 'InvalidStateError'),
           );
-        ready = (async () => {
+        initialized = true;
+        const ready = (async () => {
           if (initDataType !== 'cenc')
             throw unsupported('Playback requires cenc initialization data');
           const source = toBytes(data);
@@ -87,13 +91,15 @@ export const installDrmPlayback = () => {
             .flatMap(getPsshKeyIds);
           if (!kids.length)
             throw unsupported('Playback requires key IDs in the DRM initialization data');
-          initData = fromBuffer(source).toBase64();
+          initData = bytesToBase64(source);
           await nativeGenerate.call(
             session,
             'keyids',
             encodeJsonUtf8({ kids: kids.map(hexToBase64Url) }),
           );
+          if (closed) throw new DOMException('Session is closed', 'InvalidStateError');
           await sendSessionRequest({ action: 'generateRequest' });
+          if (closed) throw new DOMException('Session is closed', 'InvalidStateError');
           const challenge = await sendSessionRequest({ action: 'license-request' });
           if (typeof challenge !== 'string' || !challenge.length) {
             throw new DOMException(
@@ -105,6 +111,8 @@ export const installDrmPlayback = () => {
           return fromBase64(challenge).toBuffer().buffer;
         })();
         return ready.then((challenge) => {
+          if (closed) throw new DOMException('Session is closed', 'InvalidStateError');
+          isCallable = true;
           // Deliver the challenge as a task, after generateRequest has resolved.
           setTimeout(() => {
             if (closed) return;
@@ -118,13 +126,13 @@ export const installDrmPlayback = () => {
         });
       };
       session.update = async (response) => {
-        if (!ready || closed) throw new DOMException('Session is not active', 'InvalidStateError');
+        if (!isCallable || closed)
+          throw new DOMException('Session is not active', 'InvalidStateError');
         const message = new Uint8Array(toBytes(response));
-        await ready;
         const result = await sendSessionRequest({
           action: 'update',
           message,
-          messageBase64: fromBuffer(message).toBase64(),
+          messageBase64: bytesToBase64(message),
         });
         const parsed = licenseKeys.safeParse(result);
         if (!parsed.success)
@@ -249,4 +257,5 @@ export const installDrmPlayback = () => {
     }
     throw unsupported('No compatible ClearKey configuration for client playback');
   };
+  Object.defineProperty(navigator, INSTALLED, { value: true });
 };

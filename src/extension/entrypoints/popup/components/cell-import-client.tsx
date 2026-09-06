@@ -52,14 +52,16 @@ export const CellImportClient: Component<{
       await appStorage.clients.active.setValue(client);
       setActiveClient(client);
     }
-    const nextSettings = {
-      ...settings,
-      emeInterception: true,
-      spoofing: true,
-      clientPlayback: true,
-    };
-    await appStorage.settings.setValue(nextSettings);
-    setSettings(nextSettings);
+    if (clients().length === 0) {
+      const nextSettings = {
+        ...settings,
+        emeInterception: true,
+        spoofing: true,
+        clientPlayback: true,
+      };
+      await appStorage.settings.setValue(nextSettings);
+      setSettings(nextSettings);
+    }
     setClients(newClients);
   };
 

@@ -1,4 +1,4 @@
-import { toBytes, fromBuffer, fromBase64 } from '@okova/lib/utils';
+import { toBytes, bytesToBase64, fromBase64 } from '@okova/lib/utils';
 import { sendDrmMessage } from '@/utils/drm-bridge';
 import { playbackSessions } from '@/utils/playback-sessions';
 import { isClearKeyRequest } from '@/utils/clearkey';
@@ -10,6 +10,13 @@ declare global {
     messages?: Map<MediaKeyMessageType, string>;
   }
 }
+
+// Service-certificate requests, renewals, releases, and ClearKey stay with the browser.
+const isPassthroughMessage = (keySystem: string | undefined, event: MediaKeyMessageEvent) =>
+  keySystem === 'org.w3.clearkey' ||
+  event.messageType === 'license-release' ||
+  event.messageType === 'license-renewal' ||
+  (event.messageType === 'license-request' && bytesToBase64(event.message) === 'CAQ=');
 
 export const installEmeInterception = () => {
   const send = async (data: Record<string, unknown>): Promise<any> => {
@@ -45,7 +52,7 @@ export const installEmeInterception = () => {
       session: MediaKeySession,
     ) => {
       session.initDataType = initDataType;
-      session.initData = fromBuffer(toBytes(initData)).toBase64();
+      session.initData = bytesToBase64(initData);
       session.messages = new Map();
       const token = crypto.randomUUID();
       const ready = send({
@@ -81,7 +88,7 @@ export const installEmeInterception = () => {
 
       const keyStatuses: Record<string, string> = {};
       for (const [id, status] of session.keyStatuses.entries()) {
-        keyStatuses[fromBuffer(toBytes(id)).toBase64()] = status;
+        keyStatuses[bytesToBase64(id)] = status;
       }
 
       await send({
@@ -100,7 +107,7 @@ export const installEmeInterception = () => {
     const onMessage = async (event: MediaKeyMessageEvent) => {
       const { message, messageType } = event;
       const session = event.target as MediaKeySession;
-      session.messages?.set(messageType, fromBuffer(toBytes(message)).toBase64());
+      session.messages?.set(messageType, bytesToBase64(message));
 
       console.groupCollapsed(
         `[okova] [${session.sessionId}] New message from browser CDM: ${messageType}`,
@@ -111,16 +118,7 @@ export const installEmeInterception = () => {
       console.log(`Message: ${session.messages?.get(messageType)}`);
       console.groupEnd();
 
-      if (
-        getKeySystem(session) === 'org.w3.clearkey' ||
-        ['license-release', 'license-renewal'].includes(messageType)
-      ) {
-        return;
-      }
-
-      // Widevine's service-certificate request must reach the license server unchanged.
-      if (messageType === 'license-request' && fromBuffer(toBytes(message)).toBase64() === 'CAQ=')
-        return;
+      if (isPassthroughMessage(getKeySystem(session), event)) return;
 
       const request = sessionRequests.get(session);
       await request?.ready;
@@ -157,10 +155,8 @@ export const installEmeInterception = () => {
       session: MediaKeySession,
     ): Promise<BufferSource | undefined> => {
       const sessionId = session.sessionId;
-      const message = ArrayBuffer.isView(response)
-        ? new Uint8Array(response.buffer, response.byteOffset, response.byteLength)
-        : new Uint8Array(response);
-      const messageBase64 = fromBuffer(toBytes(message)).toBase64();
+      const message = toBytes(response);
+      const messageBase64 = bytesToBase64(message);
 
       console.groupCollapsed(`[okova] [${session.sessionId}] Update session with response`);
       console.log(`Initialization data type: ${session.initDataType}`);
@@ -237,13 +233,7 @@ export const installEmeInterception = () => {
             const mediaKeys = sessionMediaKeys.get(session);
             if (mediaKeys) mediaKeysSystems.set(mediaKeys, 'org.w3.clearkey');
           }
-          if (
-            getKeySystem(session) === 'org.w3.clearkey' ||
-            event.messageType === 'license-release' ||
-            event.messageType === 'license-renewal' ||
-            (event.messageType === 'license-request' &&
-              fromBuffer(toBytes(event.message)).toBase64() === 'CAQ=')
-          ) {
+          if (isPassthroughMessage(getKeySystem(session), event)) {
             void onMessage(event);
             return;
           }
@@ -303,7 +293,7 @@ export const installEmeInterception = () => {
       MediaKeys.prototype,
       'setServerCertificate',
       async (setServerCertificate, mediaKeys, [certificate]) => {
-        const encodedCertificate = fromBuffer(toBytes(certificate)).toBase64();
+        const encodedCertificate = bytesToBase64(certificate);
         const result = await setServerCertificate.call(mediaKeys, certificate);
         if (result) mediaKeysCertificates.set(mediaKeys, encodedCertificate);
         return result;
