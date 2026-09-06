@@ -96,9 +96,8 @@ export const fromInfoToClient = async (info: ClientInfo) => {
     return await PlayReadyDeviceCredentials.from({ prd: data });
   } else if (info.type === 'wvd') {
     return await WidevineDeviceCredentials.from({ wvd: data });
-  } else {
-    return null;
   }
+  throw new Error('Unsupported client type');
 };
 
 export const fromClientToInfo = async (client: Client): Promise<ClientInfo> => {
@@ -125,6 +124,162 @@ const normalizeSettings = (
   settings: Awaited<ReturnType<typeof storedSettings.getValue>>,
 ): Settings | null =>
   settings ? { ...settings, clientPlayback: settings.clientPlayback ?? false } : null;
+
+export const defaultSettings: Settings = {
+  emeInterception: true,
+  spoofing: false,
+  clientPlayback: false,
+  requestInterception: false,
+  theme: 'auto',
+};
+
+const clientRegistrySchema = z.object({
+  clients: z.array(z.object({ id: z.string(), info: clientInfoSchema })),
+  activeClientId: z.string().nullable(),
+});
+type ClientRegistry = z.infer<typeof clientRegistrySchema>;
+export type StoredClient = { id: string; client: Client };
+export type ClientSnapshot = { clients: StoredClient[]; activeClientId: string | null };
+const clientRegistry = storage.defineItem<ClientRegistry>('local:client-registry');
+const legacyClients = asJson(storage.defineItem<(string | ClientInfo)[]>('local:clients'));
+const legacyActiveClient = storage.defineItem<string | ClientInfo>('local:active-client');
+const withClientLock = <T>(operation: () => Promise<T>) =>
+  navigator.locks.request('okova:clients', operation);
+const sameClientInfo = (left: ClientInfo, right: ClientInfo) =>
+  JSON.stringify(left) === JSON.stringify(right);
+
+// Keep legacy data as a backup. Once written, the registry is the only source of truth.
+const readClientRegistry = async (): Promise<ClientRegistry> => {
+  const stored = await clientRegistry.getValue();
+  if (stored) return clientRegistrySchema.parse(stored);
+  const registry: ClientRegistry = { clients: [], activeClientId: null };
+  const normalizeLegacy = async (value: string | ClientInfo) => {
+    const info = typeof value === 'string' ? { type: 'wvd' as const, data: value } : value;
+    return fromClientToInfo(await fromInfoToClient(clientInfoSchema.parse(info)));
+  };
+  for (const value of (await legacyClients.getValue()) ?? []) {
+    const info = await normalizeLegacy(value);
+    if (!registry.clients.some((entry) => sameClientInfo(entry.info, info))) {
+      registry.clients.push({ id: crypto.randomUUID(), info });
+    }
+  }
+  const active = await legacyActiveClient.getValue();
+  if (active) {
+    const info = await normalizeLegacy(active);
+    let entry = registry.clients.find((entry) => sameClientInfo(entry.info, info));
+    if (!entry) {
+      entry = { id: crypto.randomUUID(), info };
+      registry.clients.push(entry);
+    }
+    registry.activeClientId = entry.id;
+  } else {
+    registry.activeClientId = registry.clients[0]?.id ?? null;
+  }
+  return registry;
+};
+
+const decodeClientRegistry = async (registry: ClientRegistry): Promise<ClientSnapshot> => ({
+  clients: await Promise.all(
+    registry.clients.map(async (entry) => ({
+      id: entry.id,
+      client: await fromInfoToClient(entry.info),
+    })),
+  ),
+  activeClientId: registry.activeClientId,
+});
+
+const saveClientRegistry = async (registry: ClientRegistry, settings?: Settings) => {
+  // Parse before committing so a decoding failure cannot leave the popup behind storage.
+  const snapshot = await decodeClientRegistry(registry);
+  await storage.setItems([
+    { key: clientRegistry.key, value: registry },
+    ...(settings ? [{ key: storedSettings.key, value: JSON.stringify(settings) }] : []),
+  ]);
+  return snapshot;
+};
+
+const addClient = (client: Client, enablePlayback = false) =>
+  withClientLock(async () => {
+    const registry = await readClientRegistry();
+    const info = await fromClientToInfo(client);
+    if (registry.clients.some((entry) => sameClientInfo(entry.info, info))) {
+      throw new Error('This client is already imported');
+    }
+    if (registry.clients.length >= 10) throw new Error('You can add a maximum of 10 clients');
+    const isFirstClient = registry.clients.length === 0;
+    const entry = { id: crypto.randomUUID(), info };
+    registry.clients.push(entry);
+    registry.activeClientId ??= entry.id;
+    const settings =
+      enablePlayback && isFirstClient
+        ? {
+            ...defaultSettings,
+            ...(await storedSettings.getValue()),
+            emeInterception: true,
+            spoofing: true,
+            clientPlayback: true,
+          }
+        : undefined;
+    const snapshot = await saveClientRegistry(registry, settings);
+    return { ...snapshot, settings };
+  });
+
+const clientStorage = {
+  getSnapshot: () =>
+    withClientLock(async () => {
+      const registry = await readClientRegistry();
+      if (!(await clientRegistry.getValue())) return saveClientRegistry(registry);
+      return decodeClientRegistry(registry);
+    }),
+  getValue: async () => (await clientStorage.getSnapshot()).clients.map((entry) => entry.client),
+  add: (client: Client) => addClient(client),
+  import: (client: Client) => addClient(client, true),
+  select: (id: string | null) =>
+    withClientLock(async () => {
+      const registry = await readClientRegistry();
+      if (id !== null && !registry.clients.some((entry) => entry.id === id)) {
+        throw new Error('Client is no longer available');
+      }
+      return saveClientRegistry({ ...registry, activeClientId: id });
+    }),
+  remove: (client: string | Client) =>
+    withClientLock(async () => {
+      const registry = await readClientRegistry();
+      const info = typeof client === 'string' ? null : await fromClientToInfo(client);
+      const id =
+        typeof client === 'string'
+          ? client
+          : registry.clients.find((entry) => info && sameClientInfo(entry.info, info))?.id;
+      const clients = registry.clients.filter((entry) => entry.id !== id);
+      const activeClientId =
+        registry.activeClientId === id ? (clients[0]?.id ?? null) : registry.activeClientId;
+      return saveClientRegistry({ clients, activeClientId });
+    }),
+  active: {
+    getInfo: () =>
+      withClientLock(async () => {
+        const registry = await readClientRegistry();
+        return registry.clients.find((entry) => entry.id === registry.activeClientId)?.info ?? null;
+      }),
+    getValue: async (): Promise<Client | null> => {
+      const info = await clientStorage.active.getInfo();
+      return info ? fromInfoToClient(info) : null;
+    },
+    // Library-side callers may supply a client before adding it to the popup list.
+    setValue: (client: Client | null) =>
+      withClientLock(async () => {
+        const registry = await readClientRegistry();
+        if (!client) return saveClientRegistry({ ...registry, activeClientId: null });
+        const info = await fromClientToInfo(client);
+        let entry = registry.clients.find((entry) => sameClientInfo(entry.info, info));
+        if (!entry) {
+          entry = { id: crypto.randomUUID(), info };
+          registry.clients.push(entry);
+        }
+        return saveClientRegistry({ ...registry, activeClientId: entry.id });
+      }),
+  },
+};
 
 export const appStorage = {
   settings: {
@@ -210,63 +365,5 @@ export const appStorage = {
       }),
   },
 
-  clients: {
-    raw: asJson(storage.defineItem<string[] | ClientInfo[]>('local:clients')),
-    active: {
-      raw: storage.defineItem<string | ClientInfo>('local:active-client'),
-      setValue: async (client: Client | null) => {
-        if (!client) return appStorage.clients.active.raw.setValue(null);
-        const info = await fromClientToInfo(client);
-        return appStorage.clients.active.raw.setValue(info);
-      },
-      getValue: async () => {
-        const clientInfo = await appStorage.clients.active.raw.getValue();
-        if (!clientInfo) return null;
-        if (typeof clientInfo === 'string') {
-          // Deprecated
-          const client = await WidevineDeviceCredentials.from({
-            wvd: fromBase64(clientInfo).toBuffer(),
-          });
-          return client;
-        } else {
-          return fromInfoToClient(clientInfo);
-        }
-      },
-    },
-    setValue: async (clients: Client[]) => {
-      const values: ClientInfo[] = [];
-      for (const client of clients) {
-        values.push(await fromClientToInfo(client));
-      }
-      return appStorage.clients.raw.setValue(values);
-    },
-    getValue: async () => {
-      const values = await appStorage.clients.raw.getValue();
-      if (!values) return [];
-      const clients = [];
-      for (const value of values) {
-        if (typeof value === 'string') {
-          // Deprecated
-          const client = await WidevineDeviceCredentials.fromPacked(fromBase64(value).toBuffer());
-          clients.push(client);
-        } else {
-          const client = await fromInfoToClient(value);
-          if (client) clients.push(client);
-        }
-      }
-      return clients;
-    },
-    add: async (client: Client) => {
-      const clients = await appStorage.clients.getValue();
-      clients.push(client);
-      await appStorage.clients.setValue(clients);
-    },
-    remove: async (client: Client) => {
-      const clients = await appStorage.clients.getValue();
-      const index = clients.findIndex((c) => c.filename === client.filename);
-      if (index === -1) return;
-      clients.splice(index, 1);
-      await appStorage.clients.setValue(clients);
-    },
-  },
+  clients: clientStorage,
 };

@@ -91,9 +91,16 @@ test.for([
       await expect
         .poll(() =>
           worker.evaluate(async () => {
-            const raw: unknown = (await chrome.storage.local.get('clients')).clients;
-            const clients: unknown = typeof raw === 'string' ? JSON.parse(raw) : raw;
-            return Array.isArray(clients) && clients.length === 1;
+            const raw: unknown = (await chrome.storage.local.get('client-registry'))[
+              'client-registry'
+            ];
+            return (
+              typeof raw === 'object' &&
+              raw !== null &&
+              'clients' in raw &&
+              Array.isArray(raw.clients) &&
+              raw.clients.length === 1
+            );
           }),
         )
         .toBe(true);
@@ -141,9 +148,17 @@ test.for([
       await expect.poll(() => popup.getByText('Active', { exact: true }).count()).toBe(1);
       await expect
         .poll(() =>
-          worker.evaluate(async () =>
-            Boolean((await chrome.storage.local.get('active-client'))['active-client']),
-          ),
+          worker.evaluate(async () => {
+            const raw: unknown = (await chrome.storage.local.get('client-registry'))[
+              'client-registry'
+            ];
+            return (
+              typeof raw === 'object' &&
+              raw !== null &&
+              'activeClientId' in raw &&
+              typeof raw.activeClientId === 'string'
+            );
+          }),
         )
         .toBe(true);
 
