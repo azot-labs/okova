@@ -1,5 +1,5 @@
 import { expect, test } from 'vitest';
-import { fromBase64, fromBuffer, toBufferSource } from '../src/lib';
+import { fromBase64, fromBuffer, parseBufferSource, toBufferSource } from '../src/lib';
 import { PSSH, LICENSE_URL, createClient } from './utils';
 
 // https://www.w3.org/TR/encrypted-media-2/#example-8
@@ -56,7 +56,9 @@ test('encrypted media extensions', async () => {
       expect(keyStatuses.length).toBe(5);
 
       const [firstKeyId, firstStatus] = keyStatuses[0]!;
-      expect(fromBuffer(firstKeyId as Uint8Array).toHex()).toBe('ccbf5fb4c2965be7aa130ffb3ba9fd73');
+      expect(fromBuffer(parseBufferSource(firstKeyId)).toHex()).toBe(
+        'ccbf5fb4c2965be7aa130ffb3ba9fd73',
+      );
       expect(firstStatus).toBe('usable');
       expect(keySession.keys.get('ccbf5fb4c2965be7aa130ffb3ba9fd73')).toBe(
         '9cc0c92044cb1d69433f5f5839a159df',

@@ -1,5 +1,5 @@
 import * as $protobuf from "protobufjs";
-import Long = require("long");
+import type Long from "long";
 
 /** LicenseType enum. */
 export enum LicenseType {

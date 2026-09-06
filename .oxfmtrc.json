@@ -7,5 +7,5 @@
   "useTabs": false,
   "semi": true,
   "sortPackageJson": false,
-  "ignorePatterns": ["src/lib/widevine/proto/*.pb.*"]
+  "ignorePatterns": ["src/lib/widevine/proto/*.pb.*", ".playwright-cli/**"]
 }

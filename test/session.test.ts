@@ -25,7 +25,7 @@ test('session', async () => {
   ).toBuffer();
 
   // Load device/client
-  const wvd = await readFile('./clients/client.wvd');
+  const wvd = await readFile(process.env.VITEST_WVD_PATH ?? './clients/client.wvd');
   const client = await WidevineDeviceCredentials.from({ wvd });
 
   // Create session
