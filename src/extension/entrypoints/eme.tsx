@@ -178,12 +178,12 @@ export const installEmeInterception = () => {
         mpd: window.MPD_LIST.get(session.initData!),
       });
 
-      if (result) {
+      if (result?.keys) {
         const { keys } = result;
         console.groupCollapsed(`[okova] [${session.sessionId}] Received keys from our CDM`);
         for (const { id, value } of keys) console.log(`${id}:${value}`);
         console.groupEnd();
-      } else {
+      } else if (!result) {
         setTimeout(() => {
           if (session.keyStatuses.size === 0) return;
           onKeyStatusesChange(session);

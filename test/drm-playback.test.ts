@@ -342,7 +342,7 @@ test.for(['com.microsoft.playready.recommendation.3000', 'com.microsoft.playread
       name: 'NotSupportedError',
     });
     expect(nativeRequest).not.toHaveBeenCalled();
-    expect(sendDrmMessage).not.toHaveBeenCalled();
+    expect(sendDrmMessage).toHaveBeenCalledExactlyOnceWith({ action: 'playback-config' });
   },
 );
 
@@ -356,4 +356,70 @@ test('rejects empty server certificates', async () => {
   const access = await navigator.requestMediaKeySystemAccess('com.widevine.alpha', [{}]);
   const mediaKeys = await access.createMediaKeys();
   await expect(mediaKeys.setServerCertificate(new Uint8Array())).rejects.toBeInstanceOf(TypeError);
+});
+
+test.for([
+  'com.widevine.alpha',
+  'com.microsoft.playready',
+  'com.microsoft.playready.recommendation',
+  'com.microsoft.playready.hardware',
+  'com.microsoft.playready.recommendation.3000',
+])('uses native %s when the active client has been removed', async (keySystem) => {
+  vi.mocked(sendDrmMessage).mockResolvedValueOnce(null);
+  const configurations = [{ videoCapabilities: [{ contentType }] }];
+  const nativeAccess = new NativeAccess(configurations[0]!);
+  nativeRequest.mockResolvedValueOnce(nativeAccess);
+  const access = await navigator.requestMediaKeySystemAccess(keySystem, configurations);
+  expect(access).toBe(nativeAccess);
+  expect(nativeRequest).toHaveBeenCalledExactlyOnceWith(keySystem, configurations);
+});
+
+test('delivers the regenerated challenge after a service certificate, then installs license keys', async () => {
+  const session = await createSession();
+  const messages: string[] = [];
+  session.addEventListener('message', (event) => {
+    if (event instanceof NativeMessageEvent) messages.push(new TextDecoder().decode(event.message));
+  });
+  await session.generateRequest('cenc', createInitData());
+  await vi.runAllTimersAsync();
+  messages.length = 0;
+  vi.mocked(sendDrmMessage).mockResolvedValueOnce({ challenge: btoa('private challenge') });
+  await session.update(new Uint8Array([8, 5]));
+  expect(messages).toEqual([]);
+  expect(nativeUpdate).not.toHaveBeenCalled();
+  await vi.runAllTimersAsync();
+  expect(messages).toEqual(['private challenge']);
+  await session.update(new Uint8Array([8, 2]));
+  expect(nativeUpdate).toHaveBeenCalledOnce();
+});
+
+test.for([undefined, { challenge: '' }])(
+  'rejects unsuccessful certificate updates: %j',
+  async (result) => {
+    const session = await createSession();
+    await session.generateRequest('cenc', createInitData());
+    await vi.runAllTimersAsync();
+    const listener = vi.fn();
+    session.addEventListener('message', listener);
+    vi.mocked(sendDrmMessage).mockResolvedValueOnce(result);
+    await expect(session.update(new Uint8Array([8, 5]))).rejects.toMatchObject({
+      name: 'OperationError',
+    });
+    await vi.runAllTimersAsync();
+    expect(listener).not.toHaveBeenCalled();
+    expect(nativeUpdate).not.toHaveBeenCalled();
+  },
+);
+
+test('does not deliver a regenerated challenge after close', async () => {
+  const session = await createSession();
+  await session.generateRequest('cenc', createInitData());
+  await vi.runAllTimersAsync();
+  const listener = vi.fn();
+  session.addEventListener('message', listener);
+  vi.mocked(sendDrmMessage).mockResolvedValueOnce({ challenge: btoa('private challenge') });
+  await session.update(new Uint8Array([8, 5]));
+  await session.close();
+  await vi.runAllTimersAsync();
+  expect(listener).not.toHaveBeenCalled();
 });

@@ -14,6 +14,7 @@ const INSTALLED = Symbol.for('okova.drm-playback.installed');
 const CLEARKEY = 'org.w3.clearkey';
 const hexKey = z.string().regex(/^[a-f\d]{32}$/i);
 const licenseKeys = z.object({ keys: z.array(z.object({ id: hexKey, value: hexKey })).min(1) });
+const licenseChallenge = z.object({ challenge: z.string().min(1) });
 const hexToBase64Url = (hex: string) =>
   fromHex(hex).toBase64().replaceAll('+', '-').replaceAll('/', '_').replaceAll('=', '');
 const encodeJsonUtf8 = (value: unknown) => new TextEncoder().encode(JSON.stringify(value));
@@ -72,6 +73,18 @@ export const installDrmPlayback = () => {
           serverCertificate,
           mpd: initData ? window.MPD_LIST?.get(initData) : undefined,
         });
+      const dispatchChallenge = (challenge: ArrayBuffer) => {
+        // Deliver as a task, after generateRequest or update has resolved.
+        setTimeout(() => {
+          if (closed) return;
+          const event = new MediaKeyMessageEvent('message', {
+            messageType: 'license-request',
+            message: challenge,
+          });
+          forwardedMessages.add(event);
+          session.dispatchEvent(event);
+        }, 0);
+      };
       // Keep ClearKey requests local. The player only receives challenges from the active client.
       nativeListen.call(session, 'message', (event) => {
         if (!forwardedMessages.has(event)) event.stopImmediatePropagation();
@@ -113,16 +126,7 @@ export const installDrmPlayback = () => {
         return ready.then((challenge) => {
           if (closed) throw new DOMException('Session is closed', 'InvalidStateError');
           isCallable = true;
-          // Deliver the challenge as a task, after generateRequest has resolved.
-          setTimeout(() => {
-            if (closed) return;
-            const event = new MediaKeyMessageEvent('message', {
-              messageType: 'license-request',
-              message: challenge,
-            });
-            forwardedMessages.add(event);
-            session.dispatchEvent(event);
-          }, 0);
+          dispatchChallenge(challenge);
         });
       };
       session.update = async (response) => {
@@ -134,6 +138,12 @@ export const installDrmPlayback = () => {
           message,
           messageBase64: bytesToBase64(message),
         });
+        const nextChallenge = licenseChallenge.safeParse(result);
+        if (keySystem === WIDEVINE && nextChallenge.success) {
+          if (closed) throw new DOMException('Session is closed', 'InvalidStateError');
+          dispatchChallenge(fromBase64(nextChallenge.data.challenge).toBuffer().buffer);
+          return;
+        }
         const parsed = licenseKeys.safeParse(result);
         if (!parsed.success)
           throw new DOMException(
@@ -168,14 +178,15 @@ export const installDrmPlayback = () => {
 
   navigator.requestMediaKeySystemAccess = async (keySystem, configurations) => {
     const isPlayReady = keySystem === PLAYREADY || keySystem === 'com.microsoft.playready';
-    if (
+    const isHardwarePlayReady =
       keySystem === 'com.microsoft.playready.recommendation.3000' ||
-      keySystem === 'com.microsoft.playready.hardware'
-    ) {
-      throw unsupported('Hardware DRM is unavailable during client playback');
-    }
-    if (keySystem !== WIDEVINE && !isPlayReady) return requestAccess(keySystem, configurations);
+      keySystem === 'com.microsoft.playready.hardware';
+    if (keySystem !== WIDEVINE && !isPlayReady && !isHardwarePlayReady)
+      return requestAccess(keySystem, configurations);
     const activeSystem = await sendDrmMessage({ action: 'playback-config' });
+    if (activeSystem === null) return requestAccess(keySystem, configurations);
+    if (isHardwarePlayReady)
+      throw unsupported('Hardware DRM is unavailable during client playback');
     if (activeSystem !== (isPlayReady ? PLAYREADY : WIDEVINE)) {
       throw unsupported('Select a matching DRM client in Okova');
     }

@@ -598,7 +598,7 @@ export default defineBackground({
             ).toBase64();
             stage = 'storage';
             await run(persistSession(sessionKey, sessionEntry));
-            respond();
+            respond({ challenge: sessionEntry.challenge });
             return;
           }
 

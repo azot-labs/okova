@@ -203,7 +203,8 @@ test('same-PSSH sessions keep their challenges and updates across tabs, frames a
 test('retains the session for a service certificate and cleans up failed license parsing', async () => {
   const send = startBackground();
   await send('generateRequest', 'one');
-  await send('update', 'one', {}, { message: { 0: 8, 1: 5 } });
+  const continuation = await send('update', 'one', {}, { message: { 0: 8, 1: 5 } });
+  expect(continuation).toEqual({ challenge: await send('license-request', 'one') });
   expect(Session.prototype.close).not.toHaveBeenCalled();
   expect(Session.prototype.waitForKeyStatusesChange).not.toHaveBeenCalled();
   await expect(send('license-request', 'one')).resolves.toEqual(expect.any(String));
