@@ -1,3 +1,4 @@
+import { z } from 'zod';
 import { readFile } from 'node:fs/promises';
 import { basename, extname, resolve } from 'node:path';
 import { WidevineDeviceCredentials } from '../../../lib/widevine/device-credentials';
@@ -6,25 +7,18 @@ import { SessionRegistry, sessionLimitsSchema } from './session-registry';
 
 export const clients = new Map<string, WidevineDeviceCredentials | PlayReadyDeviceCredentials>();
 
-type Config = {
-  host: string;
-  port: number;
-  clients: string[];
-  users: { [secretKey: string]: { name: string; clients: string[] } };
-  forcePrivacyMode: boolean;
-  sessionLimits: ReturnType<typeof sessionLimitsSchema.parse>;
-};
+const configSchema = z.object({
+  host: z.string().min(1).default('0.0.0.0'),
+  port: z.number().int().min(0).max(65535).default(4000),
+  clients: z.array(z.string().min(1)).default([]),
+  users: z
+    .record(z.string(), z.object({ name: z.string(), clients: z.array(z.string()) }))
+    .default({}),
+  forcePrivacyMode: z.boolean().default(true),
+  sessionLimits: sessionLimitsSchema.prefault({}),
+});
 
-const defaultConfig = {
-  host: '0.0.0.0',
-  port: 4000,
-  clients: [],
-  users: {},
-  forcePrivacyMode: true,
-  sessionLimits: sessionLimitsSchema.parse({}),
-};
-
-export const config: Config = structuredClone(defaultConfig);
+export const config = configSchema.parse({});
 export const sessions = new SessionRegistry(() => config.sessionLimits);
 
 // Aliases must identify exactly one configured device, regardless of list order.
@@ -43,10 +37,31 @@ export const resolveClient = (identifier: string) => {
   return paths.size === 1 ? paths.values().next().value : undefined;
 };
 
-export const loadConfig = async (configPath: string) => {
-  const data = await readFile(configPath, { encoding: 'utf-8' })
-    .then((data) => JSON.parse(data))
-    .catch(() => defaultConfig);
-  const sessionLimits = sessionLimitsSchema.parse(data.sessionLimits ?? {});
-  Object.assign(config, data, { sessionLimits });
+// Only an absent implicit config permits starting with defaults.
+export const loadConfig = async (configPath?: string) => {
+  const path = configPath ?? 'okova.config.json';
+  let text: string;
+  try {
+    text = await readFile(path, 'utf-8');
+  } catch (error) {
+    if (
+      configPath === undefined &&
+      error instanceof Error &&
+      'code' in error &&
+      error.code === 'ENOENT'
+    ) {
+      Object.assign(config, configSchema.parse({}));
+      return;
+    }
+    throw new Error(`Cannot read server config "${path}"`, { cause: error });
+  }
+  try {
+    const data: unknown = JSON.parse(text);
+    Object.assign(config, configSchema.parse(data));
+  } catch (error) {
+    throw new Error(
+      `Invalid server config "${path}": ${error instanceof Error ? error.message : String(error)}`,
+      { cause: error },
+    );
+  }
 };

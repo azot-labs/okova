@@ -205,6 +205,10 @@ client must match the requested system.
 Wait for each session mutation to finish before starting another; overlapping
 requests return HTTP 409. Requests for different sessions can run concurrently.
 
+`okova serve` reads `okova.config.json` in the current directory and uses defaults
+if that file is absent. An explicit `--config <path>` must be readable. Malformed
+JSON or invalid settings stop startup before the server opens a listening socket.
+
 The server limits sessions and concurrent requests across all users and devices.
 In `okova.config.json`, optional `sessionLimits` fields override these defaults:
 

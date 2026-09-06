@@ -115,21 +115,16 @@ class RemoteSession extends BaseMediaKeysEngineSession {
     this.#removeRequested ||= remove;
     // Both routes release the server session; concurrent calls share that cleanup.
     if (!this.#closePromise) {
-      this.#closePromise = this.#api
-        .close(this.sessionId, remove)
-        .then(() => {
-          this.isClosed = true;
-          this.keys.clear();
-          this.keyStatuses.clear();
-          this.#engine.sessions.delete(this.sessionId);
-          this.dispatchEvent(new Event('closed'));
-          if (this.#removeRequested) this.dispatchEvent(new Event('removed'));
-        })
-        .catch((error: unknown) => {
-          this.#closePromise = null;
-          this.#removeRequested = false;
-          throw error;
-        });
+      this.#closePromise = this.#api.close(this.sessionId, remove).finally(() => {
+        this.isClosed = true;
+        this.#initData = undefined;
+        this.#serviceCertificate = undefined;
+        this.keys.clear();
+        this.keyStatuses.clear();
+        this.#engine.sessions.delete(this.sessionId);
+        this.dispatchEvent(new Event('closed'));
+        if (this.#removeRequested) this.dispatchEvent(new Event('removed'));
+      });
     }
     return this.#closePromise;
   }

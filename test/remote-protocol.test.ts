@@ -484,3 +484,73 @@ test('resume identity uses effective headers regardless of casing, order, or ove
   });
   expect(engine.resumeSession(state).sessionId).toBe('session');
 });
+
+test.each(['close', 'remove'] as const)(
+  '%s disposes local state when remote cleanup fails',
+  async (operation) => {
+    const fetch = vi
+      .fn<typeof globalThis.fetch>()
+      .mockResolvedValueOnce(Response.json({ id: 'session' }));
+    vi.stubGlobal('fetch', fetch);
+    const engine = new Remote({ keySystem: 'com.widevine.alpha', baseUrl: 'https://cdm.test' });
+    const native = await engine.createSession();
+    const session = new Session('temporary', engine, native);
+    const closed = vi.fn();
+    native.addEventListener('closed', closed);
+    const waiting = expect(native.waitForKeys()).rejects.toThrow('Session closed');
+    native.keys.set(keyId, key);
+    native.keyStatuses.set(keyId, 'usable');
+    fetch.mockRejectedValueOnce(new Error('Server unavailable'));
+    await expect(session[operation]()).rejects.toThrow('Server unavailable');
+    await waiting;
+    expect(native.keys.size).toBe(0);
+    expect(native.keyStatuses.size).toBe(0);
+    expect(engine.sessions.size).toBe(0);
+    expect(() => session.pause()).toThrow('Session closed');
+    await expect(native.update(new Uint8Array())).rejects.toThrow('Session closed');
+    await native.close();
+    expect(closed).toHaveBeenCalledOnce();
+    expect(fetch).toHaveBeenCalledTimes(2);
+  },
+);
+
+test.each(['timeout', 'restart'] as const)(
+  'remote cleanup releases waiters after a server %s',
+  async (failure) => {
+    const fetch = vi
+      .fn<typeof globalThis.fetch>()
+      .mockResolvedValueOnce(Response.json({ id: 'session' }));
+    vi.stubGlobal('fetch', fetch);
+    const engine = new Remote({
+      keySystem: 'com.widevine.alpha',
+      baseUrl: 'https://cdm.test',
+      requestTimeoutMs: 50,
+    });
+    const session = await engine.createSession();
+    const waiting = expect(session.waitForKeys()).rejects.toThrow('Session closed');
+    if (failure === 'timeout') {
+      vi.useFakeTimers();
+      fetch.mockImplementationOnce(
+        async (_url, init) =>
+          new Response(
+            new ReadableStream({
+              start(controller) {
+                init?.signal?.addEventListener('abort', () =>
+                  controller.error(init.signal?.reason),
+                );
+              },
+            }),
+          ),
+      );
+    } else {
+      fetch.mockResolvedValueOnce(Response.json({ error: 'Session not found' }, { status: 404 }));
+    }
+    const closing = expect(session.close()).rejects.toThrow();
+    if (failure === 'timeout') await vi.advanceTimersByTimeAsync(50);
+    await closing;
+    await waiting;
+    expect(engine.sessions.size).toBe(0);
+    await session.close();
+    expect(fetch).toHaveBeenCalledTimes(2);
+  },
+);

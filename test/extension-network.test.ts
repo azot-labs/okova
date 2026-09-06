@@ -152,9 +152,15 @@ const makeResponse = () =>
 
 test('page fetch returns before inspection finishes', async () => {
   const response = makeResponse();
-  const inspection = Promise.withResolvers<string>();
-  const clone = response.clone();
-  vi.spyOn(clone, 'text').mockReturnValue(inspection.promise);
+  const inspection = Promise.withResolvers<Uint8Array>();
+  const clone = new Response(
+    new ReadableStream({
+      async start(controller) {
+        controller.enqueue(await inspection.promise);
+        controller.close();
+      },
+    }),
+  );
   vi.spyOn(response, 'clone').mockReturnValue(clone);
   nativeFetch.mockResolvedValue(response);
   const options = { credentials: 'include' } satisfies RequestInit;
@@ -162,7 +168,7 @@ test('page fetch returns before inspection finishes', async () => {
   expect(nativeFetch).toHaveBeenCalledWith(url, options);
   expect(postMessage).not.toHaveBeenCalled();
   expect(await response.text()).toBe(manifest);
-  inspection.resolve(manifest);
+  inspection.resolve(new TextEncoder().encode(manifest));
   await vi.waitFor(() => expect(postMessage).toHaveBeenCalledOnce());
 });
 
@@ -176,8 +182,13 @@ test.each(['clone', 'body', 'message'])(
         throw error;
       });
     } else if (failure === 'body') {
-      const clone = response.clone();
-      vi.spyOn(clone, 'text').mockRejectedValue(error);
+      const clone = new Response(
+        new ReadableStream({
+          start(controller) {
+            controller.error(error);
+          },
+        }),
+      );
       vi.spyOn(response, 'clone').mockReturnValue(clone);
     } else {
       postMessage.mockImplementation(() => {
@@ -197,3 +208,41 @@ test('page fetch preserves network failures', async () => {
   await expect(fetch(url)).rejects.toBe(error);
   expect(console.warn).not.toHaveBeenCalled();
 });
+
+test.each(['', '1'])(
+  'bounds headerless or understated fetch bodies, Content-Length %j',
+  async (contentLength) => {
+    const body = manifest + ' '.repeat(2 * 1024 * 1024);
+    const response = new Response(body, {
+      headers: {
+        'content-type': 'application/octet-stream',
+        ...(contentLength ? { 'content-length': contentLength } : {}),
+      },
+    });
+    const clone = response.clone();
+    const reader = clone.body!.getReader();
+    const cancel = vi.spyOn(reader, 'cancel');
+    vi.spyOn(clone.body!, 'getReader').mockReturnValue(reader);
+    vi.spyOn(response, 'clone').mockReturnValue(clone);
+    nativeFetch.mockResolvedValue(response);
+    expect(await fetch(url)).toBe(response);
+    expect(await response.text()).toBe(body);
+    await vi.waitFor(() => expect(cancel).toHaveBeenCalledOnce());
+    expect(postMessage).not.toHaveBeenCalled();
+  },
+);
+
+test.each(['text', 'blob'] as const)(
+  'rejects oversized XHR %s before posting or reading blobs',
+  async (responseType) => {
+    const body = manifest + 'é'.repeat(600_000);
+    const blob = new Blob([body]);
+    const read = vi.spyOn(blob, 'text');
+    const xhr = new XMLHttpRequest();
+    Object.assign(xhr, { responseType, response: responseType === 'blob' ? blob : body });
+    xhr.dispatchEvent(new Event('load'));
+    await Promise.resolve();
+    expect(read).not.toHaveBeenCalled();
+    expect(postMessage).not.toHaveBeenCalled();
+  },
+);
