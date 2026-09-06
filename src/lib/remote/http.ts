@@ -28,6 +28,14 @@ export type RemoteHttpParams = {
   requestTimeoutMs?: number;
 };
 
+/** Normalize headers identically for requests and the resume identity. */
+export const createRemoteHeaders = (params: RemoteHttpParams) => {
+  const headers = new Headers(params.headers);
+  headers.set('content-type', 'application/json');
+  if (params.secret) headers.set('x-secret-key', params.secret);
+  return headers;
+};
+
 const errorBody = z.object({
   error: z.unknown().optional(),
   message: z.string().optional(),
@@ -36,9 +44,7 @@ const errorBody = z.object({
 export const createHttpClient = (params: RemoteHttpParams) => {
   const baseUrl = remoteUrlSchema.parse(params.baseUrl);
   const timeoutMs = requestTimeoutSchema.parse(params.requestTimeoutMs ?? 30_000);
-  const headers = new Headers(params.headers);
-  headers.set('content-type', 'application/json');
-  if (params.secret) headers.set('x-secret-key', params.secret);
+  const headers = createRemoteHeaders(params);
 
   const request = async (method: string, route: string, body?: object): Promise<unknown> => {
     const controller = new AbortController();

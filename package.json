@@ -83,6 +83,7 @@
     "@hono/zod-validator": "^0.8.0",
     "@noble/ciphers": "^2.2.0",
     "@noble/curves": "^2.2.0",
+    "@noble/hashes": "^2.2.0",
     "@peculiar/asn1-pkcs8": "^2.7.0",
     "@peculiar/asn1-rsa": "^2.7.0",
     "@peculiar/asn1-schema": "^2.7.0",

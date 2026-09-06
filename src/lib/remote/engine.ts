@@ -1,9 +1,10 @@
 import { z } from 'zod';
+import { sha256 } from '@noble/hashes/sha2.js';
 import { BaseMediaKeysEngine, BaseMediaKeysEngineSession } from '../api';
 import { fromBase64, fromBuffer } from '../utils';
 import { parseCertificate, verifyCertificate } from '../widevine/certificate';
 import { normalizeKeySystem } from '../key-system';
-import { remoteUrlSchema } from './http';
+import { createRemoteHeaders, remoteUrlSchema } from './http';
 import { createOkovaApi, keysSchema, type OkovaRemoteParams, type RemoteApi } from './protocol';
 import { createPywidevineApi, type PywidevineRemoteParams } from './pywidevine';
 export type RemoteParams = OkovaRemoteParams | PywidevineRemoteParams;
@@ -179,9 +180,15 @@ export class Remote extends BaseMediaKeysEngine {
     super();
     this.keySystem = normalizeKeySystem(params.keySystem);
     this.protocol = params.protocol ?? 'okova';
+    // Headers iterates normalized names in sorted order, including secret overrides.
+    // Store only a digest because custom headers may contain authentication tokens.
+    const authentication = sha256(
+      new TextEncoder().encode(JSON.stringify([...createRemoteHeaders(params)])),
+    );
     this.connection = JSON.stringify([
       remoteUrlSchema.parse(params.baseUrl),
       'device' in params ? params.device : (params.client ?? null),
+      fromBuffer(authentication).toHex(),
     ]);
     this.#api =
       params.protocol === 'pywidevine' || params.protocol === 'pyplayready'
@@ -217,7 +224,7 @@ export class Remote extends BaseMediaKeysEngine {
       state.connection !== this.connection
     )
       throw new Error(
-        'Remote session belongs to a different server, device, protocol, or DRM system',
+        'Remote session belongs to a different server, device, protocol, DRM system, or authentication',
       );
     if (this.sessions.has(state.sessionId)) throw new Error('Remote session is already attached');
     // Keep a newer engine certificate and preserve per-session overrides separately.

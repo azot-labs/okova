@@ -2,6 +2,7 @@ import { afterEach, expect, test, vi } from 'vitest';
 import { isServiceCertificate } from '../src/lib/widevine/message';
 import { SignedMessage } from '../src/lib/widevine/proto';
 import { Remote, Session, fromBase64, fromBuffer } from '../src/lib';
+import type { RemoteParams } from '../src/lib/remote/engine';
 import { SERVICE_CERTIFICATE } from './service-certificate';
 import { PSSH } from './utils';
 
@@ -421,4 +422,65 @@ test('concurrent close and remove share cleanup and notify removal', async () =>
   expect(fetch).toHaveBeenCalledTimes(2);
   expect(removed).toHaveBeenCalledTimes(1);
   expect(engine.sessions.size).toBe(0);
+});
+
+test.each(['okova', 'pywidevine', 'pyplayready'] as const)(
+  '%s resume rejects changed authentication before sending requests',
+  async (protocol) => {
+    const fetch = vi
+      .fn<typeof globalThis.fetch>()
+      .mockResolvedValue(Response.json({ id: 'session', data: { session_id: 'session' } }));
+    vi.stubGlobal('fetch', fetch);
+    const params = {
+      keySystem:
+        protocol === 'pyplayready'
+          ? 'com.microsoft.playready.recommendation'
+          : 'com.widevine.alpha',
+      baseUrl: 'https://cdm.test',
+      ...(protocol === 'okova' ? { protocol, client: 'client' } : { protocol, device: 'device' }),
+      secret: 'original-secret',
+      headers: { Authorization: 'Bearer original-token', 'X-Custom-Auth': 'custom-token' },
+    } satisfies RemoteParams;
+    const state = (await new Remote(params).createSession()).pause();
+    expect(state).not.toContain('original-secret');
+    expect(state).not.toContain('original-token');
+    expect(state).not.toContain('custom-token');
+    for (const credentials of [
+      { secret: 'another-secret' },
+      { secret: undefined },
+      { headers: { ...params.headers, Authorization: 'Bearer another-token' } },
+      { headers: { ...params.headers, 'X-Custom-Auth': 'another-custom-token' } },
+      { headers: {} },
+    ]) {
+      expect(() => new Remote({ ...params, ...credentials }).resumeSession(state)).toThrow(
+        'authentication',
+      );
+    }
+    expect(new Remote(params).resumeSession(state).sessionId).toBe('session');
+    expect(fetch).toHaveBeenCalledTimes(1);
+  },
+);
+
+test('resume identity uses effective headers regardless of casing, order, or overridden values', async () => {
+  vi.stubGlobal(
+    'fetch',
+    vi.fn(async () => Response.json({ id: 'session' })),
+  );
+  const params = {
+    keySystem: 'com.widevine.alpha',
+    baseUrl: 'https://cdm.test',
+    secret: 'test-secret',
+    headers: {
+      Authorization: 'Bearer token',
+      'X-Secret-Key': 'overridden-secret',
+      'Content-Type': 'overridden-content-type',
+    },
+  };
+  const state = (await new Remote(params).createSession()).pause();
+  const engine = new Remote({
+    ...params,
+    secret: undefined,
+    headers: { 'x-secret-key': 'test-secret', authorization: '  Bearer token  ' },
+  });
+  expect(engine.resumeSession(state).sessionId).toBe('session');
 });
