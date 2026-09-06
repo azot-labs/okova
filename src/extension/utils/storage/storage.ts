@@ -70,6 +70,7 @@ export const getRecentKeysForUrl = (
 
 export type Settings = {
   spoofing: boolean;
+  clientPlayback: boolean;
   emeInterception: boolean;
   requestInterception: boolean;
   theme: ThemeMode;
@@ -104,8 +105,26 @@ const mutateKeyHistory = (mutation: () => Promise<void>) =>
 
 const recentKeys = asJson(storage.defineItem<KeyInfo[]>('local:recent-keys'));
 
+const storedSettings = asJson(
+  storage.defineItem<Omit<Settings, 'clientPlayback'> & { clientPlayback?: boolean }>(
+    'local:settings',
+  ),
+);
+
+const normalizeSettings = (
+  settings: Awaited<ReturnType<typeof storedSettings.getValue>>,
+): Settings | null =>
+  settings ? { ...settings, clientPlayback: settings.clientPlayback ?? false } : null;
+
 export const appStorage = {
-  settings: asJson(storage.defineItem<Settings>('local:settings')),
+  settings: {
+    ...storedSettings,
+    getValue: async () => normalizeSettings(await storedSettings.getValue()),
+    watch: (callback: (newValue: Settings | null, oldValue: Settings | null) => void) =>
+      storedSettings.watch((newValue, oldValue) =>
+        callback(normalizeSettings(newValue), normalizeSettings(oldValue)),
+      ),
+  },
 
   recentKeys: {
     ...recentKeys,

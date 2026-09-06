@@ -26,7 +26,7 @@ afterEach(() => {
 });
 
 test.each(
-  ['captured keys', 'rejected license', 'bridge failure'].flatMap((result) =>
+  ['captured keys', 'service certificate', 'rejected license', 'bridge failure'].flatMap((result) =>
     ['buffer', 'typed array slice', 'DataView slice'].map((input) => ({ result, input })),
   ),
 )(
@@ -79,6 +79,8 @@ test.each(
           { id: '00112233445566778899aabbccddeeff', value: 'ffeeddccbbaa99887766554433221100' },
         ],
       });
+    } else if (result === 'service certificate') {
+      capture.resolve({ challenge: btoa('private challenge') });
     } else if (result === 'bridge failure') {
       capture.reject(new Error('DRM bridge failed'));
     } else {

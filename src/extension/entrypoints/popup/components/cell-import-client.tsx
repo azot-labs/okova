@@ -3,14 +3,15 @@ import { TbOutlineShieldPlus as TbShieldPlus } from 'solid-icons/tb';
 import { WidevineDeviceCredentials } from '@okova/lib/widevine/device-credentials';
 import { PlayReadyDeviceCredentials } from '@okova/lib/playready/device-credentials';
 import { Cell } from './cell';
-import { useActiveClient, useClients } from '../utils/state';
+import { useActiveClient, useClients, useSettings } from '../utils/state';
 import { appStorage, Client } from '@/utils/storage';
 
 export const CellImportClient: Component<{
   disabled?: boolean;
   onChange?: (client: Client) => void;
 }> = (props) => {
-  const [, setActiveClient] = useActiveClient();
+  const [activeClient, setActiveClient] = useActiveClient();
+  const [settings, setSettings] = useSettings();
   const [clients, setClients] = useClients();
 
   const importClient = async (files: File[]) => {
@@ -44,24 +45,33 @@ export const CellImportClient: Component<{
     }
   };
 
-  const applyClient = (client?: Client) => {
-    if (!client) return;
-    props.onChange?.(client);
-  };
-
-  const addClient = async (client: Client) => {
+  const completeClientImport = async (client: Client) => {
     const newClients = [...clients(), client];
-    setClients(newClients);
     await appStorage.clients.add(client);
-    if (newClients.length === 1) setActiveClient(client);
+    if (!activeClient()) {
+      await appStorage.clients.active.setValue(client);
+      setActiveClient(client);
+    }
+    if (clients().length === 0) {
+      const nextSettings = {
+        ...settings,
+        emeInterception: true,
+        spoofing: true,
+        clientPlayback: true,
+      };
+      await appStorage.settings.setValue(nextSettings);
+      setSettings(nextSettings);
+    }
+    setClients(newClients);
   };
 
   const handleFileChange = async (event: Event) => {
-    const files = Array.from((event.target as HTMLInputElement).files || []);
+    if (!(event.target instanceof HTMLInputElement)) return;
+    const files = Array.from(event.target.files || []);
     const client = await importClient(files);
     if (!client) return;
-    applyClient(client);
-    addClient(client);
+    await completeClientImport(client);
+    props.onChange?.(client);
   };
 
   return (

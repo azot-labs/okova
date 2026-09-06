@@ -42,7 +42,6 @@
   html,
   body,
   #root {
-    min-width: 500px; /* Max: 800px */
     min-height: 500px; /* Max: 600px */
     background: var(--popup-bg);
     color: var(--popup-fg);
@@ -53,6 +52,7 @@
   }
 
   html {
+    min-width: 500px; /* Let children fit the space left by the scrollbar. */
     overflow-y: auto; /* Adds scrollbar inside if needed */
     scrollbar-gutter: stable; /* Keeps layout steady */
   }
