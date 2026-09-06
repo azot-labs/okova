@@ -949,3 +949,27 @@ test('sets the badge text and tooltip when text-color control is unavailable', a
     Object.defineProperty(browser.action, 'setBadgeTextColor', descriptor);
   }
 });
+
+test.each([
+  { info: null, expected: null },
+  { info: { type: 'wvd', data: '' } as const, expected: 'com.widevine.alpha' },
+  { info: { type: 'prd', data: '' } as const, expected: 'com.microsoft.playready.recommendation' },
+  {
+    info: {
+      type: 'remote',
+      config: {
+        protocol: 'okova',
+        keySystem: 'com.widevine.alpha',
+        baseUrl: 'https://cdm.test',
+        secret: 'test',
+        client: 'device',
+      },
+    } as const,
+    expected: 'com.widevine.alpha',
+  },
+])('answers playback configuration in the background: $expected', async ({ info, expected }) => {
+  vi.spyOn(appStorage.clients.active, 'getInfo').mockResolvedValue(info);
+  const send = startBackground();
+  await expect(send('playback-config', '')).resolves.toBe(expected);
+  expect(appStorage.clients.active.getValue).not.toHaveBeenCalled();
+});

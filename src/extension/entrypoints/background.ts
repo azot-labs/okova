@@ -30,7 +30,7 @@ import { SignedDrmCertificate, SignedMessage } from '@okova/lib/widevine/proto';
 import { isServiceCertificate as isWidevineServiceCertificate } from '@okova/lib/widevine/message';
 import { WidevineDeviceCredentials } from '@okova/lib/widevine/device-credentials';
 import { withAbort } from '@okova/lib/abort';
-import { normalizeKeySystem } from '@okova/lib/key-system';
+import { CLIENT_KEY_SYSTEMS, normalizeKeySystem } from '@okova/lib/key-system';
 import { Session } from '@okova/lib/api';
 import { RemoteClient } from '@/utils/remote-client';
 import type { Client } from '@/utils/storage';
@@ -396,6 +396,16 @@ export default defineBackground({
         }
       };
       const handleMessage = async () => {
+        if (message.action === 'playback-config') {
+          const client = await run(appStorage.clients.active.getInfo());
+          if (!client) respond(null);
+          else if (client.type === 'remote') respond(client.config.keySystem);
+          else
+            respond(
+              client.type === 'wvd' ? CLIENT_KEY_SYSTEMS.widevine : CLIENT_KEY_SYSTEMS.playready,
+            );
+          return;
+        }
         if (message.action === 'close') {
           stage = 'close';
           if (sessionKey) await closeSession(sessionKey);

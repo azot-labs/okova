@@ -1,3 +1,4 @@
+import { stat } from 'node:fs/promises';
 import { dirname, resolve } from 'node:path';
 import { loadEnv } from 'vite';
 import { defineConfig } from 'wxt';
@@ -8,6 +9,17 @@ const devEnv = loadEnv('development', process.cwd(), 'WXT_');
 // See https://wxt.dev/api/config.html
 export default defineConfig({
   srcDir: './src/extension',
+  hooks: {
+    'build:done': async (wxt) => {
+      if (wxt.config.mode !== 'production') return;
+      // Every matching frame pays this cost. Keep device parsing out of the bridge.
+      const budgetBytes = 20 * 1024;
+      const { size } = await stat(resolve(wxt.config.outDir, 'content-scripts/content.js'));
+      if (size > budgetBytes) {
+        throw new Error(`Content script is ${size} bytes; budget is ${budgetBytes} bytes`);
+      }
+    },
+  },
   manifest: {
     name: 'Okova',
     permissions: ['storage', 'tabs', 'activeTab', 'clipboardWrite'],
