@@ -42,7 +42,7 @@
   html,
   body,
   #root {
-    min-height: 500px; /* Max: 600px */
+    min-height: 500px; /* Preferred popup height; the scroll area can be shorter. */
     background: var(--popup-bg);
     color: var(--popup-fg);
   }
@@ -57,7 +57,8 @@
   }
 
   #root {
-    max-height: 600px;
+    min-height: 0;
+    max-height: min(600px, 100vh); /* Keep the scroll area within the available viewport. */
     overflow-y: auto;
     scrollbar-gutter: stable; /* The 16px gutter supplies Layout's right spacing. */
   }
