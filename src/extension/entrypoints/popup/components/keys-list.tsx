@@ -72,7 +72,7 @@ export const KeysList: Component<KeysListProps> = (props) => {
               <Show when={selectedRecords().length > 0}>
                 <button
                   type="button"
-                  class="-my-2 min-h-11 px-2 text-[13px] text-blue-600 dark:text-blue-400"
+                  class="-my-2 min-h-11 cursor-pointer px-2 text-[13px] text-blue-600 dark:text-blue-400"
                   onClick={(event) => {
                     event.stopPropagation();
                     setSelected([]);

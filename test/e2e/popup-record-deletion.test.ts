@@ -118,6 +118,25 @@ test('deletes individual records and confirms frozen selected, site, and all-rec
           .getByRole('button', { name: 'Cancel' })
           .evaluate((element) => element === document.activeElement),
       ).toBe(true);
+      expect(
+        await dialog
+          .getByRole('button')
+          .evaluateAll((buttons) =>
+            buttons.every((button) => getComputedStyle(button).cursor === 'pointer'),
+          ),
+      ).toBe(true);
+      await dialog.getByRole('button', { name: 'Cancel' }).click();
+      // Let a mistakenly bubbled click finish preparing a second confirmation.
+      await popup.waitForTimeout(150);
+      expect(await dialog.count()).toBe(0);
+      expect(await popup.getByText('2 selected', { exact: true }).isVisible()).toBe(true);
+      expect(
+        await popup
+          .getByRole('button', { name: 'Clear', exact: true })
+          .evaluate((button) => getComputedStyle(button).cursor),
+      ).toBe('pointer');
+      await popup.getByRole('button', { name: 'Delete Selected', exact: true }).click();
+      await dialog.waitFor({ state: 'visible' });
       await popup.keyboard.press('Escape');
       expect(await dialog.count()).toBe(0);
       expect(await popup.getByText('2 selected', { exact: true }).isVisible()).toBe(true);
