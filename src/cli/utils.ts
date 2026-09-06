@@ -7,9 +7,6 @@ export const importClient = async (input: string, output?: string) => {
   const inputStat = await stat(input);
   const isDir = inputStat.isDirectory();
 
-  const outputInfo = output ? await stat(output).catch(() => null) : null;
-  const importForUnpack =
-    !outputInfo || outputInfo?.isDirectory() || input.endsWith('.wvd') || input.endsWith('.prd');
   if (isDir) {
     const entries = isDir ? await readdir(input) : [];
 
@@ -31,7 +28,7 @@ export const importClient = async (input: string, output?: string) => {
       (!!(playreadyCertificateFile && playreadyKeyFile) || !!prdFile) && !output?.endsWith('.wvd');
 
     if (isWidevine) {
-      if (importForUnpack && wvdFile) {
+      if (wvdFile) {
         const wvd = await readFile(join(input, wvdFile));
         return await WidevineDeviceCredentials.from({ wvd });
       } else {
@@ -40,7 +37,7 @@ export const importClient = async (input: string, output?: string) => {
         return WidevineDeviceCredentials.from({ id, key });
       }
     } else if (isPlayReady) {
-      if (importForUnpack && prdFile) {
+      if (prdFile) {
         const prd = await readFile(join(input, prdFile));
         return await PlayReadyDeviceCredentials.from({ prd });
       } else {
@@ -52,8 +49,7 @@ export const importClient = async (input: string, output?: string) => {
         });
       }
     } else {
-      console.log(`Unable to find client files in ${input}`);
-      process.exit(1);
+      throw new Error(`Unable to find client files in ${input}`);
     }
   } else if (input.endsWith('.wvd')) {
     const wvd = await readFile(input);
@@ -62,8 +58,7 @@ export const importClient = async (input: string, output?: string) => {
     const prd = await readFile(input);
     return await PlayReadyDeviceCredentials.from({ prd });
   } else {
-    console.log(`Unable to find client files in ${input}`);
-    process.exit(1);
+    throw new Error(`Unable to find client files in ${input}`);
   }
 };
 

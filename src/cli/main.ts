@@ -1,127 +1,132 @@
 #!/usr/bin/env node
 
-import { parseArgs } from 'node:util';
+import { parseArgs, type ParseArgsOptionsConfig } from 'node:util';
 import { client } from './commands/client';
 import { license } from './commands/license';
 import pkg from '../../package.json' with { type: 'json' };
 import { col } from './utils';
 import { serve } from './commands/serve/serve';
 
-const args = parseArgs({
-  args: process.argv.slice(2),
-  options: {
-    pssh: { type: 'string', short: 'p' },
-    client: { type: 'string', short: 'c' },
-    encrypt: { type: 'boolean', short: 'e', default: false },
-    header: { type: 'string', short: 'H', multiple: true },
-    help: { type: 'boolean', short: 'h' },
-    version: { type: 'boolean', short: 'v' },
-    debug: { type: 'boolean', short: 'd' },
-    format: { type: 'boolean', short: 'f' },
+const helpOption = { help: { type: 'boolean', short: 'h' } } satisfies ParseArgsOptionsConfig;
+const parse = <T extends ParseArgsOptionsConfig>(args: string[], options: T) =>
+  parseArgs({ args, options, strict: true, allowPositionals: true });
 
-    host: { type: 'string' },
-    port: { type: 'string' },
-    secret: { type: 'string', short: 's' },
-    config: { type: 'string' },
-  },
-  strict: false,
-  allowPositionals: true,
-});
-
-const help = () => {
-  console.log(`Okova – advanced DRM inspection toolkit. (${pkg.version})\n`);
-  console.log(`Usage: okova <command> [...flags]\n`);
-  console.log(`Commands:`);
-  console.log(col(`serve`) + 'Run your API instance');
-  console.log(col(`license <url>`) + 'Make a license request');
-  console.log(col(`client <subcommand>`) + 'Additional Widevine client utilities');
-  console.log('');
-  console.log(`Flags:`);
-  console.log(col(`-d, --debug`) + 'Enable debug level logging');
-  console.log(col(`-v, --version`) + 'Print version and exit');
-  console.log(col(`-h, --help`) + 'Display this menu and exit');
-  console.log('');
-  console.log(`(more flags in okova license --help and okova client --help)`);
+const checkPositionals = (positionals: string[], maximum: number) => {
+  if (positionals.length > maximum) throw new Error('Too many positional arguments');
 };
 
-(async () => {
-  if (args.values.version) {
-    console.log(pkg.version);
-    process.exit(0);
-  }
+const help = () => {
+  console.log(`Okova: advanced DRM inspection toolkit. (${pkg.version})\n`);
+  console.log('Usage: okova <command> [...flags]\n');
+  console.log('Commands:');
+  console.log(col('serve') + 'Run your API instance');
+  console.log(col('license <url>') + 'Make a license request');
+  console.log(col('client <subcommand>') + 'Widevine and PlayReady client utilities');
+  console.log('\nFlags:');
+  console.log(col('-v, --version') + 'Print version and exit');
+  console.log(col('-h, --help') + 'Display this menu and exit');
+  console.log('\nUse okova <command> --help for command options.');
+};
 
-  const [command, ...positionals] = args.positionals;
+const main = async () => {
+  const [command, ...argv] = process.argv.slice(2);
+  if (!command || command.startsWith('-')) {
+    const args = parse(process.argv.slice(2), {
+      ...helpOption,
+      version: { type: 'boolean', short: 'v' },
+    });
+    checkPositionals(args.positionals, 0);
+    if (args.values.version) console.log(pkg.version);
+    else help();
+    return;
+  }
 
   switch (command) {
     case 'serve': {
-      if (args.values.help) {
-        serve.help();
-        process.exit(0);
-      }
-      serve({
-        host: args.values.host as string | undefined,
-        port: args.values.port ? parseInt(args.values.port as string) : undefined,
-        config: args.values.config as string | undefined,
-        client: args.values.client as string | undefined,
-        secret: args.values.secret as string | undefined,
+      const { values, positionals } = parse(argv, {
+        ...helpOption,
+        host: { type: 'string' },
+        port: { type: 'string' },
+        secret: { type: 'string', short: 's' },
+        config: { type: 'string' },
+        client: { type: 'string', short: 'c' },
       });
-      break;
+      if (values.help) return serve.help();
+      checkPositionals(positionals, 0);
+      const port = values.port === undefined ? undefined : Number(values.port);
+      if (port !== undefined && (!Number.isInteger(port) || port < 1 || port > 65535)) {
+        throw new Error('Port must be an integer between 1 and 65535');
+      }
+      await serve({ ...values, port });
+      return;
     }
     case 'client': {
-      const subcommand = positionals.shift();
+      const [subcommand, ...rest] = argv;
+      if (!subcommand || subcommand.startsWith('-')) {
+        const { values, positionals } = parse(argv, helpOption);
+        checkPositionals(positionals, 0);
+        if (values.help) return client.help();
+        throw new Error('Client subcommand required: pack, unpack, info');
+      }
+      if (!['pack', 'unpack', 'info'].includes(subcommand)) {
+        throw new Error(`Unknown client subcommand: ${subcommand}`);
+      }
+      const { values, positionals } = parse(rest, {
+        ...helpOption,
+        ...(subcommand === 'pack' ? { format: { type: 'string', short: 'f' } } : {}),
+      } satisfies ParseArgsOptionsConfig);
+      if (values.help) return client.help();
+      checkPositionals(positionals, subcommand === 'info' ? 1 : 2);
       const [input, output] = positionals;
       switch (subcommand) {
-        case 'pack':
-          await client.pack(input, args.values.format as string | undefined, output);
-          break;
+        case 'pack': {
+          const format = values.format;
+          if (format !== undefined && format !== 'wvd' && format !== 'prd') {
+            throw new Error('Format must be wvd or prd');
+          }
+          await client.pack(input, format, output);
+          return;
+        }
         case 'unpack':
           await client.unpack(input, output);
-          break;
+          return;
         case 'info':
-          client.info(input);
-          break;
-        default: {
-          if (args.values.help) {
-            client.help();
-            process.exit(0);
-          } else {
-            console.log('Client subcommand required: pack, unpack, info');
-            process.exit(1);
-          }
-        }
+          await client.info(input);
+          return;
       }
-      break;
+      return;
     }
     case 'license': {
-      if (args.values.help) {
-        license.help();
-        process.exit(0);
-      }
-      const url = positionals.shift();
+      const { values, positionals } = parse(argv, {
+        ...helpOption,
+        pssh: { type: 'string', short: 'p' },
+        client: { type: 'string', short: 'c' },
+        encrypt: { type: 'boolean', short: 'e', default: false },
+        header: { type: 'string', short: 'H', multiple: true },
+      });
+      if (values.help) return license.help();
+      checkPositionals(positionals, 1);
+      const [url] = positionals;
       if (!url) throw new Error('License URL required');
-      const pssh = args.values.pssh as string;
-      if (!pssh) throw new Error('PSSH required');
-      const clientPath = args.values.client as string;
-      const encrypt = args.values.encrypt as boolean;
-      const headers = args.values.header as string[];
-      await license({ url, pssh, clientPath, encrypt, headers });
-      break;
+      if (!values.pssh) throw new Error('PSSH required');
+      await license({
+        url,
+        pssh: values.pssh,
+        clientPath: values.client,
+        encrypt: values.encrypt,
+        headers: values.header,
+      });
+      return;
     }
     case 'pssh':
-      break;
     case 'test':
-      break;
-    default: {
-      if (args.values.help) {
-        help();
-        process.exit(0);
-      } else {
-        console.log('Command not found');
-        process.exit(1);
-      }
-    }
+      throw new Error(`Command not implemented: ${command}`);
+    default:
+      throw new Error(`Unknown command: ${command}`);
   }
-})().catch((error: unknown) => {
+};
+
+main().catch((error: unknown) => {
   console.error(error instanceof Error ? error.message : String(error));
   process.exitCode = 1;
 });
