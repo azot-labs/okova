@@ -1,6 +1,7 @@
 import { createSignal, onMount, Show } from 'solid-js';
 import { TbOutlineTrash } from 'solid-icons/tb';
 import { deleteKeySnapshot, prepareKeyDeletion, type KeyDeletionScope } from '@/utils/storage';
+import { Portal } from 'solid-js/web';
 import { Cell } from './cell';
 
 type Deletion = Awaited<ReturnType<typeof prepareKeyDeletion>> & { description: string };
@@ -51,82 +52,88 @@ export const DeleteKeys = (props: {
     }
   };
   return (
-    <>
-      <Cell
-        component="button"
-        before={<TbOutlineTrash />}
-        variant="danger"
-        disabled={props.disabled || isBusy()}
-        onClick={prepare}
-      >
-        {props.label}
-      </Cell>
-      <Show when={error() && !pending()}>
-        <p role="alert" class="px-3 text-xs text-red-600">
-          {error()}
-        </p>
-      </Show>
-      <Show when={pending()}>
-        {(snapshot) => {
-          let dialog!: HTMLDialogElement;
-          onMount(() => dialog.showModal());
-          return (
-            <dialog
-              ref={dialog}
-              aria-labelledby="delete-title"
-              aria-describedby="delete-description"
-              onCancel={(event) => {
-                event.preventDefault();
-                if (!isBusy()) {
-                  setPending(null);
-                  setError(undefined);
-                }
-              }}
-              class="m-auto w-[calc(100%-32px)] max-w-md max-h-[calc(100vh-32px)] overflow-y-auto rounded-xl bg-white p-4 text-neutral-950 shadow-xl backdrop:bg-black/40 dark:bg-neutral-800 dark:text-neutral-50"
-            >
-              <h2 id="delete-title" class="text-base font-semibold">
-                Delete {snapshot().count} {snapshot().count === 1 ? 'record' : 'records'}?
-              </h2>
-              <p id="delete-description" class="mt-2 text-[13px] break-words">
-                {snapshot().description}
-              </p>
-              <p class="mt-2 text-xs text-neutral-500 dark:text-neutral-400">
-                Removes records from history and recent captures. This cannot be undone. New
-                captures arriving after this confirmation opened will be kept.
-              </p>
-              <Show when={error()}>
-                <p role="alert" class="mt-2 text-xs text-red-600">
-                  {error()}
-                </p>
-              </Show>
-              <div class="mt-4 flex justify-end gap-2">
-                <button
-                  autofocus
-                  type="button"
-                  disabled={isBusy()}
-                  onClick={() => {
+    <Cell
+      component="button"
+      before={<TbOutlineTrash />}
+      variant="danger"
+      disabled={props.disabled || isBusy()}
+      onClick={prepare}
+      subtitle={
+        <Show when={error() && !pending()}>
+          <span role="alert">{error()}</span>
+        </Show>
+      }
+    >
+      {props.label}
+      <Portal>
+        <Show when={pending()}>
+          {(snapshot) => {
+            let dialog!: HTMLDialogElement;
+            onMount(() => dialog.showModal());
+            return (
+              <dialog
+                ref={dialog}
+                onClick={(event) => {
+                  // Solid portal events bubble to the opening Cell unless stopped here.
+                  event.stopPropagation();
+                }}
+                aria-labelledby="delete-title"
+                aria-describedby="delete-description"
+                onCancel={(event) => {
+                  event.preventDefault();
+                  if (!isBusy()) {
                     setPending(null);
                     setError(undefined);
-                  }}
-                  class="min-h-11 rounded-lg px-4 text-[13px] focus-visible:outline-2 disabled:opacity-50"
-                >
-                  Cancel
-                </button>
-                <button
-                  type="button"
-                  disabled={isBusy() || snapshot().count === 0}
-                  onClick={confirm}
-                  class="min-h-11 rounded-lg bg-red-600 px-4 text-[13px] text-white focus-visible:outline-2 disabled:opacity-50"
-                >
-                  {isBusy()
-                    ? 'Deleting…'
-                    : `Delete ${snapshot().count} ${snapshot().count === 1 ? 'record' : 'records'}`}
-                </button>
-              </div>
-            </dialog>
-          );
-        }}
-      </Show>
-    </>
+                  }
+                }}
+                class="m-auto flex w-[280px] max-w-[calc(100%-32px)] max-h-[calc(100vh-32px)] flex-col overflow-hidden rounded-[14px] bg-[#EFEFF4] p-0 text-center text-neutral-950 shadow-xl backdrop:bg-black/40 dark:bg-neutral-800 dark:text-neutral-50"
+              >
+                <div class="min-h-0 overflow-y-auto p-4">
+                  <h2 id="delete-title" class="text-[14px] font-semibold">
+                    Delete {snapshot().count} {snapshot().count === 1 ? 'record' : 'records'}?
+                  </h2>
+                  <p id="delete-description" class="mt-2 text-[12px] break-words">
+                    {snapshot().description}
+                  </p>
+                  <p class="mt-2 text-[11px] text-neutral-500 dark:text-neutral-400">
+                    Removes records from history and recent captures. This cannot be undone. New
+                    captures arriving after this confirmation opened will be kept.
+                  </p>
+                  <Show when={error()}>
+                    <p role="alert" class="mt-2 text-xs text-red-600">
+                      {error()}
+                    </p>
+                  </Show>
+                </div>
+                <div class="flex shrink-0 flex-col">
+                  <button
+                    type="button"
+                    disabled={isBusy() || snapshot().count === 0}
+                    onClick={confirm}
+                    class="min-h-10 w-full cursor-pointer border-t border-neutral-300 px-4 py-2 text-[13px] text-red-600 hover:bg-black/5 focus-visible:outline-2 focus-visible:-outline-offset-2 disabled:cursor-default disabled:opacity-50 dark:border-neutral-600 dark:text-red-400 dark:hover:bg-white/5"
+                  >
+                    {isBusy()
+                      ? 'Deleting…'
+                      : `Delete ${snapshot().count} ${snapshot().count === 1 ? 'record' : 'records'}`}
+                  </button>
+                  <button
+                    autofocus
+                    type="button"
+                    disabled={isBusy()}
+                    onClick={() => {
+                      setPending(null);
+                      setError(undefined);
+                    }}
+                    class="min-h-10 w-full cursor-pointer border-t border-neutral-300 px-4 py-2 text-[13px] font-semibold text-[#007AFF] hover:bg-black/5 focus-visible:outline-2 focus-visible:-outline-offset-2 disabled:cursor-default disabled:opacity-50 dark:border-neutral-600 dark:text-blue-400 dark:hover:bg-white/5"
+                  >
+                    Cancel
+                  </button>
+                </div>
+              </dialog>
+            );
+          }}
+        </Show>
+      </Portal>
+    </Cell>
   );
 };

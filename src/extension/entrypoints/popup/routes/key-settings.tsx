@@ -101,12 +101,12 @@ export const KeySettings: Component<KeySettingsProps> = (props) => {
           >
             Delete
           </Cell>
+          <Show when={getWebsiteDomain(props.key.url)}>
+            {(domain) => (
+              <DeleteKeys label="Delete Site Keys" scope={{ kind: 'site', domain: domain() }} />
+            )}
+          </Show>
         </Section>
-        <Show when={getWebsiteDomain(props.key.url)}>
-          {(domain) => (
-            <DeleteKeys label="Delete This Site" scope={{ kind: 'site', domain: domain() }} />
-          )}
-        </Show>
         <Section header="Command builder (Bash / Zsh)">
           <Cell class="w-full">
             <textarea

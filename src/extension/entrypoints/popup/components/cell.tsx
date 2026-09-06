@@ -10,6 +10,12 @@ interface CellProps {
   variant?: 'default' | 'primary' | 'danger';
   before?: JSX.Element;
   after?: JSX.Element;
+  selection?: {
+    label: string;
+    checked: boolean;
+    indeterminate?: boolean;
+    onChange: (checked: boolean) => void;
+  };
   component?: 'div' | 'button' | 'label';
   disabled?: boolean;
   onClick?: () => void;
@@ -34,6 +40,27 @@ export const Cell: Component<CellProps> = (props) => {
       disabled={cellProps.component === 'button' ? props.disabled : undefined}
       onClick={props.onClick}
     >
+      <Show when={props.selection}>
+        {(selection) => (
+          <label
+            class="-my-2 -ml-3 flex min-h-11 w-[42px] shrink-0 cursor-pointer items-center justify-center"
+            onClick={(event) => event.stopPropagation()}
+          >
+            <input
+              type="checkbox"
+              class="size-4 cursor-pointer accent-blue-600 dark:accent-blue-400 dark:hover:accent-blue-300"
+              aria-label={selection().label}
+              checked={selection().checked}
+              ref={(input) =>
+                createEffect(() => {
+                  input.indeterminate = selection().indeterminate ?? false;
+                })
+              }
+              onChange={(event) => selection().onChange(event.currentTarget.checked)}
+            />
+          </label>
+        )}
+      </Show>
       {props.before && <div class="[&>svg]:w-[18px] [&>svg]:h-[18px] mr-3">{props.before}</div>}
       <div class="flex flex-col truncate select-none w-full">
         <span class="truncate">{props.children}</span>
