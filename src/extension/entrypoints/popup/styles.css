@@ -52,9 +52,14 @@
   }
 
   html {
-    min-width: 500px; /* Let children fit the space left by the scrollbar. */
-    overflow-y: auto; /* Adds scrollbar inside if needed */
-    scrollbar-gutter: stable; /* Keeps layout steady */
+    width: 500px; /* Keep the popup width independent of page content. */
+    overflow: hidden;
+  }
+
+  #root {
+    max-height: 600px;
+    overflow-y: auto;
+    scrollbar-gutter: stable; /* The 16px gutter supplies Layout's right spacing. */
   }
 
   ::-webkit-scrollbar {
