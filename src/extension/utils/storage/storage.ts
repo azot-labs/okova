@@ -5,7 +5,10 @@ import { RemoteClient } from '../remote-client';
 import { WidevineDeviceCredentials } from '../../../lib/widevine/device-credentials';
 import { PlayReadyDeviceCredentials } from '../../../lib/playready/device-credentials';
 import { fromBase64, fromBuffer } from '../../../lib';
-import { asJson } from './utils';
+import { asJson } from './json';
+import { defaultSettings, settingsStorage, storedSettings, type Settings } from './settings';
+
+export { defaultSettings, type Settings, type ThemeMode } from './settings';
 
 export type BadgeDrmSystem = 'W' | 'P' | 'C';
 
@@ -71,16 +74,6 @@ export const getRecentKeysForUrl = (
   return legacyDomain === domain ? legacyKeys : [];
 };
 
-export type Settings = {
-  spoofing: boolean;
-  clientPlayback: boolean;
-  emeInterception: boolean;
-  requestInterception: boolean;
-  theme: ThemeMode;
-};
-
-export type ThemeMode = 'light' | 'dark' | 'auto';
-
 export type Client = WidevineDeviceCredentials | PlayReadyDeviceCredentials | RemoteClient;
 export const clientInfoSchema = z.discriminatedUnion('type', [
   z.object({ type: z.literal('wvd'), data: z.string() }),
@@ -113,25 +106,6 @@ const mutateKeyHistory = (mutation: () => Promise<void>) =>
   navigator.locks.request('okova:key-history', mutation);
 
 const recentKeys = asJson(storage.defineItem<KeyInfo[]>('local:recent-keys'));
-
-const storedSettings = asJson(
-  storage.defineItem<Omit<Settings, 'clientPlayback'> & { clientPlayback?: boolean }>(
-    'local:settings',
-  ),
-);
-
-const normalizeSettings = (
-  settings: Awaited<ReturnType<typeof storedSettings.getValue>>,
-): Settings | null =>
-  settings ? { ...settings, clientPlayback: settings.clientPlayback ?? false } : null;
-
-export const defaultSettings: Settings = {
-  emeInterception: true,
-  spoofing: false,
-  clientPlayback: false,
-  requestInterception: false,
-  theme: 'auto',
-};
 
 const clientRegistrySchema = z.object({
   clients: z.array(z.object({ id: z.string(), info: clientInfoSchema })),
@@ -282,14 +256,7 @@ const clientStorage = {
 };
 
 export const appStorage = {
-  settings: {
-    ...storedSettings,
-    getValue: async () => normalizeSettings(await storedSettings.getValue()),
-    watch: (callback: (newValue: Settings | null, oldValue: Settings | null) => void) =>
-      storedSettings.watch((newValue, oldValue) =>
-        callback(normalizeSettings(newValue), normalizeSettings(oldValue)),
-      ),
-  },
+  settings: settingsStorage,
 
   recentKeys: {
     ...recentKeys,

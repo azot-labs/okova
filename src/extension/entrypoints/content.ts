@@ -1,14 +1,5 @@
-import { CLIENT_KEY_SYSTEMS } from '@okova/lib/key-system';
-import { appStorage } from '@/utils/storage';
+import { settingsStorage } from '@/utils/storage/settings';
 import type { PublicPath } from 'wxt/browser';
-
-const getActiveClientKeySystem = async () => {
-  const client = await appStorage.clients.active.getInfo();
-  if (!client) return null;
-  if (client.type === 'wvd') return CLIENT_KEY_SYSTEMS.widevine;
-  if (client.type === 'remote') return client.config.keySystem;
-  return CLIENT_KEY_SYSTEMS.playready;
-};
 
 const inject = (script: PublicPath) => {
   return new Promise<void>((resolve, reject) => {
@@ -33,7 +24,7 @@ export default defineContentScript({
   allFrames: true,
   async main() {
     // Checking if interception enabled
-    const settings = await appStorage.settings.getValue();
+    const settings = await settingsStorage.getValue();
 
     // Listen for event from injected script
     window.addEventListener(
@@ -46,10 +37,7 @@ export default defineContentScript({
         const { requestId, log } = event.data;
         const message = { ...log, url: window.location.href };
         try {
-          const body =
-            log.action === 'playback-config'
-              ? await getActiveClientKeySystem()
-              : await browser.runtime.sendMessage(message);
+          const body = await browser.runtime.sendMessage(message);
           // Firefox blocks page scripts from reading object detail created in a content script.
           window.dispatchEvent(
             new CustomEvent('drm-message-response', {

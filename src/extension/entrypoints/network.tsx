@@ -15,13 +15,13 @@ export default defineUnlistedScript(() => {
   };
 
   const filterData = (url: string, text: string) => {
-    const isManifest = text.startsWith('<?xml') || text.startsWith('<MPD');
+    const isManifest = text.trimStart().startsWith('<');
     return isManifest;
   };
 
   const postMessage = (url: string, headers: Record<string, string>, text: string) => {
     const message = {
-      jsonrpc: '2.0',
+      namespace: 'okova:network',
       method: 'response',
       params: { url, text, headers },
       id: Date.now(),

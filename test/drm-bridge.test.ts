@@ -2,18 +2,18 @@ import { afterEach, beforeEach, expect, test, vi } from 'vitest';
 import { browser } from 'wxt/browser';
 import type { ContentScriptContext } from 'wxt/utils/content-script-context';
 import content from '../src/extension/entrypoints/content';
-import { appStorage, type Settings } from '../src/extension/utils/storage';
+import { settingsStorage, type Settings } from '../src/extension/utils/storage/settings';
 import { sendDrmMessage } from '../src/extension/utils/drm-bridge';
 
-vi.mock('../src/extension/utils/storage', () => ({
-  appStorage: { settings: { getValue: vi.fn<() => Promise<Partial<Settings>>>() } },
+vi.mock('../src/extension/utils/storage/settings', () => ({
+  settingsStorage: { getValue: vi.fn<() => Promise<Settings | null>>() },
 }));
 
 const postMessage = vi.fn<(message: { requestId: string }, origin: string) => void>();
 const sendMessage = vi.fn<(message: unknown) => Promise<unknown>>();
 
 beforeEach(() => {
-  vi.mocked(appStorage.settings.getValue).mockResolvedValue(null);
+  vi.mocked(settingsStorage.getValue).mockResolvedValue(null);
   vi.useFakeTimers();
   vi.stubGlobal(
     'window',
@@ -174,7 +174,7 @@ test.each([undefined, 'license challenge', { keys: [{ id: 'key-id', value: 'key-
 );
 
 test('registers the bridge before loading scripts and waits for manifest initialization', async () => {
-  vi.mocked(appStorage.settings.getValue).mockResolvedValue({
+  vi.mocked(settingsStorage.getValue).mockResolvedValue({
     emeInterception: true,
     spoofing: true,
     clientPlayback: true,

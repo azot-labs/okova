@@ -70,6 +70,7 @@ test.each(['', 'text', 'arraybuffer', 'blob', 'document'] satisfies XMLHttpReque
     await vi.waitFor(() => expect(postMessage).toHaveBeenCalledTimes(1));
     expect(postMessage).toHaveBeenCalledWith(
       expect.objectContaining({
+        namespace: 'okova:network',
         method: 'response',
         params: { url, text: manifest, headers: { 'content-type': 'application/dash+xml' } },
       }),

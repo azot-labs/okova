@@ -28,7 +28,7 @@ Import a Widevine or PlayReady client in **Clients**. Okova automatically enable
 
 Playback depends on the website, browser, and client. Offline licenses and hardware-protected playback are not supported.
 
-Experimental request interception detects streaming manifests in page fetch and XMLHttpRequest responses. Requests made inside workers are not inspected.
+Experimental request interception associates Widevine and PlayReady DASH manifests with captured sessions using their `cenc:pssh` boxes. It supports page fetch and XMLHttpRequest responses, including alternate XML prefixes and concatenated initialization data. HLS playlists and requests made inside workers are not inspected.
 
 The toolbar badge shows a count capped at `99+`, followed by `W`, `P`, or `C` for Widevine, PlayReady, or ClearKey, such as `3W` or `99+W`:
 
