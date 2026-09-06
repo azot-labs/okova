@@ -34,7 +34,27 @@ export default defineUnlistedScript(() => {
     const headers = Object.fromEntries(response.headers.entries());
     if (!filterHead(url, headers)) return;
 
-    const text = await response.clone().text();
+    const reader = response.clone().body?.getReader();
+    if (!reader) return;
+    const decoder = new TextDecoder();
+    let sizeBytes = 0;
+    let text = '';
+    try {
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        sizeBytes += value.byteLength;
+        if (sizeBytes >= MAX_SIZE) {
+          // A tee's cancellation can wait for the page to consume its branch.
+          void reader.cancel().catch(() => {});
+          return;
+        }
+        text += decoder.decode(value, { stream: true });
+      }
+      text += decoder.decode();
+    } finally {
+      reader.releaseLock();
+    }
     if (filterData(url, text)) postMessage(url, headers, text);
   };
 
@@ -83,7 +103,7 @@ export default defineUnlistedScript(() => {
           const header = parts.shift();
           if (!header) continue;
           const value = parts.join(': ');
-          headers[header] = value;
+          headers[header.toLowerCase()] = value;
         }
         if (!filterHead(url, headers)) return;
 
@@ -101,7 +121,7 @@ export default defineUnlistedScript(() => {
             text = new TextDecoder().decode(response);
             break;
           case 'blob':
-            if (!(response instanceof Blob)) return;
+            if (!(response instanceof Blob) || response.size >= MAX_SIZE) return;
             text = await response.text();
             break;
           case 'document':
@@ -111,6 +131,9 @@ export default defineUnlistedScript(() => {
           default:
             return;
         }
+        // Reject long strings before allocating a UTF-8 copy for the byte check.
+        if (text.length >= MAX_SIZE || new TextEncoder().encode(text).byteLength >= MAX_SIZE)
+          return;
         if (filterData(url, text)) postMessage(url, headers, text);
       }
     }

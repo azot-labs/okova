@@ -18,8 +18,7 @@ type ServeOptions = {
 };
 
 export const serve = async (options: ServeOptions = {}) => {
-  const configPath = options.config || 'okova.config.json';
-  await loadConfig(configPath);
+  await loadConfig(options.config);
   if (options.client) config.clients.push(options.client);
   if (!config.clients.length) {
     const files = await readdir(process.cwd());

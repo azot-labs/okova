@@ -99,6 +99,8 @@ test.each([
   ['license'],
   ['client', 'info', 'missing.wvd'],
   ['serve', '--config', 'invalid-config.json'],
+  ['serve', '--config', 'missing-config.json'],
+  ['serve', '--config', 'input.wvd'],
 ])('rejects invalid or unimplemented invocation %j', (...args) => {
   const result = run(args);
   expect(result.status, result.stdout).toBe(1);
