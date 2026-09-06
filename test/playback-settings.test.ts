@@ -1,6 +1,6 @@
 import { beforeEach, expect, test } from 'vitest';
 import { browser } from 'wxt/browser';
-import { fakeBrowser } from 'wxt/testing';
+import { fakeBrowser } from 'wxt/testing/fake-browser';
 import { appStorage } from '../src/extension/utils/storage';
 
 beforeEach(() => fakeBrowser.reset());

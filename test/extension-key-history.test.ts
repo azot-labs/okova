@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, expect, test, vi } from 'vitest';
 import { browser } from 'wxt/browser';
-import { fakeBrowser } from 'wxt/testing';
+import { fakeBrowser } from 'wxt/testing/fake-browser';
 import background from '../src/extension/entrypoints/background';
 import { appStorage, type KeyInfo } from '../src/extension/utils/storage';
 import { fromHex, Widevine } from '../src/lib';

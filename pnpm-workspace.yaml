@@ -5,5 +5,3 @@ allowBuilds:
   okova: true
   protobufjs: true
   spawn-sync: true
-minimumReleaseAgeExclude:
-  - '@hono/node-server@2.0.4'

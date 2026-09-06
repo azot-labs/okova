@@ -1,3 +1,4 @@
+import { Reader } from 'protobufjs/minimal';
 import { WrmHeader } from './playready/wrmheader';
 import { readPlayreadyObject } from './playready/object';
 import { fromBase64, fromBuffer, fromHex } from './utils';
@@ -193,7 +194,10 @@ export const setPsshKeyIds = (box: ParsedPsshBox, keyIds: readonly PsshId[]): Pa
     throw new Error('KID replacement is supported only for Widevine PSSH boxes');
   }
   const ids = keyIds.map(normalizeId);
-  const payload = WidevinePsshData.decode(box.data);
+  const reader = Reader.create(box.data);
+  // protobufjs now discards unknown fields by default; editing must preserve them.
+  reader.discardUnknown = false;
+  const payload = WidevinePsshData.decode(reader);
   payload.keyIds = ids.map((id) => fromHex(id).toBuffer());
   const data = WidevinePsshData.encode(payload).finish();
   return box.version === 1 ? { ...box, data, keyIds: ids } : { ...box, data, keyIds: [] };

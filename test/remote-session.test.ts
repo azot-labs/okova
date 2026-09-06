@@ -65,7 +65,6 @@ test('remote session', async () => {
   expect(keys.size).toBe(5);
   expect(keys.get('ccbf5fb4c2965be7aa130ffb3ba9fd73')).toBe('9cc0c92044cb1d69433f5f5839a159df');
 
-  await session.close();
   await session.remove();
 });
 

@@ -1,5 +1,7 @@
+import { Reader } from 'protobufjs/minimal';
+
 export type ProtobufCodec<T extends object> = {
-  decode(buffer: Uint8Array): T;
+  decode(buffer: Uint8Array | Reader): T;
   encode: unknown;
 };
 
@@ -11,7 +13,10 @@ export const tryDecodeExactly = <T extends object>(
   codec: ProtobufCodec<T>,
 ): T | null => {
   try {
-    const decoded = codec.decode(data);
+    const reader = Reader.create(data);
+    // Exact round trips must retain fields this version of the schema does not know.
+    reader.discardUnknown = false;
+    const decoded = codec.decode(reader);
     const encode = codec.encode as (message: T) => { finish(): Uint8Array };
     const encoded = encode(decoded).finish();
     return areBytesEqual(encoded, data) ? decoded : null;

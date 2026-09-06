@@ -1,5 +1,5 @@
 import { afterEach, expect, test } from 'vitest';
-import { fakeBrowser } from 'wxt/testing';
+import { fakeBrowser } from 'wxt/testing/fake-browser';
 import { usesPywidevineFallback } from '../src/lib/remote/pywidevine';
 import { parseRemoteConfig } from '../src/lib/remote/config';
 import { RemoteClient } from '../src/extension/utils/remote-client';

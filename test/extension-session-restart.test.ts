@@ -2,7 +2,7 @@ import { readFile } from 'node:fs/promises';
 import { generateKeyPairSync } from 'node:crypto';
 import { afterEach, beforeEach, expect, test, vi } from 'vitest';
 import { browser, type Browser } from 'wxt/browser';
-import { fakeBrowser } from 'wxt/testing';
+import { fakeBrowser } from 'wxt/testing/fake-browser';
 import background from '../src/extension/entrypoints/background';
 import { appStorage } from '../src/extension/utils/storage';
 import { WidevineDeviceCredentials } from '../src/lib/widevine/device-credentials';

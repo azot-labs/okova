@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, expect, test, vi } from 'vitest';
 import { browser, type Browser } from 'wxt/browser';
-import { fakeBrowser } from 'wxt/testing';
+import { fakeBrowser } from 'wxt/testing/fake-browser';
 import background from '../src/extension/entrypoints/background';
 import { getBadgeStorage } from '../src/extension/utils/badge';
 import { appStorage, getDrmFailureStorage } from '../src/extension/utils/storage';
@@ -30,6 +30,7 @@ const sessions: Session[] = [];
 const tab = (id: number): Browser.tabs.Tab => ({
   id,
   index: 0,
+  lastAccessed: 0,
   pinned: false,
   highlighted: false,
   windowId: 1,
@@ -636,6 +637,7 @@ test.each([true, false])(
 test.each(['com.widevine.alpha', 'com.microsoft.playready', undefined])(
   'does not capture ClearKey-shaped JSON for key system %s',
   async (keySystem) => {
+    vi.mocked(Session.prototype.update).mockRestore();
     const send = startBackground();
     await send('generateRequest', 'other', {}, { keySystem });
     const message = new TextEncoder().encode(
