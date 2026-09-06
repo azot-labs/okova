@@ -1,21 +1,24 @@
 import { readFile } from 'node:fs/promises';
 import { expect, test, describe } from 'vitest';
-import { fromBase64 } from '../src/lib';
-import { requestMediaKeySystemAccess, setSupportedEngines } from '../src/lib/api';
-import { Widevine } from '../src/lib/widevine/engine';
-import { WidevineSession } from '../src/lib/widevine/session';
-import { PlayReady } from '../src/lib/playready/engine';
-import { PlayReadySession } from '../src/lib/playready/session';
+import { fromBase64, Session } from '../../src/lib';
+import { requestMediaKeySystemAccess, setSupportedEngines } from '../../src/lib/api';
+import { Widevine } from '../../src/lib/widevine/engine';
+import { WidevineSession } from '../../src/lib/widevine/session';
+import { PlayReady } from '../../src/lib/playready/engine';
+import { PlayReadySession } from '../../src/lib/playready/session';
 
 describe('Widevine Session Resumability', () => {
-  test('should pause and resume widevine session via CDM methods', async () => {
+  test('should pause and resume widevine session via CDM methods', async ({ skip }) => {
     const pssh =
       'AAAAW3Bzc2gAAAAA7e+LqXnWSs6jyCfc1R0h7QAAADsIARIQ62dqu8s0Xpa7z2FmMPGj2hoNd2lkZXZpbmVfdGVzdCIQZmtqM2xqYVNkZmFsa3IzaioCSEQyAA==';
     const initData = fromBase64(pssh).toBuffer();
     const initDataType = 'cenc';
 
     const clientPath = process.env.VITEST_WVD_PATH;
-    if (!clientPath) return console.warn('Widevine client not found. Skipping test');
+    if (!clientPath) {
+      skip('Set the DRM device path to enable this test');
+      return;
+    }
 
     const clientData = await readFile(clientPath);
     const client = await Widevine.DeviceCredentials.from({ wvd: clientData });
@@ -23,11 +26,11 @@ describe('Widevine Session Resumability', () => {
 
     // Create and setup session
     setSupportedEngines([cdm]);
-    const keySystemAccess = requestMediaKeySystemAccess(cdm.keySystem, []);
+    const keySystemAccess = await requestMediaKeySystemAccess(cdm.keySystem, [{}]);
     const mediaKeys = await keySystemAccess.createMediaKeys();
     const session = mediaKeys.createSession();
-    session.generateRequest(initDataType, initData);
-    const licenseRequest = await session.waitForLicenseRequest();
+    await session.generateRequest(initDataType, initData);
+    await session.waitForLicenseRequest();
 
     // Get original session properties
     const originalSessionId = session.sessionId;
@@ -53,9 +56,12 @@ describe('Widevine Session Resumability', () => {
     expect(restoredSession!.sessionType).toBe(originalSessionType);
   });
 
-  test('should pause and resume widevine session via Session static methods', async () => {
+  test('should pause and resume widevine session via Session static methods', async ({ skip }) => {
     const clientPath = process.env.VITEST_WVD_PATH;
-    if (!clientPath) return console.warn('Widevine client not found. Skipping test');
+    if (!clientPath) {
+      skip('Set the DRM device path to enable this test');
+      return;
+    }
 
     const clientData = await readFile(clientPath);
     const client = await Widevine.DeviceCredentials.from({ wvd: clientData });
@@ -76,14 +82,17 @@ describe('Widevine Session Resumability', () => {
     expect(restoredSession.sessionType).toBe('temporary');
   });
 
-  test('should preserve session state during pause/resume roundtrip', async () => {
+  test('should preserve session state during pause/resume roundtrip', async ({ skip }) => {
     const pssh =
       'AAAAW3Bzc2gAAAAA7e+LqXnWSs6jyCfc1R0h7QAAADsIARIQ62dqu8s0Xpa7z2FmMPGj2hoNd2lkZXZpbmVfdGVzdCIQZmtqM2xqYVNkZmFsa3IzaioCSEQyAA==';
     const initData = fromBase64(pssh).toBuffer();
     const initDataType = 'cenc';
 
     const clientPath = process.env.VITEST_WVD_PATH;
-    if (!clientPath) return console.warn('Widevine client not found. Skipping test');
+    if (!clientPath) {
+      skip('Set the DRM device path to enable this test');
+      return;
+    }
 
     const clientData = await readFile(clientPath);
     const client = await Widevine.DeviceCredentials.from({ wvd: clientData });
@@ -108,19 +117,19 @@ describe('Widevine Session Resumability', () => {
     expect(restoredSession.contexts.size).toBe(originalSession.contexts.size);
   });
 
-  test('should handle persistent-license session type', async () => {
+  test('should handle persistent-license session type', async ({ skip }) => {
     const clientPath = process.env.VITEST_WVD_PATH;
-    if (!clientPath) return console.warn('Widevine client not found. Skipping test');
+    if (!clientPath) {
+      skip('Set the DRM device path to enable this test');
+      return;
+    }
 
     const clientData = await readFile(clientPath);
     const client = await Widevine.DeviceCredentials.from({ wvd: clientData });
     const cdm = new Widevine({ deviceCredentials: client });
 
     // Create persistent session
-    setSupportedEngines([cdm]);
-    const keySystemAccess = requestMediaKeySystemAccess(cdm.keySystem, []);
-    const mediaKeys = await keySystemAccess.createMediaKeys();
-    const session = mediaKeys.createSession('persistent-license');
+    const session = new Session('persistent-license', cdm);
 
     // Pause
     const state = session.pause();
@@ -136,9 +145,12 @@ describe('Widevine Session Resumability', () => {
 });
 
 describe('PlayReady Session Resumability', () => {
-  test('should pause and resume playready session via CDM methods', async () => {
+  test('should pause and resume playready session via CDM methods', async ({ skip }) => {
     const clientPath = process.env.VITEST_PRD_PATH;
-    if (!clientPath) return console.warn('PlayReady client not found. Skipping test');
+    if (!clientPath) {
+      skip('Set the DRM device path to enable this test');
+      return;
+    }
 
     const clientData = await readFile(clientPath);
     const client = await PlayReady.DeviceCredentials.from({ prd: clientData });
@@ -146,7 +158,7 @@ describe('PlayReady Session Resumability', () => {
 
     // Create session
     setSupportedEngines([cdm]);
-    const keySystemAccess = requestMediaKeySystemAccess(cdm.keySystem, []);
+    const keySystemAccess = await requestMediaKeySystemAccess(cdm.keySystem, [{}]);
     const mediaKeys = await keySystemAccess.createMediaKeys();
     const session = mediaKeys.createSession();
 
@@ -174,9 +186,12 @@ describe('PlayReady Session Resumability', () => {
     expect(restoredSession!.sessionType).toBe(originalSessionType);
   });
 
-  test('should pause and resume playready session via Session static methods', async () => {
+  test('should pause and resume playready session via Session static methods', async ({ skip }) => {
     const clientPath = process.env.VITEST_PRD_PATH;
-    if (!clientPath) return console.warn('PlayReady client not found. Skipping test');
+    if (!clientPath) {
+      skip('Set the DRM device path to enable this test');
+      return;
+    }
 
     const clientData = await readFile(clientPath);
     const client = await PlayReady.DeviceCredentials.from({ prd: clientData });
@@ -206,9 +221,12 @@ describe('PlayReady Session Resumability', () => {
     expect(restoredSession.sessionType).toBe('temporary');
   });
 
-  test('should preserve session cryptographic state during pause/resume', async () => {
+  test('should preserve session cryptographic state during pause/resume', async ({ skip }) => {
     const clientPath = process.env.VITEST_PRD_PATH;
-    if (!clientPath) return console.warn('PlayReady client not found. Skipping test');
+    if (!clientPath) {
+      skip('Set the DRM device path to enable this test');
+      return;
+    }
 
     const clientData = await readFile(clientPath);
     const client = await PlayReady.DeviceCredentials.from({ prd: clientData });
@@ -232,19 +250,19 @@ describe('PlayReady Session Resumability', () => {
     expect(restoredSession.clientVersion).toBe(originalSession.clientVersion);
   });
 
-  test('should handle persistent-license session type for playready', async () => {
+  test('should handle persistent-license session type for playready', async ({ skip }) => {
     const clientPath = process.env.VITEST_PRD_PATH;
-    if (!clientPath) return console.warn('PlayReady client not found. Skipping test');
+    if (!clientPath) {
+      skip('Set the DRM device path to enable this test');
+      return;
+    }
 
     const clientData = await readFile(clientPath);
     const client = await PlayReady.DeviceCredentials.from({ prd: clientData });
     const cdm = new PlayReady({ deviceCredentials: client });
 
     // Create persistent session
-    setSupportedEngines([cdm]);
-    const keySystemAccess = requestMediaKeySystemAccess(cdm.keySystem, []);
-    const mediaKeys = await keySystemAccess.createMediaKeys();
-    const session = mediaKeys.createSession('persistent-license');
+    const session = new Session('persistent-license', cdm);
 
     // Pause
     const state = session.pause();
@@ -260,11 +278,16 @@ describe('PlayReady Session Resumability', () => {
 });
 
 describe('Cross-system Resumability', () => {
-  test('should properly distinguish between widevine and playready paused sessions', async () => {
+  test('should properly distinguish between widevine and playready paused sessions', async ({
+    skip,
+  }) => {
     const widevinePath = process.env.VITEST_WVD_PATH;
     const playreadyPath = process.env.VITEST_PRD_PATH;
 
-    if (!widevinePath || !playreadyPath) return console.warn('Client not found. Skipping test');
+    if (!widevinePath || !playreadyPath) {
+      skip('Set VITEST_WVD_PATH and VITEST_PRD_PATH');
+      return;
+    }
 
     // Create Widevine session
     const widevineData = await readFile(widevinePath);

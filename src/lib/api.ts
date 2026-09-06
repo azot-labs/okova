@@ -150,7 +150,7 @@ export abstract class BaseMediaKeysEngine implements MediaKeysEngine {
   abstract readonly keySystem: string;
 
   async getStatusForPolicy(): Promise<MediaKeyStatus> {
-    return 'usable';
+    throw new DOMException('Output policy checks are not supported', 'NotSupportedError');
   }
 
   abstract setServerCertificate(serverCertificate: Uint8Array): Promise<boolean>;
@@ -254,7 +254,6 @@ export class Session extends EventTarget implements MediaKeySession {
   engine: MediaKeysEngine;
   keys: MediaKeysMap;
 
-  // @ts-ignore
   initData?: BufferSource | undefined;
   initDataType?: string | undefined;
 
@@ -509,30 +508,97 @@ export const setSupportedEngines = (engines: MediaKeysEngine[]) => {
   }
 };
 
-/**
- * https://www.w3.org/TR/encrypted-media-2/#navigator-extension-requestmediakeysystemaccess
- */
-export const requestMediaKeySystemAccess = (
+// The EME adapter negotiates license acquisition. The engines do not provide a
+// media decoder, persistent license store, or hardware/output-policy enforcement.
+const negotiateConfiguration = (
+  candidate: MediaKeySystemConfiguration,
+): MediaKeySystemConfiguration | undefined => {
+  if (
+    candidate.persistentState === 'required' ||
+    candidate.distinctiveIdentifier === 'required' ||
+    candidate.sessionTypes?.some((type) => type !== 'temporary') ||
+    candidate.sessionTypes?.length === 0 ||
+    candidate.audioCapabilities?.length ||
+    candidate.videoCapabilities?.length
+  )
+    return;
+
+  const initDataTypes = candidate.initDataTypes?.filter((type) => type === 'cenc') ?? [];
+  if (candidate.initDataTypes?.length && !initDataTypes.length) return;
+
+  return {
+    label: candidate.label ?? '',
+    initDataTypes,
+    audioCapabilities: [],
+    videoCapabilities: [],
+    distinctiveIdentifier: 'not-allowed',
+    persistentState: 'not-allowed',
+    sessionTypes: ['temporary'],
+  };
+};
+
+class EmeSession extends Session {
+  #isInitialized = false;
+
+  async generateRequest(initDataType: string, initData: BufferSource): Promise<void> {
+    if (this.#isInitialized) {
+      throw new DOMException('Session is already initialized', 'InvalidStateError');
+    }
+    if (!initDataType || !parseBufferSource(initData).byteLength) {
+      throw new TypeError('Initialization data and its type must not be empty');
+    }
+    if (initDataType !== 'cenc') {
+      throw new DOMException(
+        `Unsupported initialization data type: ${initDataType}`,
+        'NotSupportedError',
+      );
+    }
+    this.#isInitialized = true;
+    await super.generateRequest(initDataType, initData);
+  }
+
+  async load(sessionId: string): Promise<boolean> {
+    if (!sessionId) throw new TypeError('Session ID must not be empty');
+    throw new TypeError('Temporary sessions cannot load persistent licenses');
+  }
+}
+
+/** EME-shaped access for temporary cenc license acquisition, without native playback. */
+export const requestMediaKeySystemAccess = async (
   keySystem: string,
   supportedConfigurations: MediaKeySystemConfiguration[],
 ) => {
+  if (!keySystem || !supportedConfigurations.length) {
+    throw new TypeError('Key system and supported configurations must not be empty');
+  }
   const engine = enginesByKeySystem.get(keySystem);
-  if (!engine) throw new Error('Unsupported media key system');
+  if (!engine) throw new DOMException('Unsupported media key system', 'NotSupportedError');
+  const configuration = supportedConfigurations
+    .map(negotiateConfiguration)
+    .find((value) => value !== undefined);
+  if (!configuration) {
+    throw new DOMException('No supported media key system configuration', 'NotSupportedError');
+  }
+
   return {
     keySystem: engine.keySystem,
-    createMediaKeys: async () => {
-      return {
-        createSession: (sessionType?: MediaKeySessionType) => {
-          return new Session(sessionType, engine);
-        },
-        setServerCertificate: async (serverCertificate: BufferSource): Promise<boolean> => {
-          return engine.setServerCertificate(parseBufferSource(serverCertificate));
-        },
-        getStatusForPolicy: async (policy?: MediaKeysPolicy): Promise<MediaKeyStatus> => {
-          return engine.getStatusForPolicy(policy);
-        },
-      };
-    },
-    getConfiguration: () => supportedConfigurations[0],
+    createMediaKeys: async () => ({
+      createSession: (sessionType: MediaKeySessionType = 'temporary'): Session => {
+        if (sessionType !== 'temporary') {
+          throw new DOMException('Persistent licenses are not supported', 'NotSupportedError');
+        }
+        return new EmeSession(sessionType, engine);
+      },
+      setServerCertificate: async (serverCertificate: BufferSource): Promise<boolean> => {
+        const bytes = parseBufferSource(serverCertificate);
+        if (!bytes.byteLength) throw new TypeError('Server certificate must not be empty');
+        return engine.setServerCertificate(bytes);
+      },
+      getStatusForPolicy: async (policy?: MediaKeysPolicy): Promise<MediaKeyStatus> => {
+        if (!policy?.minHdcpVersion) throw new TypeError('An HDCP policy is required');
+        return engine.getStatusForPolicy(policy);
+      },
+    }),
+    getConfiguration: () => structuredClone(configuration),
   };
 };

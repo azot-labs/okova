@@ -2,13 +2,18 @@ import { readFile } from 'node:fs/promises';
 import { resolve } from 'node:path';
 import { afterEach, beforeEach, expect, test, vi } from 'vitest';
 import { Hono } from 'hono';
-import { fromBase64, Remote, Session, PlayReady, PlayReadyDeviceCredentials } from '../src/lib';
-import sessionApi from '../src/cli/commands/serve/api/session';
-import { clients, config, sessions } from '../src/cli/commands/serve/state';
-import { license } from '../src/cli/commands/license/license';
-import { LicenseRequest, SignedMessage } from '../src/lib/widevine/proto';
-import { loadWidevineDeviceCredentials, PSSH } from './utils';
-import { SERVICE_CERTIFICATE } from './service-certificate';
+import { fromBase64, Remote, Session, PlayReady, PlayReadyDeviceCredentials } from '../../src/lib';
+import sessionApi from '../../src/cli/commands/serve/api/session';
+import { clients, config, sessions } from '../../src/cli/commands/serve/state';
+import { license } from '../../src/cli/commands/license/license';
+import { LicenseRequest, SignedMessage } from '../../src/lib/widevine/proto';
+import { loadWidevineDeviceCredentials, PSSH } from '../utils';
+import { SERVICE_CERTIFICATE } from '../service-certificate';
+
+beforeEach(({ skip }) => {
+  if (!process.env.VITEST_WVD_PATH) skip('Set VITEST_WVD_PATH to enable this fixture suite');
+  if (!process.env.VITEST_PRD_PATH) skip('Set VITEST_PRD_PATH to enable this fixture suite');
+});
 
 const certificate = fromBase64(SERVICE_CERTIFICATE).toBuffer();
 const initData = fromBase64(PSSH).toBuffer();
@@ -77,6 +82,7 @@ test('server validates certificates independently of the remote client', async (
   const session = await connect().createSession();
   const response = await app.request(`/sessions/${session.sessionId}/generate-request`, {
     method: 'POST',
+    signal: AbortSignal.timeout(30_000),
     headers: { 'content-type': 'application/json' },
     body: JSON.stringify({ initData: PSSH, serverCertificate: 'AQID' }),
   });
@@ -107,7 +113,7 @@ test('CLI encrypt fetches a certificate before sending an encrypted challenge', 
     license({
       url: 'http://license.test',
       pssh: PSSH,
-      clientPath: process.env.VITEST_WVD_PATH ?? 'clients/client.wvd',
+      clientPath: process.env.VITEST_WVD_PATH!,
       encrypt: true,
     }),
   ).rejects.toThrow('Challenge captured');
@@ -126,7 +132,7 @@ test.each([200, 500])(
       license({
         url: 'http://license.test',
         pssh: PSSH,
-        clientPath: process.env.VITEST_WVD_PATH ?? 'clients/client.wvd',
+        clientPath: process.env.VITEST_WVD_PATH!,
         encrypt: true,
       }),
     ).rejects.toThrow();
@@ -144,7 +150,7 @@ test('certificates do not carry over to another remote engine', async () => {
 });
 
 test('PlayReady rejects server certificates, forced privacy, and CLI encrypt', async () => {
-  const clientPath = process.env.VITEST_PRD_PATH ?? 'clients/client.prd';
+  const clientPath = process.env.VITEST_PRD_PATH!;
   const deviceCredentials = await PlayReadyDeviceCredentials.from({
     prd: await readFile(clientPath),
   });

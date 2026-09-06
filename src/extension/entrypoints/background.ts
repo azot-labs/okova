@@ -535,7 +535,7 @@ export default defineBackground({
           }
           stage = 'session';
           setSupportedEngines([cdm]);
-          const keySystemAccess = requestMediaKeySystemAccess(cdm.keySystem, []);
+          const keySystemAccess = await requestMediaKeySystemAccess(cdm.keySystem, [{}]);
           const mediaKeys = await run(keySystemAccess.createMediaKeys());
           const clientInfo = await run(fromClientToInfo(client));
           const session = mediaKeys.createSession();

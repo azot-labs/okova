@@ -1,8 +1,9 @@
+import { beforeEach } from 'vitest';
 import { expect, test } from 'vitest';
-import { fetchDecryptionKeysWithDefaults, loadWidevineClientData } from './utils';
-import { fromBuffer } from '../src/lib';
-import { WidevineDeviceCredentials } from '../src/lib/widevine/device-credentials';
-import { ClientIdentification } from '../src/lib/widevine/proto';
+import { fetchDecryptionKeysWithDefaults, loadWidevineClientData } from '../utils';
+import { fromBuffer } from '../../src/lib';
+import { WidevineDeviceCredentials } from '../../src/lib/widevine/device-credentials';
+import { ClientIdentification } from '../../src/lib/widevine/proto';
 
 test('export unpacked client data from packed fixture', async () => {
   const wvd = await loadWidevineClientData();
@@ -47,4 +48,8 @@ test('export wvd', async () => {
   const wvdClient = await WidevineDeviceCredentials.fromPacked(repackedWvd, 'wvd');
   const keys = await fetchDecryptionKeysWithDefaults(wvdClient);
   expect(keys.size).toBe(5);
+});
+
+beforeEach(({ skip }) => {
+  if (!process.env.VITEST_WVD_PATH) skip('Set VITEST_WVD_PATH to enable this demo');
 });

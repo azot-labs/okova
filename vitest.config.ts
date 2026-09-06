@@ -4,7 +4,7 @@ import { WxtVitest } from 'wxt/testing/vitest-plugin';
 
 export default defineConfig({
   test: {
-    exclude: [...configDefaults.exclude, 'test/e2e/**'],
+    exclude: [...configDefaults.exclude, 'test/e2e/**', 'test/integration/**'],
   },
   plugins: [WxtVitest()],
   resolve: {

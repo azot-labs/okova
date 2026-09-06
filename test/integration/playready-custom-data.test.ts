@@ -2,18 +2,22 @@ import { readFile } from 'node:fs/promises';
 import { resolve } from 'node:path';
 import { DOMParser } from '@xmldom/xmldom';
 import { Hono } from 'hono';
-import { afterEach, beforeAll, assert, expect, test, vi } from 'vitest';
+import { afterEach, beforeEach, assert, expect, test, vi } from 'vitest';
 import {
   fetchDecryptionKeys,
   PlayReady,
   PlayReadyDeviceCredentials,
   Remote,
   Session,
-} from '../src/lib';
-import { PlayReadySession } from '../src/lib/playready/session';
-import { createSha256, ecc256Verify } from '../src/lib/crypto/common';
-import sessionApi from '../src/cli/commands/serve/api/session';
-import { clients, config, sessions } from '../src/cli/commands/serve/state';
+} from '../../src/lib';
+import { PlayReadySession } from '../../src/lib/playready/session';
+import { createSha256, ecc256Verify } from '../../src/lib/crypto/common';
+import sessionApi from '../../src/cli/commands/serve/api/session';
+import { clients, config, sessions } from '../../src/cli/commands/serve/state';
+
+beforeEach(({ skip }) => {
+  if (!process.env.VITEST_PRD_PATH) skip('Set VITEST_PRD_PATH to enable this fixture suite');
+});
 
 const header =
   '<WRMHEADER xmlns="http://schemas.microsoft.com/DRM/2007/03/PlayReadyHeader" version="4.0.0.0"><DATA></DATA></WRMHEADER>';
@@ -22,9 +26,9 @@ const applicationData = '<app token="a&b">Привет \'world\'</app>';
 const originalConfig = structuredClone(config);
 let deviceCredentials: PlayReadyDeviceCredentials;
 
-beforeAll(async () => {
+beforeEach(async () => {
   deviceCredentials = await PlayReadyDeviceCredentials.from({
-    prd: await readFile(process.env.VITEST_PRD_PATH ?? resolve('clients/client.prd')),
+    prd: await readFile(process.env.VITEST_PRD_PATH!),
   });
 });
 
@@ -124,6 +128,7 @@ test('remote API keeps custom data separate for sessions sharing credentials', a
   }
   const response = await app.request('/sessions', {
     method: 'POST',
+    signal: AbortSignal.timeout(30_000),
     headers: { 'content-type': 'application/json' },
     body: JSON.stringify({ customData: { invalid: true } }),
   });
@@ -166,6 +171,7 @@ test('remote capacity applies across separate PlayReady engines', async () => {
     Array.from({ length: 17 }, () =>
       sessionApi.request('/', {
         method: 'POST',
+        signal: AbortSignal.timeout(30_000),
         headers: { 'Content-Type': 'application/json' },
         body: '{}',
       }),

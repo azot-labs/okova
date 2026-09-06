@@ -1,9 +1,8 @@
 import { readFile } from 'node:fs/promises';
-import { join } from 'node:path';
-import { assert, expect, test } from 'vitest';
-import * as common from '../src/lib/crypto/common';
-import { EccKey } from '../src/lib/crypto/ecc-key';
-import { fromBuffer } from '../src/lib';
+import { beforeEach, assert, expect, test } from 'vitest';
+import * as common from '../../src/lib/crypto/common';
+import { EccKey } from '../../src/lib/crypto/ecc-key';
+import { fromBuffer } from '../../src/lib';
 import {
   BCert,
   BCertBody,
@@ -13,14 +12,16 @@ import {
   Certificate,
   CertificateChain,
   ExtDataRecordSet,
-} from '../src/lib/playready/bcert';
-import { PlayReadyDeviceCredentials } from '../src/lib/playready/device-credentials';
-import { InvalidCertificate, InvalidCertificateChain } from '../src/lib/playready/exceptions';
+} from '../../src/lib/playready/bcert';
+import { PlayReadyDeviceCredentials } from '../../src/lib/playready/device-credentials';
+import { InvalidCertificate, InvalidCertificateChain } from '../../src/lib/playready/exceptions';
 
-const WORKDIR = join(process.cwd(), '');
+beforeEach(({ skip }) => {
+  if (!process.env.VITEST_PRD_PATH) skip('Set VITEST_PRD_PATH to enable this fixture suite');
+});
 
 const loadPlayReadyClientData = async () => {
-  const clientPath = process.env.VITEST_PRD_PATH ?? join(WORKDIR, 'clients', 'client.prd');
+  const clientPath = process.env.VITEST_PRD_PATH!;
   return readFile(clientPath);
 };
 

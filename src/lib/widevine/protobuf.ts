@@ -1,4 +1,4 @@
-import { Reader } from 'protobufjs/minimal';
+import { Reader } from 'protobufjs/minimal.js';
 
 export type ProtobufCodec<T extends object> = {
   decode(buffer: Uint8Array | Reader): T;

@@ -1,4 +1,4 @@
-import { Reader } from 'protobufjs/minimal';
+import { Reader } from 'protobufjs/minimal.js';
 import { WrmHeader } from './playready/wrmheader';
 import { readPlayreadyObject } from './playready/object';
 import { fromBase64, fromBuffer, fromHex } from './utils';

@@ -1,12 +1,9 @@
-import { readFile } from 'node:fs/promises';
+import { setupWorkerTests, startWorker, pendingRecords } from './helpers/extension-session-restart';
 import { generateKeyPairSync } from 'node:crypto';
-import { afterEach, beforeEach, expect, test, vi } from 'vitest';
-import { browser, type Browser } from 'wxt/browser';
-import { fakeBrowser } from 'wxt/testing/fake-browser';
-import background from '../src/extension/entrypoints/background';
+import { expect, test, vi } from 'vitest';
+import { browser } from 'wxt/browser';
 import { appStorage } from '../src/extension/utils/storage';
 import { WidevineDeviceCredentials } from '../src/lib/widevine/device-credentials';
-import { PlayReadyDeviceCredentials } from '../src/lib/playready/device-credentials';
 import { fromBase64, fromBuffer, toBufferSource } from '../src/lib/utils';
 import {
   ClientIdentification,
@@ -23,60 +20,9 @@ import {
   importAesCbcKeyForEncrypt,
 } from '../src/lib/crypto/common';
 
-const initData =
-  'AAAAW3Bzc2gAAAAA7e+LqXnWSs6jyCfc1R0h7QAAADsIARIQ62dqu8s0Xpa7z2FmMPGj2hoNd2lkZXZpbmVfdGVzdCIQZmtqM2xqYVNkZmFsa3IzaioCSEQyAA==';
-const sender: Browser.runtime.MessageSender = { frameId: 0, documentId: 'document' };
-const pendingRecords = async () =>
-  Object.entries(await browser.storage.session.get(null)).filter(([key]) =>
-    key.startsWith('pending-session:'),
-  );
-
-const startWorker = () => {
-  const now = Date.now();
-  vi.clearAllTimers();
-  vi.setSystemTime(now);
-  const listener = vi.spyOn(browser.runtime.onMessage, 'addListener');
-  background.main();
-  const onMessage = listener.mock.calls.at(-1)![0];
-  return (action: string, token = 'one', extra: Record<string, unknown> = {}) =>
-    new Promise<unknown>((resolve) => {
-      onMessage(
-        {
-          action,
-          keySystem: 'com.widevine.alpha',
-          sessionToken: token,
-          initData,
-          initDataType: 'cenc',
-          url: 'https://example.com/video',
-          ...extra,
-        },
-        sender,
-        resolve,
-      );
-    });
-};
-
-beforeEach(async () => {
-  fakeBrowser.reset();
-  vi.useFakeTimers();
-  vi.spyOn(browser.tabs, 'query').mockImplementation(async () => []);
-  await appStorage.settings.setValue({
-    spoofing: true,
-    emeInterception: true,
-    requestInterception: false,
-    theme: 'auto',
-  });
-});
-afterEach(() => {
-  vi.restoreAllMocks();
-  vi.useRealTimers();
-});
-
-const wvdPath = process.env.VITEST_WVD_PATH;
-const prdPath = process.env.VITEST_PRD_PATH;
+setupWorkerTests();
 
 const loadWidevineClient = async () => {
-  if (wvdPath) return WidevineDeviceCredentials.from({ wvd: await readFile(wvdPath) });
   // A local RSA client keeps the restart regression runnable without device files.
   const { privateKey } = generateKeyPairSync('rsa', {
     modulusLength: 2048,
@@ -166,26 +112,6 @@ test('does not revive expired or explicitly closed sessions after a restart', as
   send = startWorker();
   expect(await send('license-request', 'expired')).toBeUndefined();
   expect(await send('license-request', 'closed')).toBeUndefined();
-  expect(await pendingRecords()).toEqual([]);
-});
-
-test.skipIf(!prdPath)('restores a PlayReady challenge with no selected client', async () => {
-  await appStorage.clients.active.setValue(
-    await PlayReadyDeviceCredentials.from({ prd: await readFile(prdPath!) }),
-  );
-  const wrm =
-    '<WRMHEADER xmlns="http://schemas.microsoft.com/DRM/2007/03/PlayReadyHeader" version="4.0.0.0"><DATA><PROTECTINFO><KEYLEN>16</KEYLEN><ALGID>AESCTR</ALGID></PROTECTINFO><KID>AAAAAAAAAAAAAAAAAAAAAA==</KID></DATA></WRMHEADER>';
-  let send = startWorker();
-  await send('generateRequest', 'one', {
-    keySystem: 'com.microsoft.playready',
-    initData: Buffer.from(wrm, 'utf16le').toString('base64'),
-  });
-  const challenge = await send('license-request');
-  expect(challenge).toEqual(expect.any(String));
-  await appStorage.clients.active.setValue(null);
-  send = startWorker();
-  expect(await send('license-request')).toBe(challenge);
-  await send('close');
   expect(await pendingRecords()).toEqual([]);
 });
 

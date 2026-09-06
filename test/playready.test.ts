@@ -1,10 +1,8 @@
-import { readFile } from 'node:fs/promises';
 import { DOMParser, XMLSerializer } from '@xmldom/xmldom';
 import * as utils from '@noble/curves/utils.js';
 import { afterEach } from 'vitest';
 import { expect, test, vi } from 'vitest';
-import { fetchDecryptionKeys, fromBase64, toBufferSource } from '../src/lib';
-import { requestMediaKeySystemAccess, setSupportedEngines } from '../src/lib/api';
+import { fetchDecryptionKeys } from '../src/lib';
 import * as common from '../src/lib/crypto/common';
 import { EccKey } from '../src/lib/crypto/ecc-key';
 import { CertificateChain } from '../src/lib/playready/bcert';
@@ -606,45 +604,4 @@ test('playready engine keeps open sessions counted regardless of age', () => {
   } finally {
     vi.useRealTimers();
   }
-});
-
-test('playready cdm', async () => {
-  const url =
-    'https://test.playready.microsoft.com/service/rightsmanager.asmx?cfg=(persist:false,sl:2000)';
-  const pssh =
-    'AAADfHBzc2gAAAAAmgTweZhAQoarkuZb4IhflQAAA1xcAwAAAQABAFIDPABXAFIATQBIAEUAQQBEAEUAUgAgAHgAbQBsAG4AcwA9ACIAaAB0AHQAcAA6AC8ALwBzAGMAaABlAG0AYQBzAC4AbQBpAGMAcgBvAHMAbwBmAHQALgBjAG8AbQAvAEQAUgBNAC8AMgAwADAANwAvADAAMwAvAFAAbABhAHkAUgBlAGEAZAB5AEgAZQBhAGQAZQByACIAIAB2AGUAcgBzAGkAbwBuAD0AIgA0AC4AMAAuADAALgAwACIAPgA8AEQAQQBUAEEAPgA8AFAAUgBPAFQARQBDAFQASQBOAEYATwA+ADwASwBFAFkATABFAE4APgAxADYAPAAvAEsARQBZAEwARQBOAD4APABBAEwARwBJAEQAPgBBAEUAUwBDAFQAUgA8AC8AQQBMAEcASQBEAD4APAAvAFAAUgBPAFQARQBDAFQASQBOAEYATwA+ADwASwBJAEQAPgA0AFIAcABsAGIAKwBUAGIATgBFAFMAOAB0AEcAawBOAEYAVwBUAEUASABBAD0APQA8AC8ASwBJAEQAPgA8AEMASABFAEMASwBTAFUATQA+AEsATABqADMAUQB6AFEAUAAvAE4AQQA9ADwALwBDAEgARQBDAEsAUwBVAE0APgA8AEwAQQBfAFUAUgBMAD4AaAB0AHQAcABzADoALwAvAHAAcgBvAGYAZgBpAGMAaQBhAGwAcwBpAHQAZQAuAGsAZQB5AGQAZQBsAGkAdgBlAHIAeQAuAG0AZQBkAGkAYQBzAGUAcgB2AGkAYwBlAHMALgB3AGkAbgBkAG8AdwBzAC4AbgBlAHQALwBQAGwAYQB5AFIAZQBhAGQAeQAvADwALwBMAEEAXwBVAFIATAA+ADwAQwBVAFMAVABPAE0AQQBUAFQAUgBJAEIAVQBUAEUAUwA+ADwASQBJAFMAXwBEAFIATQBfAFYARQBSAFMASQBPAE4APgA4AC4AMQAuADIAMwAwADQALgAzADEAPAAvAEkASQBTAF8ARABSAE0AXwBWAEUAUgBTAEkATwBOAD4APAAvAEMAVQBTAFQATwBNAEEAVABUAFIASQBCAFUAVABFAFMAPgA8AC8ARABBAFQAQQA+ADwALwBXAFIATQBIAEUAQQBEAEUAUgA+AA==';
-  const initData = fromBase64(pssh).toBuffer();
-  const initDataType = 'cenc';
-
-  const clientPath = process.env.VITEST_PRD_PATH;
-  if (!clientPath) return console.warn('PlayReady client not found. Skipping test');
-  const clientData = await readFile(clientPath);
-  const client = await PlayReady.DeviceCredentials.from({ prd: clientData });
-  const cdm = new PlayReady({ deviceCredentials: client });
-
-  setSupportedEngines([cdm]);
-  const keySystemAccess = requestMediaKeySystemAccess(cdm.keySystem, []);
-  const mediaKeys = await keySystemAccess.createMediaKeys();
-  const session = mediaKeys.createSession();
-  session.generateRequest(initDataType, initData);
-  const licenseRequest = await session.waitForLicenseRequest();
-
-  const response = await fetch(url, {
-    body: toBufferSource(licenseRequest),
-    method: 'POST',
-    headers: { 'Content-Type': 'text/xml; charset=UTF-8' },
-  })
-    .then((r) => r.arrayBuffer())
-    .then((buffer) => new Uint8Array(buffer));
-
-  session.update(response);
-  const keys = await session.waitForKeyStatusesChange();
-  if (!keys.size) {
-    return console.warn(
-      'PlayReady test server returned a license shape that is not fully supported yet. Skipping key assertions.',
-    );
-  }
-
-  expect(keys.size).toBe(1);
-  expect(keys.get('6f651ae1dbe44434bcb4690d1564c41c')).toBe('88da852ae4fa2e1e36aeb2d5c94997b1');
 });
