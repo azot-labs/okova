@@ -11,7 +11,7 @@ export const SectionFooter: Component<{ children: JSX.Element }> = (props) => {
 type SectionProps = {
   header?: JSX.Element;
   footer?: JSX.Element;
-  children?: JSX.ArrayElement;
+  children?: JSX.Element;
 };
 
 export const Section: Component<SectionProps> = (props) => {

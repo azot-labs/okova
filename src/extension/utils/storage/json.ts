@@ -15,12 +15,11 @@ export const asJson = <K, T extends WxtStorageItem<K | null, {}> = WxtStorageIte
     const data = JSON.stringify(value) as unknown as K;
     return item.setValue(data);
   },
-  watch: (callback: WatchCallback<K>) => {
+  watch: (callback: WatchCallback<K | null>) => {
     return item.watch((newValue, oldValue) => {
-      if (!newValue) return;
       callback(
-        JSON.parse(newValue as unknown as string) as K,
-        JSON.parse(oldValue as unknown as string) as K,
+        newValue ? (JSON.parse(newValue as unknown as string) as K) : null,
+        oldValue ? (JSON.parse(oldValue as unknown as string) as K) : null,
       );
     });
   },
