@@ -38,20 +38,27 @@ export const Dashboard = () => {
 
   return (
     <Layout>
-      <Header>Dashboard</Header>
+      <Header
+        subtitle={`${activeClient()?.client.label}`}
+        actions={
+          <Show when={activeDomain()}>
+            {(domain) => (
+              <DeleteKeys
+                label="Delete Site Keys"
+                scope={{ kind: 'site', domain: domain() }}
+                compact
+              />
+            )}
+          </Show>
+        }
+      >
+        Dashboard
+      </Header>
       <div class="flex flex-col gap-3">
         <Toolbar />
 
         <Show when={!activeClient() && clients().length === 0}>
           <CellImportClient />
-        </Show>
-
-        <Show when={activeClient()}>
-          <Section>
-            <Cell class="capitalize" component="label" subtitle="Active">
-              {`${activeClient()?.client.label}`}
-            </Cell>
-          </Section>
         </Show>
 
         <Show when={activeFailure()}>
@@ -67,13 +74,6 @@ export const Dashboard = () => {
           )}
         </Show>
 
-        <Show when={activeDomain()}>
-          {(domain) => (
-            <Section>
-              <DeleteKeys label="Delete Site Keys" scope={{ kind: 'site', domain: domain() }} />
-            </Section>
-          )}
-        </Show>
         <KeysList
           keys={activeDomainRecentKeys}
           header={

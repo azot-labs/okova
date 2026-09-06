@@ -6,6 +6,7 @@ import { cn } from '../utils/cn';
 type HeaderProps = {
   children: JSX.Element;
   backHref?: string;
+  subtitle?: JSX.Element;
   actions?: JSX.Element;
   onClose?: () => void;
 };
@@ -14,8 +15,8 @@ export const Header: Component<HeaderProps> = (props) => {
   return (
     <div
       class={cn(
-        'text-lg font-bold flex gap-3 items-center select-none',
-        '-mt-4 py-2 mb-3',
+        'text-base font-bold flex gap-3 items-center select-none min-h-11',
+        '-mt-4 py-1 mb-3',
         'px-4',
         'rounded-b-lg',
         'shadow-xs dark:outline-1 dark:outline-neutral-700/80',
@@ -37,7 +38,14 @@ export const Header: Component<HeaderProps> = (props) => {
           <FaSolidArrowLeft class="size-3.5" />
         </A>
       </Show>
-      <span>{props.children}</span>
+      <div>
+        {props.children}
+        <Show when={props.subtitle}>
+          <div class="text-[10px] font-normal -mt-0.5 text-neutral-500/80 dark:text-neutral-400/80">
+            {props.subtitle}
+          </div>
+        </Show>
+      </div>
       <div class="ml-auto flex gap-3 items-center">{props.actions}</div>
     </div>
   );
