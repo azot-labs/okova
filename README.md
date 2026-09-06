@@ -52,6 +52,33 @@ Navigation or reload clears the current result; saved content keys then appear b
 
 [Read Mozilla's guide](https://developer.mozilla.org/en-US/docs/Mozilla/Add-ons/WebExtensions/Your_first_WebExtension#installing)
 
+### End-to-end test
+
+The headless E2E test uses Vitest with Playwright to load the built Chrome extension, enable
+Spoofing, import a Widevine client, and retrieve keys from the live
+[Bitmovin DRM demo](https://bitmovin.com/demos/drm). It checks that fresh Widevine content keys
+are saved for Bitmovin and displayed in the popup. Successful video playback is not required.
+
+Install the browser once:
+
+```bash
+pnpm exec playwright install chromium
+```
+
+Set `VITEST_WIDEVINE_CLIENT_PATH` in `.env` to an absolute path to your `.wvd` file, or a path
+relative to the repository root. Then run:
+
+```bash
+pnpm test:e2e
+```
+
+The command builds the extension before testing. Each run uses a temporary browser profile,
+which is deleted afterward. The test skips when the client path is unset or the file is
+missing. It runs separately from `pnpm test` because it depends on the live demo and license
+server. Network failures, Cloudflare verification, unsupported native Widevine, and rejected
+credentials fail the test rather than skipping it. The browser must support native Widevine
+as well as extension loading; importing a `.wvd` alone does not provide browser EME support.
+
 ## Command-line tool
 
 ### Installation

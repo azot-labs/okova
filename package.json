@@ -30,7 +30,8 @@
     "format": "oxfmt .",
     "format:check": "oxfmt --check .",
     "postinstall": "node scripts/postinstall.js",
-    "test": "vitest"
+    "test": "vitest",
+    "test:e2e": "pnpm run build:chrome && vitest run --config vitest.e2e.config.ts"
   },
   "repository": {
     "type": "git",
@@ -102,6 +103,7 @@
     "clsx": "^2.1.1",
     "oxfmt": "^0.51.0",
     "oxlint": "^1.66.0",
+    "playwright": "^1.63.0",
     "postcss": "^8.5.15",
     "solid-icons": "^1.2.0",
     "solid-js": "^1.9.13",
