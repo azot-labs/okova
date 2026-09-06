@@ -352,10 +352,11 @@ export const appStorage = {
       }),
     remove: (key: KeyInfo) =>
       mutateKeyHistory(async () => {
-        // Match the history identity; recent captures may have newer timestamps.
+        // Status values can change in recent caches while history retains the original.
+        // Captured keys still require an exact value match; timestamps may differ.
         const keepRecord = (storedKey: KeyInfo) =>
           storedKey.id !== key.id ||
-          storedKey.value !== key.value ||
+          ((isCapturedKey(storedKey) || isCapturedKey(key)) && storedKey.value !== key.value) ||
           storedKey.pssh !== key.pssh ||
           storedKey.url !== key.url;
         const [keys, recent, domains] = await Promise.all([
