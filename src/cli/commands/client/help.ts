@@ -1,25 +1,19 @@
 import { col } from '../../utils';
 
 export const help = () => {
-  console.log(`okova client: Widevine client utilities\n`);
-  console.log(`Usage: okova client <subcommand> [...flags]\n`);
-  console.log(`Commands:`);
+  console.log('okova client: Widevine and PlayReady client utilities\n');
+  console.log('Usage: okova client <subcommand> [...flags]\n');
+  console.log('Commands:');
+  console.log(col('info [input]') + 'Print device metadata');
+  console.log(col('pack [input] [output]') + 'Pack credentials into a .wvd or .prd file');
+  console.log(col('unpack [input] [output]') + 'Export raw credential files into a directory');
+  console.log('\nInput is a .wvd/.prd file or a directory containing credential files.');
   console.log(
-    col(`info <input>`) +
-      'print info about client that is on <input> path (*.wvd filepath or directory with id and private key)',
+    'Input defaults to the current directory. Default pack names use the device name and format.',
   );
-  console.log(
-    col(`pack <input> <output>`) +
-      'pack client id and private key from <input> directory into single file with <output> path',
-  );
-  console.log(
-    col(`unpack <input> <output>`) +
-      'unpack from <input> path to separate client id and private key placed in <output> directory',
-  );
-  console.log('');
+  console.log('Default unpack output is the current directory. PRD v2 cannot export group files.');
   console.log('Exports create output directories and refuse to overwrite existing paths.');
-  console.log('');
-  console.log(`Flags:`);
-  console.log(col(`-f, --format`) + 'Specify format for pack command (wvd/okova)');
-  console.log(col(`-h, --help`) + 'Display this menu and exit');
+  console.log('\nFlags:');
+  console.log(col('-f, --format <wvd|prd>') + 'Pack format; must match the device type');
+  console.log(col('-h, --help') + 'Display this menu and exit');
 };

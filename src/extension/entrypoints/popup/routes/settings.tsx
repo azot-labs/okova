@@ -44,7 +44,8 @@ export const Settings = () => {
     { value: 'dark', label: 'Dark' },
   ];
 
-  const { allowUpdateCheck, checkForUpdates, isCheckingForUpdates } = useUpdater();
+  const { allowUpdateCheck, checkForUpdates, isCheckingForUpdates, updateCheckError } =
+    useUpdater();
   const { hasUpdate, updateInfo } = useUpdateInfo();
 
   return (
@@ -142,10 +143,15 @@ export const Settings = () => {
                 <Cell
                   component="button"
                   variant="primary"
+                  subtitle={updateCheckError() ?? undefined}
                   disabled={isCheckingForUpdates()}
                   onClick={() => checkForUpdates()}
                 >
-                  Check for Updates
+                  {isCheckingForUpdates()
+                    ? 'Checking for Updates…'
+                    : updateCheckError()
+                      ? 'Retry Update Check'
+                      : 'Check for Updates'}
                 </Cell>
               ) : (
                 <Cell disabled>Up to Date</Cell>

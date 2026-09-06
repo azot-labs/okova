@@ -7,7 +7,9 @@ export const formatRelativeTime = (
   } = {},
 ): string => {
   const { locale = 'en', numeric = 'auto', timeZone = 'UTC' } = options;
-  if (!Temporal) return new Date(input).toLocaleString().slice(0, -3);
+  if (typeof Temporal === 'undefined') {
+    return new Date(input).toLocaleString(locale, { timeZone });
+  }
   const past = Temporal.Instant.from(input).toZonedDateTimeISO(timeZone);
   const now = Temporal.Now.instant().toZonedDateTimeISO(timeZone);
   const duration = past.until(now, { largestUnit: 'year' });
