@@ -1,31 +1,12 @@
-import { settingsStorage } from '@/utils/storage/settings';
-import type { PublicPath } from 'wxt/browser';
-
-const inject = (script: PublicPath) => {
-  return new Promise<void>((resolve, reject) => {
-    const element = document.createElement('script');
-    element.type = 'text/javascript';
-    element.src = browser.runtime.getURL(script);
-    element.onload = function () {
-      element.remove();
-      resolve();
-    };
-    element.onerror = () => {
-      element.remove();
-      reject(new Error(`Failed to inject ${script}`));
-    };
-    (document.head || document.documentElement).appendChild(element);
-  });
-};
+import { defaultSettings, settingsStorage } from '@/utils/storage/settings';
 
 export default defineContentScript({
-  matches: ['https://*/*'],
+  matches: ['https://*/*', 'http://*/*'],
+  matchOriginAsFallback: true,
+  matchAboutBlank: true,
   runAt: 'document_start',
   allFrames: true,
-  async main() {
-    // Checking if interception enabled
-    const settings = await settingsStorage.getValue();
-
+  main() {
     // Listen for event from injected script
     window.addEventListener(
       'message',
@@ -37,7 +18,10 @@ export default defineContentScript({
         const { requestId, log } = event.data;
         const message = { ...log, url: window.location.href };
         try {
-          const body = await browser.runtime.sendMessage(message);
+          const body =
+            log.action === 'startup-settings'
+              ? ((await settingsStorage.getValue()) ?? defaultSettings)
+              : await browser.runtime.sendMessage(message);
           // Firefox blocks page scripts from reading object detail created in a content script.
           window.dispatchEvent(
             new CustomEvent('drm-message-response', {
@@ -57,18 +41,5 @@ export default defineContentScript({
       },
       false,
     );
-    try {
-      await inject('/manifest.js');
-      const scripts: Promise<void>[] = [];
-      if (settings?.requestInterception) scripts.push(inject('/network.js'));
-      if (settings?.emeInterception) {
-        scripts.push(
-          inject(settings.spoofing && settings.clientPlayback ? '/eme-playback.js' : '/eme.js'),
-        );
-      }
-      await Promise.all(scripts);
-    } catch (error) {
-      console.warn('[okova] Script injection failed', error);
-    }
   },
 });

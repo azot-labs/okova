@@ -1,5 +1,5 @@
 import { beforeEach, afterEach, expect, test, vi } from 'vitest';
-import eme from '../src/extension/entrypoints/eme';
+import { installEmeInterception } from '../src/extension/utils/eme-interception';
 import { sendDrmMessage } from '../src/extension/utils/drm-bridge';
 
 vi.mock('../src/extension/utils/drm-bridge', () => ({ sendDrmMessage: vi.fn() }));
@@ -55,7 +55,7 @@ test.each(
     vi.stubGlobal('window', { MPD_LIST: new Map() });
     const capture = Promise.withResolvers<unknown>();
     vi.mocked(sendDrmMessage).mockReturnValue(capture.promise);
-    eme.main();
+    installEmeInterception();
 
     const session = new NativeSession();
     const backing = new Uint8Array([99, 8, 2, 99]);
@@ -136,7 +136,7 @@ test.each(['com.widevine.alpha', 'com.microsoft.playready.recommendation'])(
       if (message.action === 'license-request') return btoa('challenge');
       if (message.action === 'update') return { keys: [] };
     });
-    eme.main();
+    installEmeInterception();
 
     const keys = await new NativeAccess().createMediaKeys();
     const first = keys.createSession();
@@ -219,7 +219,7 @@ test('associates accepted certificate views with MediaKeys and preserves certifi
   vi.mocked(sendDrmMessage).mockImplementation(async (message) => {
     if (message.action === 'license-request') return btoa('encrypted challenge');
   });
-  eme.main();
+  installEmeInterception();
 
   const keys = new NativeKeys();
   const session = keys.createSession();
@@ -316,7 +316,7 @@ test.each(
     vi.stubGlobal('MediaKeyMessageEvent', NativeMessageEvent);
     const bridge = Promise.withResolvers<unknown>();
     vi.mocked(sendDrmMessage).mockReturnValue(bridge.promise);
-    eme.main();
+    installEmeInterception();
 
     const session = new NativeSession();
     const received = Promise.withResolvers<{
@@ -420,7 +420,7 @@ test.each(['before', 'after'])(
     );
     const earlyKeys =
       creation === 'before' ? await new NativeAccess().createMediaKeys() : undefined;
-    eme.main();
+    installEmeInterception();
     expect(
       Object.getOwnPropertyDescriptor(NativeAccess.prototype, 'createMediaKeys'),
     ).toMatchObject({

@@ -2,9 +2,15 @@ import { findManifest } from '@/utils/manifest';
 import { z } from 'zod';
 import { CLIENT_KEY_SYSTEMS, type ClientKeySystem } from '@okova/lib/key-system';
 import { toBytes, bytesToBase64, fromHex, fromBase64 } from '@okova/lib/utils';
-import { getPsshKeyIds, parsePsshBoxes, PSSH_SYSTEM_IDS } from '@okova/lib/pssh';
 import { playbackSessions } from './playback-sessions';
 import { sendDrmMessage } from './drm-bridge';
+import type { EmeMethodResolver } from './eme-runtime';
+
+const playbackMethods = new WeakMap<object, object>();
+export const resolvePlaybackMethod: EmeMethodResolver = (receiver, method) => {
+  const overrides = playbackMethods.get(receiver);
+  return overrides ? Reflect.get(overrides, method) : undefined;
+};
 
 const { widevine: WIDEVINE, playready: PLAYREADY } = CLIENT_KEY_SYSTEMS;
 type PlaybackKeySystem = ClientKeySystem | 'com.microsoft.playready';
@@ -15,6 +21,7 @@ const INSTALLED = Symbol.for('okova.drm-playback.installed');
 const CLEARKEY = 'org.w3.clearkey';
 const hexKey = z.string().regex(/^[a-f\d]{32}$/i);
 const licenseKeys = z.object({ keys: z.array(z.object({ id: hexKey, value: hexKey })).min(1) });
+const playbackKeyIds = z.array(hexKey).min(1);
 const licenseChallenge = z.object({ challenge: z.string().min(1) });
 const hexToBase64Url = (hex: string) =>
   fromHex(hex).toBase64().replaceAll('+', '-').replaceAll('/', '_').replaceAll('=', '');
@@ -43,7 +50,6 @@ export const installDrmPlayback = () => {
   const nativeListen = MediaKeySession.prototype.addEventListener;
 
   const adaptMediaKeys = (mediaKeys: MediaKeys, keySystem: PlaybackKeySystem) => {
-    const systemId = keySystem === WIDEVINE ? PSSH_SYSTEM_IDS.widevine : PSSH_SYSTEM_IDS.playready;
     let serverCertificate: string | undefined;
     mediaKeys.setServerCertificate = async (certificate) => {
       if (!toBytes(certificate).length) throw new TypeError('Empty server certificate');
@@ -100,12 +106,18 @@ export const installDrmPlayback = () => {
           if (initDataType !== 'cenc')
             throw unsupported('Playback requires cenc initialization data');
           const source = toBytes(data);
-          const kids = parsePsshBoxes(source)
-            .filter((box) => box.systemId === systemId)
-            .flatMap(getPsshKeyIds);
-          if (!kids.length)
-            throw unsupported('Playback requires key IDs in the DRM initialization data');
           initData = bytesToBase64(source);
+          const parsed = playbackKeyIds.safeParse(
+            await sendDrmMessage({
+              action: 'playback-keyids',
+              keySystem,
+              initData,
+            }),
+          );
+          if (!parsed.success)
+            throw unsupported('Playback requires key IDs in the DRM initialization data');
+          const kids = parsed.data;
+          if (closed) throw new DOMException('Session is closed', 'InvalidStateError');
           await nativeGenerate.call(
             session,
             'keyids',
@@ -172,8 +184,16 @@ export const installDrmPlayback = () => {
         closed = true;
         void sendSessionRequest({ action: 'close' }).catch(() => {});
       });
+      playbackMethods.set(session, {
+        generateRequest: session.generateRequest,
+        update: session.update,
+      });
       return session;
     };
+    playbackMethods.set(mediaKeys, {
+      createSession: mediaKeys.createSession,
+      setServerCertificate: mediaKeys.setServerCertificate,
+    });
     return mediaKeys;
   };
 
@@ -242,7 +262,11 @@ export const installDrmPlayback = () => {
                   candidate.contentType === capability.contentType && supportsCapability(candidate),
               )?.robustness ?? '',
           }));
-        return new Proxy(nativeAccess, {
+        const overrides = {
+          createMediaKeys: async () =>
+            adaptMediaKeys(await nativeCreateKeys.call(nativeAccess), keySystem),
+        };
+        const access = new Proxy(nativeAccess, {
           get(target, property) {
             if (property === 'keySystem') return keySystem;
             if (property === 'getConfiguration')
@@ -258,11 +282,12 @@ export const installDrmPlayback = () => {
                   configuration.videoCapabilities,
                 ),
               });
-            if (property === 'createMediaKeys')
-              return async () => adaptMediaKeys(await nativeCreateKeys.call(target), keySystem);
+            if (property === 'createMediaKeys') return overrides.createMediaKeys;
             return Reflect.get(target, property, target);
           },
         });
+        playbackMethods.set(access, overrides);
+        return access;
       } catch (error) {
         if (!(error instanceof DOMException) || error.name !== 'NotSupportedError') throw error;
       }

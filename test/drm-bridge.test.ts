@@ -2,10 +2,15 @@ import { afterEach, beforeEach, expect, test, vi } from 'vitest';
 import { browser } from 'wxt/browser';
 import type { ContentScriptContext } from 'wxt/utils/content-script-context';
 import content from '../src/extension/entrypoints/content';
-import { settingsStorage, type Settings } from '../src/extension/utils/storage/settings';
+import {
+  defaultSettings,
+  settingsStorage,
+  type Settings,
+} from '../src/extension/utils/storage/settings';
 import { sendDrmMessage } from '../src/extension/utils/drm-bridge';
 
-vi.mock('../src/extension/utils/storage/settings', () => ({
+vi.mock('../src/extension/utils/storage/settings', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../src/extension/utils/storage/settings')>()),
   settingsStorage: { getValue: vi.fn<() => Promise<Settings | null>>() },
 }));
 
@@ -109,11 +114,6 @@ test('cleans up when posting the request throws', async () => {
 
 const startContentBridge = async () => {
   vi.spyOn(browser.runtime, 'sendMessage').mockImplementation(sendMessage);
-  vi.spyOn(browser.runtime, 'getURL').mockImplementation((path) => path);
-  vi.stubGlobal('document', {
-    createElement: () => ({ remove: vi.fn() }),
-    head: { appendChild: (element: { onload: () => void }) => element.onload() },
-  });
   await content.main({} as ContentScriptContext);
   postMessage.mockImplementation((data) => {
     // Node's MessageEvent requires a MessagePort source, so attach the page window separately.
@@ -173,53 +173,25 @@ test.each([undefined, 'license challenge', { keys: [{ id: 'key-id', value: 'key-
   },
 );
 
-test('registers the bridge before loading scripts and waits for manifest initialization', async () => {
-  vi.mocked(settingsStorage.getValue).mockResolvedValue({
-    emeInterception: true,
-    spoofing: true,
-    clientPlayback: true,
-    requestInterception: true,
-    theme: 'auto',
-  });
-  vi.spyOn(browser.runtime, 'getURL').mockImplementation((path) => path);
-  const listen = vi.spyOn(window, 'addEventListener');
-  const scripts: { src: string; onload: () => void; remove: () => void }[] = [];
-  vi.stubGlobal('document', {
-    createElement: () => ({ remove: vi.fn() }),
-    head: {
-      appendChild: (element: (typeof scripts)[number]) => {
-        expect(listen).toHaveBeenCalledWith('message', expect.any(Function), false);
-        scripts.push(element);
-      },
-    },
-  });
-  const starting = content.main({} as ContentScriptContext);
-  await vi.waitFor(() => expect(scripts).toHaveLength(1));
-  expect(scripts[0]?.src).toBe('/manifest.js');
-  scripts[0]?.onload();
-  await vi.waitFor(() => expect(scripts).toHaveLength(3));
-  expect(scripts.map((script) => script.src)).toEqual([
-    '/manifest.js',
-    '/network.js',
-    '/eme-playback.js',
-  ]);
-  scripts[1]?.onload();
-  scripts[2]?.onload();
-  await starting;
-  for (const script of scripts) expect(script.remove).toHaveBeenCalledOnce();
+test('answers startup with defaults before the popup has ever opened', async () => {
+  await startContentBridge();
+  await expect(sendDrmMessage({ action: 'startup-settings' })).resolves.toEqual(defaultSettings);
+  expect(sendMessage).not.toHaveBeenCalled();
 });
 
-test('reports script load failures and removes the failed element', async () => {
-  const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
-  const remove = vi.fn();
-  vi.stubGlobal('document', {
-    createElement: () => ({ remove }),
-    head: { appendChild: (element: { onerror: () => void }) => element.onerror() },
-  });
-  await content.main({} as ContentScriptContext);
-  expect(warn).toHaveBeenCalledWith(
-    '[okova] Script injection failed',
-    expect.objectContaining({ message: 'Failed to inject /manifest.js' }),
+test('reports settings failures through the already-registered bridge', async () => {
+  vi.mocked(settingsStorage.getValue).mockRejectedValue(new Error('Storage unavailable'));
+  await startContentBridge();
+  await expect(sendDrmMessage({ action: 'startup-settings' })).rejects.toThrow(
+    'Storage unavailable',
   );
-  expect(remove).toHaveBeenCalledOnce();
+  expect(vi.getTimerCount()).toBe(0);
+});
+
+test('bounds startup requests independently of license requests', async () => {
+  const request = sendDrmMessage({ action: 'startup-settings' }, 3_000);
+  const rejected = expect(request).rejects.toThrow('Timed out');
+  await vi.advanceTimersByTimeAsync(3_000);
+  await rejected;
+  expect(vi.getTimerCount()).toBe(0);
 });

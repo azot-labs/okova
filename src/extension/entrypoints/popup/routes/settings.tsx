@@ -103,7 +103,7 @@ export const Settings = () => {
         </Section>
         <Section
           header="Network"
-          footer="Experimental feature. Requests inside workers are not inspected."
+          footer="Experimental feature. Requests inside workers are not inspected. Reload the page after changing request interception."
         >
           {[
             <Cell

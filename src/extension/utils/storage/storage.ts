@@ -44,6 +44,37 @@ export const getDrmFailureStorage = (tabId: number) =>
 
 export type RecentKeysByDomain = Record<string, KeyInfo[]>;
 
+export const MAX_HISTORY_RECORDS = 1_000;
+
+// Keep input order for the UI; timestamps decide which records survive overflow.
+const retainNewest = <T>(records: T[], createdAt: (record: T) => number): T[] => {
+  if (records.length <= MAX_HISTORY_RECORDS) return records;
+  const oldest = records
+    .map((record, index) => ({ index, createdAt: createdAt(record) }))
+    .sort((left, right) => left.createdAt - right.createdAt || left.index - right.index);
+  const removed = new Set(
+    oldest.slice(0, records.length - MAX_HISTORY_RECORDS).map((record) => record.index),
+  );
+  return records.filter((_, index) => !removed.has(index));
+};
+
+const retainKeys = (keys: KeyInfo[]) => retainNewest(keys, (key) => key.createdAt);
+
+// The domain cache has one shared record budget, not 1,000 records per domain.
+const retainDomains = (domains: RecentKeysByDomain): RecentKeysByDomain => {
+  const entries = Object.entries(domains).flatMap(
+    ([domain, keys]): { domain: string; key: KeyInfo | null }[] =>
+      keys.length ? keys.map((key) => ({ domain, key })) : [{ domain, key: null }],
+  );
+  const retained = retainNewest(entries, (entry) => entry.key?.createdAt ?? 0);
+  const result: RecentKeysByDomain = Object.create(null);
+  for (const { domain, key } of retained) {
+    const keys = (result[domain] ??= []);
+    if (key) keys.push(key);
+  }
+  return result;
+};
+
 // History also contains EME statuses, which cannot be reused as content keys.
 export const isCapturedKey = (key: KeyInfo) => /^[0-9a-f]{32}$/i.test(key.value);
 
@@ -260,12 +291,12 @@ export const appStorage = {
 
   recentKeys: {
     ...recentKeys,
-    setValue: (keys: KeyInfo[]) => mutateKeyHistory(() => recentKeys.setValue(keys)),
+    setValue: (keys: KeyInfo[]) => mutateKeyHistory(() => recentKeys.setValue(retainKeys(keys))),
   },
   recentKeysByDomain: {
     raw: asJson(storage.defineItem<RecentKeysByDomain>('local:recent-keys-by-domain')),
     setValue: (keys: RecentKeysByDomain) =>
-      mutateKeyHistory(() => appStorage.recentKeysByDomain.raw.setValue(keys)),
+      mutateKeyHistory(() => appStorage.recentKeysByDomain.raw.setValue(retainDomains(keys))),
     getValue: async () => {
       return appStorage.recentKeysByDomain.raw.getValue();
     },
@@ -281,13 +312,16 @@ export const appStorage = {
 
       await mutateKeyHistory(async () => {
         const keysByDomain = (await appStorage.recentKeysByDomain.getValue()) || {};
-        await appStorage.recentKeysByDomain.raw.setValue({ ...keysByDomain, [domain]: keys });
+        await appStorage.recentKeysByDomain.raw.setValue(
+          retainDomains({ ...keysByDomain, [domain]: keys }),
+        );
       });
     },
   },
   allKeys: {
     raw: asJson(storage.defineItem<KeyInfo[]>('local:all-keys')),
-    setValue: (keys: KeyInfo[]) => mutateKeyHistory(() => appStorage.allKeys.raw.setValue(keys)),
+    setValue: (keys: KeyInfo[]) =>
+      mutateKeyHistory(() => appStorage.allKeys.raw.setValue(retainKeys(keys))),
     getValue: async () => {
       return appStorage.allKeys.raw.getValue();
     },
@@ -314,7 +348,7 @@ export const appStorage = {
             keys[index] = newKey;
           }
         }
-        await appStorage.allKeys.raw.setValue(keys);
+        await appStorage.allKeys.raw.setValue(retainKeys(keys));
       }),
     remove: (key: KeyInfo) =>
       mutateKeyHistory(async () => {
@@ -328,7 +362,7 @@ export const appStorage = {
         );
         if (index === -1) return;
         keys.splice(index, 1);
-        await appStorage.allKeys.raw.setValue(keys);
+        await appStorage.allKeys.raw.setValue(retainKeys(keys));
       }),
   },
 

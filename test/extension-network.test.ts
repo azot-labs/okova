@@ -1,6 +1,6 @@
 import { DOMParser, XMLSerializer } from '@xmldom/xmldom';
 import { afterEach, beforeEach, expect, test, vi } from 'vitest';
-import network from '../src/extension/entrypoints/network';
+import { installNetworkInterception } from '../src/extension/utils/network-interception';
 
 const manifest = '<MPD xmlns="urn:mpeg:dash:schema:mpd:2011"/>';
 const url = 'https://example.com/manifest.mpd';
@@ -39,7 +39,7 @@ beforeEach(() => {
   vi.stubGlobal('fetch', nativeFetch);
   vi.spyOn(console, 'log').mockImplementation(() => {});
   vi.spyOn(console, 'warn').mockImplementation(() => {});
-  network.main();
+  installNetworkInterception();
 });
 
 afterEach(() => {

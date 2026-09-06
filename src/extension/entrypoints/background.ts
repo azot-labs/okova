@@ -7,6 +7,7 @@ import {
 } from '@/utils/badge';
 import {
   appStorage,
+  defaultSettings,
   clientInfoSchema,
   fromClientToInfo,
   fromInfoToClient,
@@ -35,6 +36,8 @@ import { Session } from '@okova/lib/api';
 import { RemoteClient } from '@/utils/remote-client';
 import type { Client } from '@/utils/storage';
 import { z } from 'zod';
+import { getPsshKeyIds, parsePsshBoxes, PSSH_SYSTEM_IDS } from '@okova/lib/pssh';
+import type {} from '@/utils/eme-runtime';
 import { parseClearKeyResponse } from '@/utils/clearkey';
 
 const REQUEST_TIMEOUT_MS = 25_000;
@@ -64,6 +67,16 @@ type SessionEntry = {
 export default defineBackground({
   type: 'module',
   main: () => {
+    browser.runtime.onInstalled.addListener(() => {
+      void navigator.locks
+        .request('okova:settings', async () => {
+          if (!(await appStorage.settings.getValue())) {
+            await appStorage.settings.setValue(defaultSettings);
+          }
+        })
+        .catch((error) => console.warn('[okova] Settings initialization failed', error));
+    });
+
     console.log('[okova] Background service worker started', {
       id: browser.runtime.id,
     });
@@ -396,6 +409,55 @@ export default defineBackground({
         }
       };
       const handleMessage = async () => {
+        if (message.action === 'load-eme') {
+          if (tabId === undefined || sender.frameId === undefined)
+            throw new Error('Missing injection frame');
+          const token = z.string().uuid().parse(message.token);
+          // The token check below also protects Firefox versions without documentIds.
+          const target = { tabId, frameIds: [sender.frameId] };
+          await run(
+            browser.scripting.executeScript({
+              target,
+              world: 'MAIN',
+              files: ['/eme-runtime.js'],
+              injectImmediately: true,
+            }),
+          );
+          const results = await run(
+            browser.scripting.executeScript({
+              target,
+              world: 'MAIN',
+              injectImmediately: true,
+              func: (token: string) =>
+                window.__okovaStartEme?.(token, window.__okovaEmeInstaller) ?? false,
+              args: [token],
+            }),
+          );
+          respond(results.some((result) => result.result === true));
+          return;
+        }
+        if (message.action === 'playback-keyids') {
+          const request = z
+            .object({
+              keySystem: z.enum([
+                'com.widevine.alpha',
+                'com.microsoft.playready',
+                'com.microsoft.playready.recommendation',
+              ]),
+              initData: z.string().max(1024 * 1024),
+            })
+            .parse(message);
+          const systemId =
+            request.keySystem === CLIENT_KEY_SYSTEMS.widevine
+              ? PSSH_SYSTEM_IDS.widevine
+              : PSSH_SYSTEM_IDS.playready;
+          respond(
+            parsePsshBoxes(request.initData)
+              .filter((box) => box.systemId === systemId)
+              .flatMap(getPsshKeyIds),
+          );
+          return;
+        }
         if (message.action === 'playback-config') {
           const client = await run(appStorage.clients.active.getInfo());
           if (!client) respond(null);

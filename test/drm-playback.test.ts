@@ -1,7 +1,13 @@
 import { afterEach, beforeEach, expect, test, vi } from 'vitest';
 import { installDrmPlayback } from '../src/extension/utils/drm-playback';
 import { sendDrmMessage } from '../src/extension/utils/drm-bridge';
-import { createPsshBox, serializePsshBox, PSSH_SYSTEM_IDS } from '../src/lib/pssh';
+import {
+  createPsshBox,
+  serializePsshBox,
+  PSSH_SYSTEM_IDS,
+  parsePsshBoxes,
+  getPsshKeyIds,
+} from '../src/lib/pssh';
 
 vi.mock('../src/extension/utils/drm-bridge', () => ({ sendDrmMessage: vi.fn() }));
 
@@ -70,6 +76,15 @@ const mockSessionBridge = ({
   keys = [{ id: kid, value: key }],
 } = {}) => {
   vi.mocked(sendDrmMessage).mockImplementation(async (message) => {
+    if (message.action === 'playback-keyids') {
+      const systemId =
+        message.keySystem === 'com.widevine.alpha'
+          ? PSSH_SYSTEM_IDS.widevine
+          : PSSH_SYSTEM_IDS.playready;
+      return parsePsshBoxes(String(message.initData))
+        .filter((box) => box.systemId === systemId)
+        .flatMap(getPsshKeyIds);
+    }
     if (message.action === 'playback-config') return keySystem;
     if (message.action === 'license-request') return btoa(challenge);
     if (message.action === 'update') return { keys };
