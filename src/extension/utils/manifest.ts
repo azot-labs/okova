@@ -29,7 +29,7 @@ export const splitPssh = (initData: string): string[] => {
 };
 
 export const findManifest = (initData: string | undefined) => {
-  if (!initData || !window.MPD_LIST) return undefined;
+  if (!initData || !(window.MPD_LIST instanceof Map)) return undefined;
   const exact = window.MPD_LIST.get(initData);
   if (exact) return exact;
   for (const pssh of splitPssh(initData)) {

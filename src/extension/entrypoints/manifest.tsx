@@ -16,7 +16,7 @@ declare global {
 }
 
 export default defineUnlistedScript(() => {
-  window.MPD_LIST ??= new Map();
+  if (!(window.MPD_LIST instanceof Map)) window.MPD_LIST = new Map();
 
   window.addEventListener('message', (event: MessageEvent<unknown>) => {
     if (event.source !== window) return;

@@ -33,6 +33,26 @@ beforeEach(() => {
 });
 afterEach(() => vi.unstubAllGlobals());
 
+test.each([null, undefined, false, 42, 'page-owned', {}, []])(
+  'replaces an incompatible page-owned manifest cache: %j',
+  (value) => {
+    Reflect.set(window, 'MPD_LIST', value);
+    expect(findManifest(widevine)).toBeUndefined();
+    manifest.main();
+    post(mpd(combined));
+    expect(findManifest(widevine)).toBe(url);
+    expect(findManifest(playready)).toBe(url);
+  },
+);
+
+test('preserves existing manifest associations when initialized again', () => {
+  post(mpd(widevine));
+  const cache = window.MPD_LIST;
+  manifest.main();
+  expect(window.MPD_LIST).toBe(cache);
+  expect(findManifest(widevine)).toBe(url);
+});
+
 test.each([
   { pssh: widevine, scheme: PSSH_SYSTEM_IDS.widevine },
   { pssh: playready, scheme: PSSH_SYSTEM_IDS.playready },
