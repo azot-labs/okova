@@ -36,6 +36,7 @@ export default defineConfig({
     browser_specific_settings: { gecko: { strict_min_version: '128.0' } },
   },
   webExt: {
+    startUrls: ['https://bitmovin.com/demos/drm'],
     chromiumArgs: ['--user-data-dir=./.wxt/chrome-data'],
     disabled: devEnv.WXT_BROWSER_AUTOSTART === 'false',
     binaries: {
