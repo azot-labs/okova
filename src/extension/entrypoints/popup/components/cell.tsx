@@ -44,12 +44,12 @@ export const Cell: Component<CellProps> = (props) => {
       <Show when={props.selection}>
         {(selection) => (
           <label
-            class="-my-2 -ml-3 flex min-h-11 w-[42px] shrink-0 cursor-pointer items-center justify-center"
+            class="-my-2 -ml-3 flex min-h-9 w-[42px] shrink-0 cursor-pointer items-center justify-center"
             onClick={(event) => event.stopPropagation()}
           >
             <input
               type="checkbox"
-              class="size-4 cursor-pointer accent-blue-600 dark:accent-blue-400 dark:hover:accent-blue-300"
+              class="size-3.5 cursor-pointer accent-blue-600 dark:accent-blue-400 dark:hover:accent-blue-300"
               aria-label={selection().label}
               checked={selection().checked}
               ref={(input) =>

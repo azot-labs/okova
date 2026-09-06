@@ -96,23 +96,13 @@ export const Keys = () => {
           </Cell>
           <DeleteKeys label="Delete All" scope={{ kind: 'all' }} />
         </Section>
-        <div class="flex flex-col gap-1.5">
-          <label for="key-search" class="px-2 text-[13px] font-medium">
-            Search by KID or site
-          </label>
-          <input
-            id="key-search"
-            type="search"
-            placeholder="KID, page URL, or manifest URL"
-            value={search()}
-            onInput={(event) => setSearch(event.currentTarget.value)}
-            class="w-full rounded-lg bg-white px-3 py-2 text-[13px] outline-none focus-visible:ring-2 focus-visible:ring-blue-500 dark:bg-neutral-800"
-          />
-          <p role="status" class="px-2 text-[11px] text-neutral-500 dark:text-neutral-400">
-            {filteredKeys().length} / {keys().length} keys
-          </p>
-        </div>
-        <KeysList keys={filteredKeys} allKeys={keys} header="All Keys" selectable />
+        <KeysList
+          keys={filteredKeys}
+          allKeys={keys}
+          header="All Keys"
+          search={{ value: search(), onChange: setSearch }}
+          selectable
+        />
         <Show when={!filteredKeys().length}>
           <Show when={keys().length} fallback={<NoKeys />}>
             <div class="flex flex-col items-center gap-1 py-4 text-center">

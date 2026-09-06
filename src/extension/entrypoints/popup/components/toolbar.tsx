@@ -9,7 +9,7 @@ import { Section } from './section';
 
 export const Toolbar = () => {
   return (
-    <div class="grid grid-cols-3 gap-2">
+    <div class="grid grid-cols-3 gap-3">
       <A href="/clients">
         <Section>
           <CardButton>

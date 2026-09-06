@@ -8,11 +8,13 @@ import { Section } from './section';
 import { KeySettings } from '../routes/key-settings';
 import { formatRelativeTime } from '../utils/date';
 import { captureHistoryScroll, reconcileHistoryRows, type HistoryRow } from '../utils/history-rows';
+import { TbOutlineSearch, TbOutlineTrash } from 'solid-icons/tb';
 
 type KeysListProps = {
   keys: Accessor<KeyInfo[]>;
   allKeys?: Accessor<KeyInfo[]>;
   selectable?: boolean;
+  search?: { value: string; onChange: (value: string) => void };
   header?: JSX.Element;
   footer?: JSX.Element;
 };
@@ -50,47 +52,71 @@ export const KeysList: Component<KeysListProps> = (props) => {
 
   return (
     <>
-      <Show when={props.selectable && props.keys().length}>
-        <Section>
-          <Cell
-            selection={{
-              label: 'Select All Results',
-              checked: selectedRecords().length === props.keys().length,
-              indeterminate:
-                selectedRecords().length > 0 && selectedRecords().length < props.keys().length,
-              onChange: (checked) => setSelected(checked ? props.keys().map(keyRecordToken) : []),
-            }}
-            onClick={() =>
-              setSelected(
-                selectedRecords().length === props.keys().length
-                  ? []
-                  : props.keys().map(keyRecordToken),
-              )
-            }
-            subtitle={<span aria-live="polite">{selectedRecords().length} selected</span>}
-            after={
-              <Show when={selectedRecords().length > 0}>
-                <button
-                  type="button"
-                  class="-my-2 min-h-11 cursor-pointer px-2 text-[13px] text-blue-600 dark:text-blue-400"
-                  onClick={(event) => {
-                    event.stopPropagation();
-                    setSelected([]);
-                  }}
-                >
-                  Clear
-                </button>
-              </Show>
-            }
-          >
-            Select All Results
-          </Cell>
-          <DeleteKeys
-            label="Delete Selected"
-            scope={{ kind: 'selected', records: selectedRecords() }}
-            disabled={!selectedRecords().length}
-            onDeleted={() => setSelected([])}
-          />
+      <Show when={props.search || (props.selectable && props.keys().length)}>
+        <Section
+          footer={
+            props.search ? (
+              <span role="status">
+                {selectedRecords().length} selected / {props.keys().length} filtered /{' '}
+                {(props.allKeys ?? props.keys)().length} total
+              </span>
+            ) : undefined
+          }
+        >
+          <Show when={props.search}>
+            {(search) => (
+              <Cell class="w-full" before={<TbOutlineSearch class="text-neutral-500" />}>
+                <input
+                  type="search"
+                  aria-label="Search"
+                  class="outline-none bg-transparent border-none w-full"
+                  placeholder="Search..."
+                  value={search().value}
+                  onInput={(event) => search().onChange(event.currentTarget.value)}
+                />
+              </Cell>
+            )}
+          </Show>
+          <Show when={props.selectable && props.keys().length}>
+            <Cell
+              selection={{
+                label: 'Select All Results',
+                checked: selectedRecords().length === props.keys().length,
+                indeterminate:
+                  selectedRecords().length > 0 && selectedRecords().length < props.keys().length,
+                onChange: (checked) => setSelected(checked ? props.keys().map(keyRecordToken) : []),
+              }}
+              onClick={() =>
+                setSelected(
+                  selectedRecords().length === props.keys().length
+                    ? []
+                    : props.keys().map(keyRecordToken),
+                )
+              }
+              // after={
+              //   <Show when={selectedRecords().length > 0}>
+              //     <button
+              //       type="button"
+              //       class="-my-2 min-h-11 cursor-pointer px-2 text-[13px] text-blue-600 dark:text-blue-400"
+              //       onClick={(event) => {
+              //         event.stopPropagation();
+              //         setSelected([]);
+              //       }}
+              //     >
+              //       Clear
+              //     </button>
+              //   </Show>
+              // }
+            >
+              Select All Results
+            </Cell>
+            <DeleteKeys
+              label="Delete Selected"
+              scope={{ kind: 'selected', records: selectedRecords() }}
+              disabled={!selectedRecords().length}
+              onDeleted={() => setSelected([])}
+            />
+          </Show>
         </Section>
       </Show>
       <div ref={list}>
