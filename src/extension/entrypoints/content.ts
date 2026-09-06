@@ -6,6 +6,7 @@ const getActiveClientKeySystem = async () => {
   const client = await appStorage.clients.active.raw.getValue();
   if (!client) return null;
   if (typeof client === 'string' || client.type === 'wvd') return CLIENT_KEY_SYSTEMS.widevine;
+  if (client.type === 'remote') return client.config.keySystem;
   return CLIENT_KEY_SYSTEMS.playready;
 };
 

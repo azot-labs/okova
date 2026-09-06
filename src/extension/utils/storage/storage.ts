@@ -1,4 +1,7 @@
 import { storage } from '#imports';
+import { z } from 'zod';
+import { remoteConfigSchema } from '@okova/lib/remote/config';
+import { RemoteClient } from '../remote-client';
 import { WidevineDeviceCredentials } from '../../../lib/widevine/device-credentials';
 import { PlayReadyDeviceCredentials } from '../../../lib/playready/device-credentials';
 import { fromBase64, fromBuffer } from '../../../lib';
@@ -78,10 +81,16 @@ export type Settings = {
 
 export type ThemeMode = 'light' | 'dark' | 'auto';
 
-export type Client = WidevineDeviceCredentials | PlayReadyDeviceCredentials;
-export type ClientInfo = { type: 'wvd'; data: string } | { type: 'prd'; data: string };
+export type Client = WidevineDeviceCredentials | PlayReadyDeviceCredentials | RemoteClient;
+export const clientInfoSchema = z.discriminatedUnion('type', [
+  z.object({ type: z.literal('wvd'), data: z.string() }),
+  z.object({ type: z.literal('prd'), data: z.string() }),
+  z.object({ type: z.literal('remote'), config: remoteConfigSchema }),
+]);
+export type ClientInfo = z.infer<typeof clientInfoSchema>;
 
-const fromInfoToClient = async (info: ClientInfo) => {
+export const fromInfoToClient = async (info: ClientInfo) => {
+  if (info.type === 'remote') return RemoteClient.from(info.config);
   const data = fromBase64(info.data).toBuffer();
   if (info.type === 'prd') {
     return await PlayReadyDeviceCredentials.from({ prd: data });
@@ -92,7 +101,8 @@ const fromInfoToClient = async (info: ClientInfo) => {
   }
 };
 
-const fromClientToInfo = async (client: Client): Promise<ClientInfo> => {
+export const fromClientToInfo = async (client: Client): Promise<ClientInfo> => {
+  if (client instanceof RemoteClient) return { type: 'remote', config: client.config };
   const type = client instanceof PlayReadyDeviceCredentials ? 'prd' : 'wvd';
   const data = fromBuffer(await client.pack()).toBase64();
   return { type, data };

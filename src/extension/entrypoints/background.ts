@@ -5,7 +5,14 @@ import {
   getBadgeStorage,
   type BadgeResult,
 } from '@/utils/badge';
-import { appStorage, getRecentKeysForUrl, isCapturedKey } from '@/utils/storage';
+import {
+  appStorage,
+  clientInfoSchema,
+  fromClientToInfo,
+  fromInfoToClient,
+  getRecentKeysForUrl,
+  isCapturedKey,
+} from '@/utils/storage';
 import { getDrmFailureStorage } from '@/utils/storage';
 import type { DrmStage, KeyInfo } from '@/utils/storage';
 import {
@@ -20,12 +27,13 @@ import {
 } from '@okova/lib';
 import { parseCertificate } from '@okova/lib/widevine/certificate';
 import { SignedDrmCertificate, SignedMessage } from '@okova/lib/widevine/proto';
-import { getMessageType } from '@okova/lib/widevine/message';
+import { isServiceCertificate as isWidevineServiceCertificate } from '@okova/lib/widevine/message';
 import { WidevineDeviceCredentials } from '@okova/lib/widevine/device-credentials';
-import { PlayReadyDeviceCredentials } from '@okova/lib/playready/device-credentials';
 import { withAbort } from '@okova/lib/abort';
 import { normalizeKeySystem } from '@okova/lib/key-system';
 import { Session } from '@okova/lib/api';
+import { RemoteClient } from '@/utils/remote-client';
+import type { Client } from '@/utils/storage';
 import { z } from 'zod';
 import { parseClearKeyResponse } from '@/utils/clearkey';
 
@@ -36,10 +44,7 @@ const SESSION_IDLE_TIMEOUT_MS = 5 * 60_000;
 const SESSION_STORAGE_PREFIX = 'pending-session:';
 const storedSessionSchema = z.object({
   state: z.string(),
-  client: z.discriminatedUnion('type', [
-    z.object({ type: z.literal('wvd'), data: z.string() }),
-    z.object({ type: z.literal('prd'), data: z.string() }),
-  ]),
+  client: clientInfoSchema,
   tabId: z.number().optional(),
   expiresAt: z.number(),
   serverCertificate: z.string().optional(),
@@ -130,6 +135,19 @@ export default defineBackground({
       }
     };
 
+    const createCdm = (client: Client) => {
+      if (client instanceof RemoteClient) return client.createEngine();
+      if (client instanceof WidevineDeviceCredentials)
+        return new Widevine({ deviceCredentials: client });
+      return new PlayReady({ deviceCredentials: client });
+    };
+
+    const closeRestoredSession = (session: Session) => {
+      void session.close().catch((error: unknown) => {
+        console.warn('[okova] Unable to close restored DRM session', error);
+      });
+    };
+
     const invalidatedTabs = new Set<number>();
     let isRestoring = true;
     const restored = (async () => {
@@ -141,29 +159,29 @@ export default defineBackground({
           const record = storedSessionSchema.parse(value);
           if (record.expiresAt <= Date.now()) {
             await browser.storage.session.remove(key);
+            if (record.client.type === 'remote') {
+              const client = await RemoteClient.from(record.client.config);
+              closeRestoredSession(Session.resume(record.state, client.createEngine()));
+            }
             continue;
           }
-          const data = fromBase64(record.client.data).toBuffer();
-          const engine =
-            record.client.type === 'wvd'
-              ? new Widevine({
-                  deviceCredentials: await WidevineDeviceCredentials.from({ wvd: data }),
-                })
-              : new PlayReady({
-                  deviceCredentials: await PlayReadyDeviceCredentials.from({ prd: data }),
-                });
-          if (record.serverCertificate && engine instanceof Widevine) {
+          const client = await fromInfoToClient(record.client);
+          if (!client) throw new Error('Stored client is unavailable');
+          const engine = createCdm(client);
+          if (record.serverCertificate && engine.keySystem === 'com.widevine.alpha') {
             await engine.setServerCertificate(fromBase64(record.serverCertificate).toBuffer());
           }
+          const session = Session.resume(record.state, engine);
           if (record.tabId !== undefined && invalidatedTabs.has(record.tabId)) {
             await browser.storage.session.remove(key);
+            closeRestoredSession(session);
             continue;
           }
           state.sessions.set(id, {
             ...record,
             tabId: record.tabId,
             serverCertificate: record.serverCertificate,
-            session: Session.resume(record.state, engine),
+            session,
             timer: scheduleExpiry(id, record.expiresAt),
           });
         } catch (error) {
@@ -224,18 +242,6 @@ export default defineBackground({
         return client;
       } else {
         console.log('[okova] Unable to load client');
-        return null;
-      }
-    };
-
-    const loadCdm = async () => {
-      const client = await loadClient();
-      if (!client) return null;
-      if (client instanceof WidevineDeviceCredentials) {
-        return new Widevine({ deviceCredentials: client });
-      } else if (client instanceof PlayReadyDeviceCredentials) {
-        return new PlayReady({ deviceCredentials: client });
-      } else {
         return null;
       }
     };
@@ -501,9 +507,10 @@ export default defineBackground({
           }
           await run(clearFailure());
           stage = 'client';
-          const cdm = await run(loadCdm());
-          if (!cdm)
+          const client = await run(loadClient());
+          if (!client)
             throw new Error('No active DRM client. Import or select a client in the popup.');
+          const cdm = createCdm(client);
           if (typeof message.keySystem !== 'string') throw new Error('DRM key system is required');
           if (normalizeKeySystem(message.keySystem) !== cdm.keySystem) {
             throw new Error(
@@ -512,7 +519,7 @@ export default defineBackground({
           }
           const serverCertificate =
             typeof message.serverCertificate === 'string' ? message.serverCertificate : undefined;
-          if (serverCertificate && cdm instanceof Widevine) {
+          if (serverCertificate && cdm.keySystem === 'com.widevine.alpha') {
             stage = 'certificate';
             await run(cdm.setServerCertificate(fromBase64(serverCertificate).toBuffer()));
           }
@@ -520,17 +527,14 @@ export default defineBackground({
           setSupportedEngines([cdm]);
           const keySystemAccess = requestMediaKeySystemAccess(cdm.keySystem, []);
           const mediaKeys = await run(keySystemAccess.createMediaKeys());
-          const clientData = fromBuffer(await run(cdm.deviceCredentials.pack())).toBase64();
+          const clientInfo = await run(fromClientToInfo(client));
           const session = mediaKeys.createSession();
           // Close after five minutes of inactivity, including silently removed frames.
           const expiresAt = Date.now() + SESSION_IDLE_TIMEOUT_MS;
           const timer = scheduleExpiry(sessionKey, expiresAt);
           const entry: SessionEntry = {
             session,
-            client: {
-              type: cdm instanceof Widevine ? 'wvd' : 'prd',
-              data: clientData,
-            },
+            client: clientInfo,
             expiresAt,
             challenge: '',
             tabId: sender.tab?.id,
@@ -558,7 +562,7 @@ export default defineBackground({
           stage = 'challenge';
           const serverCertificate = message.serverCertificate;
           if (
-            session.engine instanceof Widevine &&
+            session.engine.keySystem === 'com.widevine.alpha' &&
             typeof serverCertificate === 'string' &&
             serverCertificate !== sessionEntry.serverCertificate
           ) {
@@ -588,7 +592,8 @@ export default defineBackground({
           stage = 'license';
           const response = parseBinary(message.message);
           const isServiceCertificate =
-            session.engine instanceof Widevine && getMessageType(response) === 5;
+            session.engine.keySystem === 'com.widevine.alpha' &&
+            isWidevineServiceCertificate(response);
           if (isServiceCertificate) stage = 'certificate';
           await run(session.update(response));
           if (isServiceCertificate) {

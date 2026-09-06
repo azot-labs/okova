@@ -173,3 +173,5 @@ export * from './widevine/device-credentials';
 export * from './playready/engine';
 export * from './playready/device-credentials';
 export * from './remote/engine';
+
+export { parseRemoteConfig, type RemoteConfig } from './remote/config';

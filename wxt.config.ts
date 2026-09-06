@@ -11,7 +11,7 @@ export default defineConfig({
   manifest: {
     name: 'Okova',
     permissions: ['storage', 'tabs', 'activeTab', 'clipboardWrite'],
-    host_permissions: ['https://*/*'],
+    host_permissions: ['https://*/*', 'http://*/*'],
     web_accessible_resources: [
       {
         resources: ['eme.js', 'eme-playback.js', 'network.js', 'manifest.js'],
