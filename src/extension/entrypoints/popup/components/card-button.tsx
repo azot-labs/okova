@@ -13,7 +13,7 @@ export const CardButton: Component<CardButtonProps> = (props) => {
         {props.children}
       </div>
       <Show when={props.badge}>
-        <div class="absolute -top-1 -right-1 text-neutral-900 dark:text-white bg-white dark:bg-neutral-700 outline-1 shadow-xs outline-neutral-200/80 dark:outline-neutral-600 rounded-full px-1 py-0.5 text-[10px]">
+        <div class="absolute -top-1 -right-1 text-neutral-900 dark:text-white bg-white dark:bg-neutral-700 outline-1 shadow-xs outline-neutral-200/80 dark:outline-neutral-600 rounded-full px-1 py-0.5 min-w-5 flex items-center justify-center text-center text-[10px]">
           {props.badge}
         </div>
       </Show>

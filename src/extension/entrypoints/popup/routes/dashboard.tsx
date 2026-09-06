@@ -29,17 +29,19 @@ export const Dashboard = () => {
   const [activeClient] = useActiveClient();
   const activeFailure = createMemo(() => failure()?.url === activeTabUrl() && failure());
   const activeDomain = createMemo(() => getWebsiteDomain(activeTabUrl()));
-  const recentKeysHeader = createMemo(() =>
-    activeDomain() ? `Recent Keys for ${activeDomain()}` : 'Recent Keys',
-  );
   const activeDomainRecentKeys = createMemo(() => {
     return getRecentKeysForUrl(activeTabUrl(), recentKeysByDomain(), recentKeys());
   });
+  const recentKeysHeader = createMemo(() =>
+    activeDomain()
+      ? `Recent Keys for ${activeDomain()} (${activeDomainRecentKeys().length})`
+      : 'Recent Keys',
+  );
 
   return (
     <Layout>
       <Header
-        subtitle={`${activeClient()?.client.label}`}
+        subtitle={activeClient()?.client.label}
         actions={
           <Show when={activeDomain()}>
             {(domain) => (
