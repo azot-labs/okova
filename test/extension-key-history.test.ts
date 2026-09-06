@@ -2,7 +2,12 @@ import { afterEach, beforeEach, expect, test, vi } from 'vitest';
 import { browser } from 'wxt/browser';
 import { fakeBrowser } from 'wxt/testing/fake-browser';
 import background from '../src/extension/entrypoints/background';
-import { appStorage, type KeyInfo } from '../src/extension/utils/storage';
+import {
+  appStorage,
+  prepareKeyDeletion,
+  deleteKeySnapshot,
+  type KeyInfo,
+} from '../src/extension/utils/storage';
 import { fromHex, Widevine } from '../src/lib';
 import { Session, setSupportedEngines } from '../src/lib/api';
 import { WidevineDeviceCredentials } from '../src/lib/widevine/device-credentials';
@@ -447,3 +452,49 @@ test.each(['usable', key.value])(
     expect(await appStorage.recentKeysByDomain.getValue()).toEqual({ 'example.com': remaining });
   },
 );
+
+test('freezes site deletion across caches and preserves later captures and other subdomains', async () => {
+  const www = { ...key, url: 'https://www.example.com/second' };
+  const subdomain = { ...key, url: 'https://video.example.com/watch' };
+  const recentOnly = { ...key, id: 'recent-only', value: 'usable' };
+  await appStorage.allKeys.setValue([key, www, subdomain]);
+  await appStorage.recentKeys.setValue([key, recentOnly]);
+  await appStorage.recentKeysByDomain.setValue({
+    'example.com': [key, www, recentOnly],
+    'video.example.com': [subdomain],
+  });
+  const snapshot = await prepareKeyDeletion({ kind: 'site', domain: 'example.com' });
+  expect(snapshot.count).toBe(3);
+  const recapture = { ...key, createdAt: key.createdAt + 1 };
+  const newCapture = { ...key, id: 'new' };
+  await appStorage.allKeys.setValue([key, www, subdomain, newCapture]);
+  await appStorage.recentKeys.setValue([recapture, recentOnly, newCapture]);
+  await appStorage.recentKeysByDomain.setForUrl(key.url, [recapture, recentOnly, newCapture]);
+  await deleteKeySnapshot(snapshot.tokens);
+  expect(await appStorage.allKeys.getValue()).toEqual([subdomain, newCapture]);
+  expect(await appStorage.recentKeys.getValue()).toEqual([recapture, newCapture]);
+  expect(await appStorage.recentKeysByDomain.getValue()).toEqual({
+    'example.com': [recapture, newCapture],
+    'video.example.com': [subdomain],
+  });
+});
+
+test('selected deletion freezes status variants and all deletion includes recent-only records', async () => {
+  const status = { ...key, value: 'usable' };
+  const expired = { ...status, value: 'expired', createdAt: key.createdAt + 1 };
+  await appStorage.allKeys.setValue([status, key]);
+  await appStorage.recentKeys.setValue([expired, key]);
+  const selected = await prepareKeyDeletion({ kind: 'selected', records: [status] });
+  expect(selected.count).toBe(1);
+  await deleteKeySnapshot(selected.tokens);
+  expect(await appStorage.allKeys.getValue()).toEqual([key]);
+  expect(await appStorage.recentKeys.getValue()).toEqual([key]);
+  const recentOnly = { ...key, id: 'recent-only' };
+  await appStorage.recentKeysByDomain.setForUrl(key.url, [recentOnly]);
+  const all = await prepareKeyDeletion({ kind: 'all' });
+  expect(all.count).toBe(2);
+  await deleteKeySnapshot(all.tokens);
+  expect(await appStorage.allKeys.getValue()).toEqual([]);
+  expect(await appStorage.recentKeys.getValue()).toEqual([]);
+  expect(await appStorage.recentKeysByDomain.getValue()).toEqual({ 'example.com': [] });
+});

@@ -1,4 +1,5 @@
-import { TbOutlineDownload, TbOutlineTrash as TbTrash } from 'solid-icons/tb';
+import { TbOutlineDownload } from 'solid-icons/tb';
+import { DeleteKeys } from '../components/delete-keys';
 import { Layout } from '../components/layout';
 import { Header } from '../components/header';
 import { Cell } from '../components/cell';
@@ -61,10 +62,6 @@ export const Keys = () => {
     if (!isDisposed && !hasUpdate) setKeys(records ?? []);
   });
 
-  const clearKeys = async () => {
-    await appStorage.allKeys.clear();
-  };
-
   return (
     <Layout>
       <Header backHref="/">Keys</Header>
@@ -97,9 +94,7 @@ export const Keys = () => {
           >
             Export All as TXT
           </Cell>
-          <Cell before={<TbTrash />} variant="danger" onClick={clearKeys}>
-            Delete All
-          </Cell>
+          <DeleteKeys label="Delete All" scope={{ kind: 'all' }} />
         </Section>
         <div class="flex flex-col gap-1.5">
           <label for="key-search" class="px-2 text-[13px] font-medium">
@@ -117,7 +112,7 @@ export const Keys = () => {
             {filteredKeys().length} / {keys().length} keys
           </p>
         </div>
-        <KeysList keys={filteredKeys} allKeys={keys} header="All Keys" />
+        <KeysList keys={filteredKeys} allKeys={keys} header="All Keys" selectable />
         <Show when={!filteredKeys().length}>
           <Show when={keys().length} fallback={<NoKeys />}>
             <div class="flex flex-col items-center gap-1 py-4 text-center">

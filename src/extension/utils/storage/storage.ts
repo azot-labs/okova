@@ -22,6 +22,76 @@ export type KeyInfo = {
   createdAt: number;
 };
 
+// Include the capture time so a later capture of the same key survives confirmation.
+export const keyRecordToken = (key: KeyInfo) =>
+  JSON.stringify([key.id, key.value, key.url, key.pssh, key.createdAt, key.mpd, key.drmSystem]);
+
+export type KeyDeletionScope =
+  | { kind: 'all' }
+  | { kind: 'site'; domain: string }
+  | { kind: 'selected'; records: KeyInfo[] };
+
+const sameKeyRecord = (left: KeyInfo, right: KeyInfo) =>
+  left.id === right.id &&
+  left.url === right.url &&
+  left.pssh === right.pssh &&
+  ((!isCapturedKey(left) && !isCapturedKey(right)) || left.value === right.value);
+
+// Read all three stores under the writer lock before showing the confirmation.
+export const prepareKeyDeletion = (scope: KeyDeletionScope) =>
+  navigator.locks.request('okova:key-history', async () => {
+    const [history, recent, domains] = await Promise.all([
+      appStorage.allKeys.getValue(),
+      appStorage.recentKeys.getValue(),
+      appStorage.recentKeysByDomain.getValue(),
+    ]);
+    const records = [
+      ...(history ?? []),
+      ...(recent ?? []),
+      ...Object.values(domains ?? {}).flat(),
+    ].filter((key) => {
+      switch (scope.kind) {
+        case 'all':
+          return true;
+        case 'site':
+          return getWebsiteDomain(key.url) === scope.domain;
+        case 'selected':
+          return scope.records.some((record) => sameKeyRecord(key, record));
+      }
+    });
+    const unique: KeyInfo[] = [];
+    for (const record of records) {
+      if (!unique.some((key) => sameKeyRecord(key, record))) unique.push(record);
+    }
+    return { count: unique.length, tokens: [...new Set(records.map(keyRecordToken))] };
+  });
+
+export const deleteKeySnapshot = (tokens: string[]) =>
+  mutateKeyHistory(async () => {
+    const targets = new Set(tokens);
+    const keep = (key: KeyInfo) => !targets.has(keyRecordToken(key));
+    const [history, recent, domains] = await Promise.all([
+      appStorage.allKeys.getValue(),
+      appStorage.recentKeys.getValue(),
+      appStorage.recentKeysByDomain.getValue(),
+    ]);
+    await storage.setItems([
+      { key: appStorage.allKeys.raw.key, value: JSON.stringify((history ?? []).filter(keep)) },
+      { key: appStorage.recentKeys.key, value: JSON.stringify((recent ?? []).filter(keep)) },
+      {
+        key: appStorage.recentKeysByDomain.raw.key,
+        value: JSON.stringify(
+          Object.fromEntries(
+            Object.entries(domains ?? {}).map(([domain, records]) => [
+              domain,
+              records.filter(keep),
+            ]),
+          ),
+        ),
+      },
+    ]);
+  });
+
 export const drmStages = {
   setup: 'Request setup',
   client: 'Client loading',

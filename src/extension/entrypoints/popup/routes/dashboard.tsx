@@ -1,3 +1,4 @@
+import { DeleteKeys } from '../components/delete-keys';
 import { A } from '@solidjs/router';
 import { Cell } from '../components/cell';
 import {
@@ -63,6 +64,11 @@ export const Dashboard = () => {
           )}
         </Show>
 
+        <Show when={activeDomain()}>
+          {(domain) => (
+            <DeleteKeys label="Delete This Site" scope={{ kind: 'site', domain: domain() }} />
+          )}
+        </Show>
         <KeysList
           keys={activeDomainRecentKeys}
           header={
