@@ -3,6 +3,9 @@ import { getDrmFailureStorage, type DrmFailure } from '@/utils/storage';
 import { createSignal, onCleanup, onMount } from 'solid-js';
 import { createStore } from 'solid-js/store';
 
+const clientImportWarningSignal = createSignal<string>();
+export const useClientImportWarning = () => clientImportWarningSignal;
+
 const clientsSignal = createSignal<Client[]>([]);
 export const useClients = () => clientsSignal;
 

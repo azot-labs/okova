@@ -1,279 +1,235 @@
-import type { MediaKeysMap } from '../api';
+import { z } from 'zod';
+import { sha256 } from '@noble/hashes/sha2.js';
 import { BaseMediaKeysEngine, BaseMediaKeysEngineSession } from '../api';
 import { fromBase64, fromBuffer } from '../utils';
 import { parseCertificate, verifyCertificate } from '../widevine/certificate';
+import { normalizeKeySystem } from '../key-system';
+import { createRemoteHeaders, remoteUrlSchema } from './http';
+import { createOkovaApi, keysSchema, type OkovaRemoteParams, type RemoteApi } from './protocol';
+import { createPywidevineApi, type PywidevineRemoteParams } from './pywidevine';
+export type RemoteParams = OkovaRemoteParams | PywidevineRemoteParams;
 
-type RemoteParams = {
-  keySystem: string;
-  baseUrl: string;
-  secret?: string;
-  client?: string;
-  customData?: string;
-  headers?: Record<string, string>;
-  requestTimeoutMs?: number;
-};
-
-const createHttpClient = ({ baseUrl, secret, ...params }: RemoteParams) => {
-  const headers: Record<string, string> = {
-    'content-type': 'application/json',
-    ...(params.headers || {}),
-  };
-  if (secret) headers['x-secret-key'] = secret;
-
-  const requestTimeoutMs = params.requestTimeoutMs ?? 30_000;
-  const json = (data: any) => JSON.stringify(data);
-
-  const handleError = (data: any, response: Response) => {
-    if (data.error) {
-      const error = typeof data.error === 'string' ? data.error : JSON.stringify(data.error);
-      throw new Error(error, { cause: response });
-    }
-  };
-
-  const readJsonBody = async (response: Response) => {
-    const contentLength = response.headers.get('content-length');
-    if (contentLength === '0' || response.status === 204) return;
-
-    const text = await response.text();
-    if (!text.trim()) return;
-    return JSON.parse(text);
-  };
-
-  const throwForStatus = async (response: Response) => {
-    const text = await response.text();
-    let details = text.trim();
-    if (details) {
-      try {
-        const data = JSON.parse(details);
-        details =
-          typeof data?.error === 'string'
-            ? data.error
-            : typeof data === 'string'
-              ? data
-              : JSON.stringify(data);
-      } catch {}
-    }
-
-    const message = details
-      ? `${response.status} ${response.statusText}: ${details}`
-      : `${response.status} ${response.statusText}`;
-    throw new Error(message, { cause: response });
-  };
-
-  const request = async (route: string, init: RequestInit) => {
-    const signal = AbortSignal.timeout(requestTimeoutMs);
-
-    try {
-      return await fetch(`${baseUrl}${route}`, {
-        ...init,
-        signal,
-      });
-    } catch (error) {
-      if (signal.aborted) {
-        throw new Error(`Remote CDM request timed out after ${requestTimeoutMs}ms`, {
-          cause: error,
-        });
-      }
-      throw error;
-    }
-  };
-
-  const http = {
-    post: async (route: string, body?: object) => {
-      const response = await request(route, {
-        method: 'POST',
-        headers,
-        ...(body ? { body: json(body) } : {}),
-      });
-      if (!response.ok) await throwForStatus(response);
-      const data = await readJsonBody(response);
-      if (data === undefined) return;
-      handleError(data, response);
-      return data;
-    },
-    get: async (route: string) => {
-      const response = await request(route, {
-        method: 'GET',
-        headers,
-      });
-      if (!response.ok) await throwForStatus(response);
-      const data = await readJsonBody(response);
-      if (data === undefined) return;
-      handleError(data, response);
-      return data;
-    },
-    delete: async (route: string) => {
-      const response = await request(route, {
-        method: 'DELETE',
-        headers,
-      });
-      if (!response.ok) await throwForStatus(response);
-      const data = await readJsonBody(response);
-      if (data === undefined) return;
-      handleError(data, response);
-      return data;
-    },
-  };
-
-  return http;
-};
+const stateSchema = z.object({
+  version: z.literal(1),
+  protocol: z.enum(['okova', 'pywidevine', 'pyplayready']),
+  keySystem: z.string(),
+  connection: z.string(),
+  sessionId: z.string().min(1),
+  sessionType: z.enum(['temporary', 'persistent-license']),
+  initData: z.base64().optional(),
+  initDataType: z.string(),
+  serverCertificate: z.base64().optional(),
+  serviceCertificate: z.base64().optional(),
+  keys: keysSchema,
+});
 
 class RemoteSession extends BaseMediaKeysEngineSession {
-  #http: ReturnType<typeof createHttpClient>;
-  #dispose: (sessionId: string) => void;
-  #getServerCertificate: () => string | undefined;
+  #api: RemoteApi;
+  #engine: Remote;
+  #initData?: string;
+  #initDataType = 'cenc';
+  #serviceCertificate?: string;
+  #closePromise: Promise<void> | null = null;
+  #removeRequested = false;
 
   constructor(
     sessionId: string,
     sessionType: MediaKeySessionType,
-    http: ReturnType<typeof createHttpClient>,
-    dispose: (sessionId: string) => void,
-    getServerCertificate: () => string | undefined,
+    engine: Remote,
+    api: RemoteApi,
+    state?: z.infer<typeof stateSchema>,
   ) {
     super(sessionType, sessionId);
-    this.#http = http;
-    this.#dispose = dispose;
-    this.#getServerCertificate = getServerCertificate;
+    this.#api = api;
+    this.#engine = engine;
+    if (state) {
+      this.#initData = state.initData;
+      this.#initDataType = state.initDataType;
+      this.#serviceCertificate = state.serviceCertificate;
+      this.#syncKeys(state.keys);
+    }
   }
 
-  async generateRequest(initData: Uint8Array, initDataType: string = 'cenc') {
+  protected override assertOpen() {
+    super.assertOpen();
+    if (this.#closePromise) throw new Error('Session is closing');
+  }
+
+  async generateRequest(initData: Uint8Array, initDataType = 'cenc') {
     this.assertOpen();
-    const serverCertificate = this.#getServerCertificate();
-    const data = await this.#http.post(
-      `/sessions/${encodeURIComponent(this.sessionId)}/generate-request`,
-      {
-        initDataType,
-        serverCertificate,
-        initData: fromBuffer(initData).toBase64(),
-      },
-    );
+    const serverCertificate = this.#serviceCertificate ?? this.#engine.serverCertificate;
+    const encoded = fromBuffer(initData).toBase64();
+    const data = await this.#api.generate(this.sessionId, {
+      initDataType,
+      serverCertificate,
+      initData: encoded,
+    });
     this.assertOpen();
-    if (serverCertificate !== undefined && data?.serverCertificateAccepted !== true) {
+    if (serverCertificate !== undefined && data.serverCertificateAccepted !== true) {
       throw new Error(
         'Remote server did not acknowledge the server certificate; privacy mode may be unsupported',
       );
     }
-    const message = fromBase64(data.message).toBuffer();
+    this.#initData = encoded;
+    this.#initDataType = initDataType;
     this.emitMessage({
-      message,
+      message: fromBase64(data.message).toBuffer(),
       messageType: data.messageType,
     });
   }
 
   async update(response: Uint8Array) {
     this.assertOpen();
-    const data = await this.#http.post(`/sessions/${encodeURIComponent(this.sessionId)}/update`, {
-      response: fromBuffer(response).toBase64(),
-    });
+    // Adapters with separate certificate endpoints regenerate the pending challenge.
+    if (this.#api.isServiceCertificate?.(response)) {
+      if (!this.#initData)
+        throw new Error('Generate a request before updating the service certificate');
+      await validateCertificate(response);
+      this.#serviceCertificate = fromBuffer(response).toBase64();
+      await this.generateRequest(fromBase64(this.#initData).toBuffer(), this.#initDataType);
+      return;
+    }
+    const data = await this.#api.update(this.sessionId, fromBuffer(response).toBase64());
     this.assertOpen();
-    if (data?.message) {
+    if ('message' in data) {
       this.emitMessage({
         message: fromBase64(data.message).toBuffer(),
         messageType: data.messageType,
       });
       return;
     }
+    this.#syncKeys(data.keys);
+    this.emitKeysChange();
+    this.emitKeyStatusesChange();
+  }
 
-    if (data?.keys) {
-      this.#syncKeys(new Map(Object.entries(data.keys as Record<string, string>)));
-      this.emitKeysChange();
-      this.emitKeyStatusesChange();
-      return;
+  close() {
+    return this.#close(false);
+  }
+  remove() {
+    return this.#close(true);
+  }
+
+  async #close(remove: boolean) {
+    if (this.isClosed) return;
+    this.#removeRequested ||= remove;
+    // Both routes release the server session; concurrent calls share that cleanup.
+    if (!this.#closePromise) {
+      this.#closePromise = this.#api
+        .close(this.sessionId, remove)
+        .then(() => {
+          this.isClosed = true;
+          this.keys.clear();
+          this.keyStatuses.clear();
+          this.#engine.sessions.delete(this.sessionId);
+          this.dispatchEvent(new Event('closed'));
+          if (this.#removeRequested) this.dispatchEvent(new Event('removed'));
+        })
+        .catch((error: unknown) => {
+          this.#closePromise = null;
+          this.#removeRequested = false;
+          throw error;
+        });
     }
+    return this.#closePromise;
+  }
 
-    const keys = await this.#getKeys();
+  // The server retains cryptographic state; resuming only reattaches its session ID.
+  pause() {
     this.assertOpen();
-    if (keys.size) {
-      this.#syncKeys(keys);
-      this.emitKeysChange();
-      this.emitKeyStatusesChange();
-    }
+    return JSON.stringify({
+      version: 1,
+      protocol: this.#engine.protocol,
+      keySystem: this.#engine.keySystem,
+      connection: this.#engine.connection,
+      sessionId: this.sessionId,
+      sessionType: this.sessionType,
+      initData: this.#initData,
+      initDataType: this.#initDataType,
+      serverCertificate: this.#engine.serverCertificate,
+      serviceCertificate: this.#serviceCertificate,
+      keys: Object.fromEntries(this.keys),
+    } satisfies z.infer<typeof stateSchema>);
   }
 
-  async close() {
-    if (this.isClosed) return;
-    await this.#http.post(`/sessions/${encodeURIComponent(this.sessionId)}/close`);
-    if (this.isClosed) return;
-    this.isClosed = true;
+  #syncKeys(keys: z.infer<typeof keysSchema>) {
     this.keys.clear();
     this.keyStatuses.clear();
-    this.#dispose(this.sessionId);
-    this.dispatchEvent(new Event('closed'));
-  }
-
-  async remove() {
-    if (this.isClosed) return;
-    await this.#http.delete(`/sessions/${encodeURIComponent(this.sessionId)}`);
-    if (this.isClosed) return;
-    this.isClosed = true;
-    this.keys.clear();
-    this.keyStatuses.clear();
-    this.#dispose(this.sessionId);
-    this.dispatchEvent(new Event('closed'));
-    this.dispatchEvent(new Event('removed'));
-  }
-
-  async #getKeys() {
-    const keys = await this.#http.get(`/sessions/${encodeURIComponent(this.sessionId)}/keys`);
-    return new Map(Object.entries(keys as Record<string, string>));
-  }
-
-  #syncKeys(keys: MediaKeysMap) {
-    this.keys.clear();
-    this.keyStatuses.clear();
-
-    for (const [keyId, key] of keys) {
-      this.keys.set(keyId, key);
-      this.keyStatuses.set(keyId, 'usable');
+    for (const [keyId, key] of Object.entries(keys)) {
+      this.keys.set(keyId.toLowerCase(), key.toLowerCase());
+      this.keyStatuses.set(keyId.toLowerCase(), 'usable');
     }
   }
 }
 
-export class Remote extends BaseMediaKeysEngine {
-  keySystem = 'remote';
-  sessions: Map<string, RemoteSession>;
+const validateCertificate = async (certificate: Uint8Array) => {
+  const { signedDrmCertificate } = await parseCertificate(certificate);
+  if (!(await verifyCertificate(signedDrmCertificate)))
+    throw new Error('Certificate invalid: signature mismatch');
+};
 
-  #http: ReturnType<typeof createHttpClient>;
-  #client?: string;
-  #customData?: string;
+export class Remote extends BaseMediaKeysEngine {
+  readonly keySystem: string;
+  readonly connection: string;
+  readonly protocol: 'okova' | 'pywidevine' | 'pyplayready';
+  readonly sessions = new Map<string, RemoteSession>();
+  #api: RemoteApi;
   #serverCertificate?: string;
 
   constructor(params: RemoteParams) {
     super();
-    this.keySystem = params.keySystem;
-    this.#http = createHttpClient(params);
-    this.#client = params.client;
-    this.#customData = params.customData;
-    this.sessions = new Map();
+    this.keySystem = normalizeKeySystem(params.keySystem);
+    this.protocol = params.protocol ?? 'okova';
+    // Headers iterates normalized names in sorted order, including secret overrides.
+    // Store only a digest because custom headers may contain authentication tokens.
+    const authentication = sha256(
+      new TextEncoder().encode(JSON.stringify([...createRemoteHeaders(params)])),
+    );
+    this.connection = JSON.stringify([
+      remoteUrlSchema.parse(params.baseUrl),
+      'device' in params ? params.device : (params.client ?? null),
+      fromBuffer(authentication).toHex(),
+    ]);
+    this.#api =
+      params.protocol === 'pywidevine' || params.protocol === 'pyplayready'
+        ? createPywidevineApi({ ...params, keySystem: this.keySystem })
+        : createOkovaApi({ ...params, protocol: 'okova', keySystem: this.keySystem });
+  }
+
+  get serverCertificate() {
+    return this.#serverCertificate;
   }
 
   async setServerCertificate(serverCertificate: Uint8Array): Promise<boolean> {
-    if (this.keySystem !== 'com.widevine.alpha') {
+    if (this.keySystem !== 'com.widevine.alpha')
       throw new Error(`Server certificates are unsupported for ${this.keySystem}`);
-    }
     const certificate = new Uint8Array(serverCertificate);
-    const { signedDrmCertificate } = await parseCertificate(certificate);
-    if (!(await verifyCertificate(signedDrmCertificate))) {
-      throw new Error('Certificate invalid: signature mismatch');
-    }
+    await validateCertificate(certificate);
     this.#serverCertificate = fromBuffer(certificate).toBase64();
     return true;
   }
 
   async createSession(sessionType: MediaKeySessionType = 'temporary') {
-    const data = await this.#http.post(`/sessions`, {
-      keySystem: this.keySystem,
-      sessionType,
-      client: this.#client,
-      customData: this.#customData,
-    });
-    const session = new RemoteSession(
-      data.id,
-      sessionType,
-      this.#http,
-      (sessionId) => this.sessions.delete(sessionId),
-      () => this.#serverCertificate,
-    );
+    const id = await this.#api.open(sessionType);
+    const session = new RemoteSession(id, sessionType, this, this.#api);
+    this.sessions.set(id, session);
+    return session;
+  }
+
+  resumeSession(serialized: string) {
+    const state = stateSchema.parse(JSON.parse(serialized));
+    if (
+      state.protocol !== this.protocol ||
+      state.keySystem !== this.keySystem ||
+      state.connection !== this.connection
+    )
+      throw new Error(
+        'Remote session belongs to a different server, device, protocol, DRM system, or authentication',
+      );
+    if (this.sessions.has(state.sessionId)) throw new Error('Remote session is already attached');
+    // Keep a newer engine certificate and preserve per-session overrides separately.
+    this.#serverCertificate ??= state.serverCertificate;
+    const session = new RemoteSession(state.sessionId, state.sessionType, this, this.#api, state);
     this.sessions.set(session.sessionId, session);
     return session;
   }

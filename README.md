@@ -13,7 +13,7 @@ Okova is a toolkit (browser extension, command-line tool, and JavaScript library
 - **Logging** details from [EME](https://w3c.github.io/encrypted-media/index.html) events in DevTools console
 - **Network-independent interception** via browser extension, so it doesn't matter if license request has one-time tokens or a custom request/response body format
 - **Remote instance** to manage sessions via REST API
-- **Custom CDM client support**: create \*.wvd or \*.prd from raw client files and import them into browser extension
+- **Custom CDM client support**: bring your WVD, PRD, raw device files, or remote CDM JSON config and import them into browser extension
 - **Runtime agnostic** core: works in Node.js, Bun, Deno, browsers and more
 - **Encrypted Media Extensions API** compatibility via `requestMediaKeySystemAccess()` method
 

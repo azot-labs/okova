@@ -17,3 +17,12 @@ export const getMessageType = (messageBuffer: Uint8Array) => {
     throw new Error('Failed to parse message as SignedMessage', { cause: error });
   }
 };
+
+/** Classify certificates without rejecting opaque remote license responses. */
+export const isServiceCertificate = (response: Uint8Array) => {
+  try {
+    return getMessageType(response) === SignedMessage.MessageType.SERVICE_CERTIFICATE;
+  } catch {
+    return false;
+  }
+};

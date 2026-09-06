@@ -222,3 +222,154 @@ test.each(['rejected read', 'synchronous storage error'])(
     expect(warn).toHaveBeenCalledWith('[okova] Unable to restore pending DRM sessions', error);
   },
 );
+
+test.each(['okova', 'pywidevine'] as const)(
+  'restores a %s remote session without reopening or using the new selection',
+  async (protocol) => {
+    const { RemoteClient } = await import('../src/extension/utils/remote-client');
+    const client = await RemoteClient.from({
+      protocol,
+      keySystem: 'com.widevine.alpha',
+      baseUrl: 'https://cdm.test',
+      secret: 'test-secret',
+      device: 'test-device',
+    });
+    await appStorage.clients.active.setValue(client);
+    const calls: string[] = [];
+    vi.stubGlobal(
+      'fetch',
+      vi.fn<typeof fetch>(async (input, init) => {
+        const path = new URL(String(input)).pathname;
+        calls.push(path);
+        expect(new Headers(init?.headers).get('x-secret-key')).toBe('test-secret');
+        if (path === '/sessions') return Response.json({ id: 'remote-id' });
+        if (path.endsWith('/open'))
+          return Response.json({ status: 200, data: { session_id: 'remote-id' } });
+        if (path.endsWith('/generate-request'))
+          return Response.json({ message: 'CAESAA==', messageType: 'license-request' });
+        if (path.includes('/get_license_challenge/'))
+          return Response.json({ status: 200, data: { challenge_b64: 'CAESAA==' } });
+        if (path.endsWith('/update'))
+          return Response.json({
+            keys: { '00112233445566778899aabbccddeeff': 'ffeeddccbbaa99887766554433221100' },
+          });
+        if (path.includes('/get_keys/'))
+          return Response.json({
+            status: 200,
+            data: {
+              keys: [
+                {
+                  key_id: '00112233445566778899aabbccddeeff',
+                  key: 'ffeeddccbbaa99887766554433221100',
+                  type: 'CONTENT',
+                },
+              ],
+            },
+          });
+        return Response.json({ status: 200, success: true });
+      }),
+    );
+    try {
+      let send = startWorker();
+      await send('generateRequest');
+      expect(await send('license-request')).toBe('CAESAA==');
+      expect(await pendingRecords()).toHaveLength(1);
+      await appStorage.clients.active.setValue(null);
+      send = startWorker();
+      expect(await send('license-request')).toBe('CAESAA==');
+      expect(await send('update', 'one', { message: [8, 2] })).toMatchObject({
+        keys: [
+          { id: '00112233445566778899aabbccddeeff', value: 'ffeeddccbbaa99887766554433221100' },
+        ],
+      });
+      expect(calls.filter((path) => path === '/sessions' || path.endsWith('/open'))).toHaveLength(
+        1,
+      );
+      expect(calls.at(-1)).toContain('close');
+      expect(await pendingRecords()).toHaveLength(0);
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  },
+);
+
+test('closes remote sessions that expired while the worker was stopped', async () => {
+  const { RemoteClient } = await import('../src/extension/utils/remote-client');
+  await appStorage.clients.active.setValue(
+    await RemoteClient.from({
+      protocol: 'okova',
+      keySystem: 'com.widevine.alpha',
+      baseUrl: 'https://cdm.test',
+    }),
+  );
+  const calls: string[] = [];
+  vi.stubGlobal(
+    'fetch',
+    vi.fn<typeof fetch>(async (input) => {
+      const path = new URL(String(input)).pathname;
+      calls.push(path);
+      if (path === '/sessions') return Response.json({ id: 'expired-id' });
+      if (path.endsWith('/generate-request'))
+        return Response.json({ message: 'CAESAA==', messageType: 'license-request' });
+      return Response.json({ success: true });
+    }),
+  );
+  try {
+    const send = startWorker();
+    await send('generateRequest');
+    expect(await pendingRecords()).toHaveLength(1);
+    vi.setSystemTime(Date.now() + 6 * 60_000);
+    await startWorker()('license-request');
+    expect(calls.at(-1)).toBe('/sessions/expired-id/close');
+    expect(await pendingRecords()).toHaveLength(0);
+  } finally {
+    vi.unstubAllGlobals();
+  }
+});
+
+test('unreachable expired remote sessions do not delay new local sessions', async () => {
+  const { RemoteClient } = await import('../src/extension/utils/remote-client');
+  await appStorage.clients.active.setValue(
+    await RemoteClient.from({
+      protocol: 'okova',
+      keySystem: 'com.widevine.alpha',
+      baseUrl: 'https://cdm.test',
+    }),
+  );
+  const cleanup = Promise.withResolvers<void>();
+  const closeRequests: string[] = [];
+  let sessionCount = 0;
+  vi.stubGlobal(
+    'fetch',
+    vi.fn<typeof fetch>(async (input) => {
+      const path = new URL(String(input)).pathname;
+      if (path === '/sessions') return Response.json({ id: `remote-${++sessionCount}` });
+      if (path.endsWith('/generate-request'))
+        return Response.json({ message: 'CAESAA==', messageType: 'license-request' });
+      closeRequests.push(path);
+      await cleanup.promise;
+      return Response.json({ success: true });
+    }),
+  );
+  try {
+    let send = startWorker();
+    for (const token of ['one', 'two', 'three', 'four']) await send('generateRequest', token);
+    expect(await pendingRecords()).toHaveLength(4);
+    vi.setSystemTime(Date.now() + 6 * 60_000);
+    await appStorage.clients.active.setValue(await loadWidevineClient());
+    send = startWorker();
+    let isGenerated = false;
+    const generated = send('generateRequest', 'local').then(() => {
+      isGenerated = true;
+    });
+    await vi.waitFor(() => expect(isGenerated).toBe(true));
+    await generated;
+    expect(closeRequests).toHaveLength(4);
+    expect(await send('license-request', 'local')).toEqual(expect.any(String));
+    await send('close', 'local');
+    expect(await pendingRecords()).toHaveLength(0);
+  } finally {
+    cleanup.resolve();
+    vi.unstubAllGlobals();
+  }
+});

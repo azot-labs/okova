@@ -121,6 +121,9 @@ importers:
       '@noble/curves':
         specifier: ^2.2.0
         version: 2.2.0
+      '@noble/hashes':
+        specifier: ^2.2.0
+        version: 2.2.0
       '@peculiar/asn1-pkcs8':
         specifier: ^2.7.0
         version: 2.7.0

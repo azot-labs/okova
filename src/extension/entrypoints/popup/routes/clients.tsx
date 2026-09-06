@@ -1,3 +1,4 @@
+import { RemoteClient } from '@/utils/remote-client';
 import { BsCheckLg } from 'solid-icons/bs';
 import { TbOutlineSettings } from 'solid-icons/tb';
 import { appStorage, Client } from '@/utils/storage';
@@ -29,7 +30,13 @@ export const Clients = () => {
   const exportClient = async (client: Client) => {
     const data = Uint8Array.from(await client.pack());
     const name = `${client.getName()}`.replaceAll(' ', '-').toLowerCase();
-    const filename = `${name}.${client instanceof WidevineDeviceCredentials ? 'wvd' : 'prd'}`;
+    const extension =
+      client instanceof RemoteClient
+        ? 'remote.json'
+        : client instanceof WidevineDeviceCredentials
+          ? 'wvd'
+          : 'prd';
+    const filename = `${name.replaceAll(/[^a-z0-9._-]/g, '-')}.${extension}`;
     await saveFile(data, filename);
   };
 
@@ -38,12 +45,14 @@ export const Clients = () => {
     setClients(newClients);
     await appStorage.clients.remove(client);
     if (newClients.length === 0) setActiveClient(null);
-    if (isActive(client)) setActiveClient(newClients[0]);
+    if (isActive(client)) setActiveClient(newClients[0] ?? null);
     await appStorage.clients.active.setValue(activeClient());
     setOpenedClient(null);
   };
 
   const getClientLevel = (client: Client) => {
+    if (client instanceof RemoteClient)
+      return `${client.keySystem === 'com.widevine.alpha' ? 'Widevine' : 'PlayReady'} · Remote · ${client.protocolLabel}`;
     if (client instanceof WidevineDeviceCredentials) return `Widevine L${client.securityLevel}`;
     if (client instanceof PlayReadyDeviceCredentials) return `PlayReady SL${client.securityLevel}`;
     return 'Unknown';
@@ -66,7 +75,7 @@ export const Clients = () => {
         <CellImportClient disabled={clients().length >= 10} />
         <Show when={clients().length === 0}>
           <SectionFooter>
-            WVD v2, device_client_id_blob / client_id.bin + device_private_key / private_key.pem
+            Import a WVD, PRD, raw device files, or JSON config for remote server
           </SectionFooter>
         </Show>
         <Show when={clients().length > 0}>
