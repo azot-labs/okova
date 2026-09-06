@@ -53,7 +53,7 @@ export const Settings = () => {
       <List>
         <Section
           header="General"
-          footer="When enabled, it will not be possible to play protected media."
+          footer="Spoofing can interrupt playback. Enable Playback to play supported videos with your active client. Reload the video page after changing these settings."
         >
           <Cell
             title="You can view logs from an Encrypted Media Extensions (EME) session in Developer Tools under the Console tab"
@@ -64,7 +64,6 @@ export const Settings = () => {
                 checked={settings.emeInterception}
                 onChange={(e) => {
                   const checked = e.target.checked;
-                  if (!checked) switchSpoofing(false);
                   switchEmeInterception(checked);
                 }}
               />
@@ -73,17 +72,32 @@ export const Settings = () => {
             EME interception
           </Cell>
           <Cell
-            subtitle="Inject our own license request"
+            subtitle="Use the active client to obtain content keys"
             component="label"
             disabled={!settings.emeInterception}
             after={
               <Switch
+                disabled={!settings.emeInterception}
                 checked={settings.spoofing}
                 onChange={(e) => switchSpoofing(e.target.checked)}
               />
             }
           >
             Spoofing
+          </Cell>
+          <Cell
+            subtitle="Use the active client to play protected content"
+            component="label"
+            disabled={!settings.emeInterception || !settings.spoofing}
+            after={
+              <Switch
+                disabled={!settings.emeInterception || !settings.spoofing}
+                checked={settings.clientPlayback ?? false}
+                onChange={(event) => updateSettings({ clientPlayback: event.target.checked })}
+              />
+            }
+          >
+            Playback
           </Cell>
         </Section>
         <Section

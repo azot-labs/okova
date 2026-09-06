@@ -21,6 +21,13 @@ Okova is a toolkit (browser extension, command-line tool, and JavaScript library
 
 With EME interception enabled, the extension inspects ClearKey license responses and saves their key IDs and keys as hex. ClearKey capture works without an imported device or spoofing enabled.
 
+Import a Widevine or PlayReady client in **Clients**. Okova automatically enables **Spoofing** and **Playback** when you add a client. Select the client you want to use, then reload the video page.
+
+- **Spoofing** uses your active client to retrieve content keys.
+- **Playback** lets supported videos keep playing while Okova retrieves their keys, including in browsers without built-in Widevine or PlayReady.
+
+Playback depends on the website, browser, and client. Offline licenses and hardware-protected playback are not supported.
+
 Experimental request interception detects streaming manifests in page fetch and XMLHttpRequest responses. Requests made inside workers are not inspected.
 
 The toolbar badge shows a count capped at `99+`, followed by `W`, `P`, or `C` for Widevine, PlayReady, or ClearKey, such as `3W` or `99+W`:

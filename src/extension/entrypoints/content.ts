@@ -1,5 +1,13 @@
+import { CLIENT_KEY_SYSTEMS } from '@okova/lib/key-system';
 import { appStorage } from '@/utils/storage';
 import type { PublicPath } from 'wxt/browser';
+
+const getActiveClientKeySystem = async () => {
+  const client = await appStorage.clients.active.raw.getValue();
+  if (!client) return null;
+  if (typeof client === 'string' || client.type === 'wvd') return CLIENT_KEY_SYSTEMS.widevine;
+  return CLIENT_KEY_SYSTEMS.playready;
+};
 
 const inject = async (script: PublicPath) => {
   return new Promise((resolve) => {
@@ -30,7 +38,7 @@ export default defineContentScript({
     }
     if (settings?.emeInterception) {
       console.log(`[okova] Injecting EME interception...`);
-      inject('/eme.js');
+      inject(settings.spoofing && settings.clientPlayback ? '/eme-playback.js' : '/eme.js');
     }
 
     // Listen for event from injected script
@@ -44,7 +52,10 @@ export default defineContentScript({
         const { requestId, log } = event.data;
         const message = { ...log, url: window.location.href };
         try {
-          const body = await browser.runtime.sendMessage(message);
+          const body =
+            log.action === 'playback-config'
+              ? await getActiveClientKeySystem()
+              : await browser.runtime.sendMessage(message);
           // Firefox blocks page scripts from reading object detail created in a content script.
           window.dispatchEvent(
             new CustomEvent('drm-message-response', {

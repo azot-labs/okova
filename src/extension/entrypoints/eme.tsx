@@ -1,4 +1,6 @@
+import { toBytes, fromBuffer, fromBase64 } from '@okova/lib/utils';
 import { sendDrmMessage } from '@/utils/drm-bridge';
+import { playbackSessions } from '@/utils/playback-sessions';
 import { isClearKeyRequest } from '@/utils/clearkey';
 
 declare global {
@@ -9,17 +11,7 @@ declare global {
   }
 }
 
-export default defineUnlistedScript(() => {
-  const base64 = {
-    parse: (s: any) => Uint8Array.from(atob(s), (c) => c.charCodeAt(0)),
-    stringify: (buffer: BufferSource) => {
-      const bytes = ArrayBuffer.isView(buffer)
-        ? new Uint8Array(buffer.buffer, buffer.byteOffset, buffer.byteLength)
-        : new Uint8Array(buffer);
-      return btoa(String.fromCharCode(...bytes));
-    },
-  };
-
+export const installEmeInterception = () => {
   const send = async (data: Record<string, unknown>): Promise<any> => {
     try {
       return await sendDrmMessage(data);
@@ -53,7 +45,7 @@ export default defineUnlistedScript(() => {
       session: MediaKeySession,
     ) => {
       session.initDataType = initDataType;
-      session.initData = base64.stringify(initData);
+      session.initData = fromBuffer(toBytes(initData)).toBase64();
       session.messages = new Map();
       const token = crypto.randomUUID();
       const ready = send({
@@ -89,7 +81,7 @@ export default defineUnlistedScript(() => {
 
       const keyStatuses: Record<string, string> = {};
       for (const [id, status] of session.keyStatuses.entries()) {
-        keyStatuses[base64.stringify(id)] = status;
+        keyStatuses[fromBuffer(toBytes(id)).toBase64()] = status;
       }
 
       await send({
@@ -108,7 +100,7 @@ export default defineUnlistedScript(() => {
     const onMessage = async (event: MediaKeyMessageEvent) => {
       const { message, messageType } = event;
       const session = event.target as MediaKeySession;
-      session.messages?.set(messageType, base64.stringify(message));
+      session.messages?.set(messageType, fromBuffer(toBytes(message)).toBase64());
 
       console.groupCollapsed(
         `[okova] [${session.sessionId}] New message from browser CDM: ${messageType}`,
@@ -127,7 +119,8 @@ export default defineUnlistedScript(() => {
       }
 
       // Widevine's service-certificate request must reach the license server unchanged.
-      if (messageType === 'license-request' && base64.stringify(message) === 'CAQ=') return;
+      if (messageType === 'license-request' && fromBuffer(toBytes(message)).toBase64() === 'CAQ=')
+        return;
 
       const request = sessionRequests.get(session);
       await request?.ready;
@@ -144,7 +137,7 @@ export default defineUnlistedScript(() => {
         return;
       }
 
-      const challenge = base64.parse(response);
+      const challenge = fromBase64(response).toBuffer();
 
       console.groupCollapsed(
         `[okova] [${session.sessionId}] Swapping a message from CDM with ours`,
@@ -167,7 +160,7 @@ export default defineUnlistedScript(() => {
       const message = ArrayBuffer.isView(response)
         ? new Uint8Array(response.buffer, response.byteOffset, response.byteLength)
         : new Uint8Array(response);
-      const messageBase64 = base64.stringify(message);
+      const messageBase64 = fromBuffer(toBytes(message)).toBase64();
 
       console.groupCollapsed(`[okova] [${session.sessionId}] Update session with response`);
       console.log(`Initialization data type: ${session.initDataType}`);
@@ -226,7 +219,7 @@ export default defineUnlistedScript(() => {
     };
 
     const interceptSessionEvents = (session: MediaKeySession) => {
-      if (interceptedSessions.has(session)) return;
+      if (playbackSessions.has(session) || interceptedSessions.has(session)) return;
       interceptedSessions.add(session);
       // Stop native delivery before any application listener runs. After the bridge
       // responds, let the browser dispatch the replacement to the original listeners.
@@ -248,7 +241,8 @@ export default defineUnlistedScript(() => {
             getKeySystem(session) === 'org.w3.clearkey' ||
             event.messageType === 'license-release' ||
             event.messageType === 'license-renewal' ||
-            (event.messageType === 'license-request' && base64.stringify(event.message) === 'CAQ=')
+            (event.messageType === 'license-request' &&
+              fromBuffer(toBytes(event.message)).toBase64() === 'CAQ=')
           ) {
             void onMessage(event);
             return;
@@ -309,7 +303,7 @@ export default defineUnlistedScript(() => {
       MediaKeys.prototype,
       'setServerCertificate',
       async (setServerCertificate, mediaKeys, [certificate]) => {
-        const encodedCertificate = base64.stringify(certificate);
+        const encodedCertificate = fromBuffer(toBytes(certificate)).toBase64();
         const result = await setServerCertificate.call(mediaKeys, certificate);
         if (result) mediaKeysCertificates.set(mediaKeys, encodedCertificate);
         return result;
@@ -346,4 +340,6 @@ export default defineUnlistedScript(() => {
   patchEncryptedMediaExtensions();
 
   console.log('[okova] EME interception added');
-});
+};
+
+export default defineUnlistedScript(installEmeInterception);
