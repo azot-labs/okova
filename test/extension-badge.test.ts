@@ -13,19 +13,19 @@ const key: KeyInfo = {
 
 test('distinguishes observed IDs, saved keys, fresh keys and failures', () => {
   expect(getBadgeAppearance([{ ...key, value: 'usable' }], null)).toMatchObject({
-    text: 'W1',
+    text: '1W',
     color: '#666666',
     title: expect.stringContaining('1 key IDs observed'),
   });
   expect(getBadgeAppearance([key, { ...key, id: 'other', value: 'usable' }], null)).toMatchObject({
-    text: 'W1',
+    text: '1W',
     color: '#2169EB',
     title: expect.stringContaining('1 content keys available from history'),
   });
   expect(
     getBadgeAppearance([key], [{ kind: 'success', system: 'W', keys: [getBadgeKey(key)] }]),
   ).toMatchObject({
-    text: 'W1',
+    text: '1W',
     color: '#16803C',
   });
   expect(
@@ -45,7 +45,7 @@ test('handles empty and legacy history without guessing the DRM system, and caps
       Array.from({ length: 100 }, (_, id) => ({ ...key, id: String(id) })),
       null,
     ).text,
-  ).toBe('W99+');
+  ).toBe('99+W');
 });
 
 test('shows the latest DRM result and retains the other systems in the tooltip', () => {
@@ -57,7 +57,7 @@ test('shows the latest DRM result and retains the other systems in the tooltip',
       { kind: 'success', system: 'C', keys: [getBadgeKey(clearKey)] },
     ],
   );
-  expect(badge.text).toBe('C1');
+  expect(badge.text).toBe('1C');
   expect(badge.title).toContain('Widevine: 1 content keys retrieved this visit');
   expect(badge.title).toContain('ClearKey: 1 content keys retrieved this visit');
 });

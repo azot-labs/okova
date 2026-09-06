@@ -69,13 +69,13 @@ export const getBadgeAppearance = (keys: KeyInfo[], results: BadgeResult[] | nul
   const count = displayed.length > 99 ? '99+' : String(displayed.length);
   if (captured.length) {
     return {
-      text: `${system ?? ''}${count}`,
+      text: `${count}${system ?? ''}`,
       color: isFresh ? '#16803C' : '#2169EB',
       title: `Okova: ${captured.length} content keys ${isFresh ? 'retrieved this visit' : 'available from history'}${details}`,
     };
   }
   return {
-    text: `${latest?.drmSystem ?? ''}${count}`,
+    text: `${count}${latest?.drmSystem ?? ''}`,
     color: '#666666',
     title: `Okova: ${keys.length} key IDs observed; no content keys${details}`,
   };

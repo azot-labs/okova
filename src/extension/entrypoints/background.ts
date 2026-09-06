@@ -265,7 +265,7 @@ export default defineBackground({
           const keys = getRecentKeysForUrl(tab?.url, recentKeysByDomain, recentKeys);
           const badge = getBadgeAppearance(keys, storedResult);
           await browser.action.setBadgeBackgroundColor({ tabId, color: badge.color });
-          await browser.action.setBadgeTextColor({ tabId, color: '#FFFFFF' });
+          await browser.action.setBadgeTextColor?.({ tabId, color: '#FFFFFF' });
           await browser.action.setTitle({ tabId, title: badge.title });
           await browser.action.setBadgeText({ tabId, text: badge.text });
         });
@@ -323,8 +323,8 @@ export default defineBackground({
     });
 
     browser.tabs.onUpdated.addListener((tabId, changeInfo, tab) => {
-      if (changeInfo.status === 'loading') closeTabSessions(tabId);
       if (changeInfo.status === 'loading' || changeInfo.url) {
+        closeTabSessions(tabId);
         void updateBadgeForTab(tab, null).catch((error: unknown) => {
           console.warn('[okova] Unable to reset badge', error);
         });

@@ -132,6 +132,7 @@ export default defineUnlistedScript(() => {
       const request = sessionRequests.get(session);
       await request?.ready;
       const response = await send({
+        keySystem: getKeySystem(session),
         serverCertificate: getServerCertificate(session),
         sessionToken: request?.token,
         action: messageType,

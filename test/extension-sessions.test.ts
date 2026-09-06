@@ -855,7 +855,7 @@ test('badge changes from observed to fresh, saved on navigation, and failed unti
     theme: 'auto',
   });
   await send('keystatuseschange', 'observed', sender, { keyStatuses: { AAECAw: 'usable' } });
-  await expectBadge('W1', '#666666');
+  await expectBadge('1W', '#666666');
 
   const context = {
     keySystem: 'org.w3.clearkey',
@@ -866,18 +866,18 @@ test('badge changes from observed to fresh, saved on navigation, and failed unti
     ),
   };
   await send('update', 'clear', sender, context);
-  await expectBadge('C1', '#16803C');
+  await expectBadge('1C', '#16803C');
   updated.mock.calls[0]![0](1, { status: 'loading' }, sender.tab);
-  await expectBadge('C1', '#2169EB');
+  await expectBadge('1C', '#2169EB');
   expect(await getBadgeStorage(1).getValue()).toBeNull();
   await send('update', 'clear', sender, context);
-  await expectBadge('C1', '#16803C');
+  await expectBadge('1C', '#16803C');
   updated.mock.calls[0]![0](
     1,
     { url: 'https://example.com/next' },
     { ...sender.tab, url: 'https://example.com/next' },
   );
-  await expectBadge('C1', '#2169EB');
+  await expectBadge('1C', '#2169EB');
 
   await appStorage.settings.setValue({
     spoofing: true,
@@ -891,11 +891,58 @@ test('badge changes from observed to fresh, saved on navigation, and failed unti
   await send('keystatuseschange', 'observed', sender, { keyStatuses: { AAECAw: 'usable' } });
   await expectBadge('W!', '#C75300');
   await send('update', 'clear', sender, context);
-  await expectBadge('C1', '#16803C');
+  await expectBadge('1C', '#16803C');
   updated.mock.calls[0]![0](
     1,
     { status: 'loading' },
     { ...sender.tab, url: 'https://unrelated.example' },
   );
   await expectBadge('', '#666666');
+});
+
+test.each(['success', 'failure'])(
+  'URL-only navigation invalidates an in-flight license %s',
+  async (outcome) => {
+    const updated = vi.spyOn(browser.tabs.onUpdated, 'addListener');
+    const send = startBackground();
+    const sender = { tab: { ...tab(1), url: 'https://example.com/video' } };
+    await send('generateRequest', 'old-page', sender);
+    const started = Promise.withResolvers<void>();
+    const completed = Promise.withResolvers<void>();
+    vi.mocked(Session.prototype.update).mockImplementationOnce(async function (this: Session) {
+      started.resolve();
+      await completed.promise;
+      this.keys.set('00112233445566778899aabbccddeeff', 'ffeeddccbbaa99887766554433221100');
+    });
+    const updating = send('update', 'old-page', sender);
+    await started.promise;
+    const nextTab = { ...sender.tab, url: 'https://example.com/next' };
+    updated.mock.calls[0]![0](1, { url: nextTab.url }, nextTab);
+    if (outcome === 'success') completed.resolve();
+    else completed.reject(new Error('Old page license failed'));
+    await updating;
+    await vi.advanceTimersByTimeAsync(0);
+    expect(await getBadgeStorage(1).getValue()).toBeNull();
+    expect(await getDrmFailureStorage(1).getValue()).toBeNull();
+    expect(browser.action.setBadgeText).toHaveBeenLastCalledWith({ tabId: 1, text: '' });
+    expect(browser.action.setTitle).toHaveBeenLastCalledWith({ tabId: 1, title: 'Okova' });
+  },
+);
+
+test('sets the badge text and tooltip when text-color control is unavailable', async () => {
+  const descriptor = Object.getOwnPropertyDescriptor(browser.action, 'setBadgeTextColor');
+  if (!descriptor) throw new Error('Missing fake-browser text-color method');
+  Reflect.deleteProperty(browser.action, 'setBadgeTextColor');
+  try {
+    const send = startBackground();
+    vi.mocked(appStorage.clients.active.getValue).mockResolvedValue(null);
+    await send('generateRequest', 'missing-client', { tab: tab(1) });
+    expect(browser.action.setBadgeText).toHaveBeenLastCalledWith({ tabId: 1, text: 'W!' });
+    expect(browser.action.setTitle).toHaveBeenLastCalledWith({
+      tabId: 1,
+      title: expect.stringContaining('Widevine retrieval failed'),
+    });
+  } finally {
+    Object.defineProperty(browser.action, 'setBadgeTextColor', descriptor);
+  }
 });
