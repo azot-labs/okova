@@ -45,14 +45,24 @@ export const Keys = () => {
     }
   };
 
+  let isDisposed = false;
+  let hasUpdate = false;
+  const unwatch = appStorage.allKeys.raw.watch((records) => {
+    hasUpdate = true;
+    setKeys(records ?? []);
+  });
+  onCleanup(() => {
+    isDisposed = true;
+    unwatch();
+  });
   onMount(async () => {
-    const keys = await appStorage.allKeys.getValue();
-    if (keys) setKeys(keys);
+    const records = await appStorage.allKeys.getValue();
+    // A storage event may arrive before the initial read resolves.
+    if (!isDisposed && !hasUpdate) setKeys(records ?? []);
   });
 
   const clearKeys = async () => {
     await appStorage.allKeys.clear();
-    setKeys([]);
   };
 
   return (
@@ -107,7 +117,7 @@ export const Keys = () => {
             {filteredKeys().length} / {keys().length} keys
           </p>
         </div>
-        <KeysList keys={filteredKeys} header="All Keys" />
+        <KeysList keys={filteredKeys} allKeys={keys} header="All Keys" />
         <Show when={!filteredKeys().length}>
           <Show when={keys().length} fallback={<NoKeys />}>
             <div class="flex flex-col items-center gap-1 py-4 text-center">
