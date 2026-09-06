@@ -1,0 +1,34 @@
+name: Checks
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+  workflow_call:
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: pnpm/setup@v2
+        with:
+          install: false
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm run compile
+      - run: pnpm run lint
+      - run: pnpm run test:unit
+      - run: pnpm run build:lib
+      - run: pnpm run build:cli
+      - run: pnpm run test:package
+      - run: pnpm run build:chrome
+      - run: pnpm run build:firefox
+      - run: pnpm exec playwright install --with-deps chromium
+      - run: pnpm run test:e2e:smoke

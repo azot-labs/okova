@@ -255,21 +255,19 @@ export class WidevineDeviceCredentials {
   /**
    * https://www.w3.org/TR/encrypted-media-2/#navigator-extension-requestmediakeysystemaccess
    */
-  requestMediaKeySystemAccess(
+  async requestMediaKeySystemAccess(
     keySystem: string,
     supportedConfigurations: MediaKeySystemConfiguration[],
   ) {
-    if (keySystem !== 'com.widevine.alpha') throw new Error('Unsupported media key system');
-    return {
-      keySystem,
-      createMediaKeys: async () => {
-        const { Widevine } = await import('./engine');
-        const engine = new Widevine({ deviceCredentials: this });
-        setSupportedEngines([engine]);
-        const access = requestAccess(keySystem, supportedConfigurations);
-        return access.createMediaKeys();
-      },
-      getConfiguration: () => supportedConfigurations[0],
-    };
+    if (!keySystem || !supportedConfigurations.length) {
+      throw new TypeError('Key system and supported configurations must not be empty');
+    }
+    if (keySystem !== 'com.widevine.alpha') {
+      throw new DOMException('Unsupported media key system', 'NotSupportedError');
+    }
+    const { Widevine } = await import('./engine');
+    const engine = new Widevine({ deviceCredentials: this });
+    setSupportedEngines([engine]);
+    return requestAccess(keySystem, supportedConfigurations);
   }
 }

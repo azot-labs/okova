@@ -31,7 +31,11 @@
     "format:check": "oxfmt --check .",
     "postinstall": "node scripts/postinstall.js",
     "test": "vitest",
-    "test:e2e": "pnpm run build:chrome && vitest run --config vitest.e2e.config.ts"
+    "test:e2e": "pnpm run build:chrome && vitest run --config vitest.e2e.config.ts",
+    "test:unit": "vitest run",
+    "test:integration": "vitest run --config vitest.integration.config.ts",
+    "test:e2e:smoke": "vitest run --config vitest.e2e.config.ts --exclude test/e2e/bitmovin.test.ts",
+    "test:package": "node test/package.mjs"
   },
   "repository": {
     "type": "git",

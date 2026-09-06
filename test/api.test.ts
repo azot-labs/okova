@@ -425,26 +425,86 @@ describe('BaseMediaKeysEngineSession', () => {
 });
 
 describe('requestMediaKeySystemAccess', () => {
-  test('wraps the registered engine', async () => {
-    const engine = new FakeEngine('com.example.registered');
+  test('negotiates the first supported configuration and returns independent copies', async () => {
+    const engine = new FakeEngine();
     setSupportedEngines([engine]);
-
-    const configuration = { label: 'default' } as MediaKeySystemConfiguration;
-    const access = requestMediaKeySystemAccess(engine.keySystem, [configuration]);
+    const candidate = { label: 'temporary', initDataTypes: ['webm', 'cenc'] };
+    const pending = requestMediaKeySystemAccess(engine.keySystem, [
+      { persistentState: 'required' },
+      candidate,
+    ]);
+    expect(pending).toBeInstanceOf(Promise);
+    const access = await pending;
+    candidate.initDataTypes.length = 0;
+    const configuration = access.getConfiguration();
+    expect(configuration).toEqual({
+      label: 'temporary',
+      initDataTypes: ['cenc'],
+      audioCapabilities: [],
+      videoCapabilities: [],
+      distinctiveIdentifier: 'not-allowed',
+      persistentState: 'not-allowed',
+      sessionTypes: ['temporary'],
+    });
+    configuration.initDataTypes?.push('webm');
+    expect(access.getConfiguration().initDataTypes).toEqual(['cenc']);
     const mediaKeys = await access.createMediaKeys();
-
-    expect(access.getConfiguration()).toBe(configuration);
-    expect(await mediaKeys.getStatusForPolicy()).toBe('usable');
-    expect(await mediaKeys.setServerCertificate(new Uint8Array([4, 2]).buffer)).toBe(true);
-    expect(Array.from(engine.serverCertificate ?? [])).toEqual([4, 2]);
-    expect(mediaKeys.createSession()).toBeInstanceOf(Session);
+    expect(await mediaKeys.setServerCertificate(new Uint8Array([4, 2]))).toBe(true);
+    expect(engine.serverCertificate).toEqual(new Uint8Array([4, 2]));
+    await expect(mediaKeys.setServerCertificate(new Uint8Array())).rejects.toBeInstanceOf(
+      TypeError,
+    );
+    await expect(mediaKeys.getStatusForPolicy()).rejects.toBeInstanceOf(TypeError);
+    await expect(mediaKeys.getStatusForPolicy({ minHdcpVersion: '2.2' })).rejects.toMatchObject({
+      name: 'NotSupportedError',
+    });
+    expect(() => mediaKeys.createSession('persistent-license')).toThrow(
+      expect.objectContaining({ name: 'NotSupportedError' }),
+    );
+    const session = mediaKeys.createSession();
+    try {
+      await expect(session.load('saved')).rejects.toBeInstanceOf(TypeError);
+      await expect(session.generateRequest('keyids', new Uint8Array([1]))).rejects.toMatchObject({
+        name: 'NotSupportedError',
+      });
+      await expect(session.generateRequest('cenc', new Uint8Array())).rejects.toBeInstanceOf(
+        TypeError,
+      );
+      await session.generateRequest('cenc', new Uint8Array([1]));
+      await expect(session.waitForLicenseRequest()).resolves.toEqual(LICENSE_REQUEST);
+      await expect(session.generateRequest('cenc', new Uint8Array([1]))).rejects.toMatchObject({
+        name: 'InvalidStateError',
+      });
+    } finally {
+      await session.close();
+    }
   });
 
-  test('throws when the media key system is not registered', () => {
+  test.each<MediaKeySystemConfiguration>([
+    { persistentState: 'required' },
+    { distinctiveIdentifier: 'required' },
+    { sessionTypes: ['persistent-license'] },
+    { sessionTypes: [] },
+    { initDataTypes: ['webm', 'keyids'] },
+    { videoCapabilities: [{ contentType: 'video/mp4', robustness: 'HW_SECURE_ALL' }] },
+    { audioCapabilities: [{ contentType: 'audio/mp4' }] },
+  ])('rejects unsupported configuration %j', async (configuration) => {
+    const engine = new FakeEngine();
+    setSupportedEngines([engine]);
+    await expect(
+      requestMediaKeySystemAccess(engine.keySystem, [configuration]),
+    ).rejects.toMatchObject({ name: 'NotSupportedError' });
+  });
+
+  test('rejects invalid arguments and unknown key systems asynchronously', async () => {
     setSupportedEngines([]);
-    expect(() => requestMediaKeySystemAccess('com.example.missing', [])).toThrow(
-      'Unsupported media key system',
+    await expect(requestMediaKeySystemAccess('', [{}])).rejects.toBeInstanceOf(TypeError);
+    await expect(requestMediaKeySystemAccess('com.example.missing', [])).rejects.toBeInstanceOf(
+      TypeError,
     );
+    await expect(requestMediaKeySystemAccess('com.example.missing', [{}])).rejects.toMatchObject({
+      name: 'NotSupportedError',
+    });
   });
 });
 

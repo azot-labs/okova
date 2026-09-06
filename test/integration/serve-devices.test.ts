@@ -2,9 +2,13 @@ import { mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join, relative, resolve } from 'node:path';
 import { afterEach, beforeEach, expect, test } from 'vitest';
-import sessionApi from '../src/cli/commands/serve/api/session';
-import { clients, config, sessions } from '../src/cli/commands/serve/state';
-import { loadWidevineClientData } from './utils';
+import sessionApi from '../../src/cli/commands/serve/api/session';
+import { clients, config, sessions } from '../../src/cli/commands/serve/state';
+import { loadWidevineClientData } from '../utils';
+
+beforeEach(({ skip }) => {
+  if (!process.env.VITEST_WVD_PATH) skip('Set VITEST_WVD_PATH to enable this fixture suite');
+});
 
 const originalConfig = structuredClone(config);
 let directory: string;
@@ -22,12 +26,13 @@ afterEach(async () => {
   await sessions.clear();
   clients.clear();
   Object.assign(config, originalConfig);
-  await rm(directory, { recursive: true, force: true });
+  if (directory) await rm(directory, { recursive: true, force: true });
 });
 
 const open = (client?: string, secret?: string) =>
   sessionApi.request('/', {
     method: 'POST',
+    signal: AbortSignal.timeout(30_000),
     headers: { 'Content-Type': 'application/json', ...(secret ? { 'x-secret-key': secret } : {}) },
     body: JSON.stringify({ client }),
   });
@@ -86,6 +91,7 @@ test('no configured device returns a client error', async () => {
 const openForSystem = (body: object, secret?: string) =>
   sessionApi.request('/', {
     method: 'POST',
+    signal: AbortSignal.timeout(30_000),
     headers: { 'Content-Type': 'application/json', ...(secret ? { 'x-secret-key': secret } : {}) },
     body: JSON.stringify(body),
   });

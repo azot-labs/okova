@@ -15,7 +15,7 @@ Okova is a toolkit (browser extension, command-line tool, and JavaScript library
 - **Remote instance** to manage sessions via REST API
 - **Custom CDM client support**: bring your WVD, PRD, raw device files, or remote CDM JSON config and import them into browser extension
 - **Runtime agnostic** core: works in Node.js, Bun, Deno, browsers and more
-- **Encrypted Media Extensions API** compatibility via `requestMediaKeySystemAccess()` method
+- **Encrypted Media Extensions API** adapter for temporary `cenc` license acquisition via `requestMediaKeySystemAccess()`
 
 ## Browser Extension
 
@@ -169,6 +169,36 @@ Use `timeoutMs` to change the deadline and `signal` to cancel. It throws
 `LicenseHttpError` for unsuccessful HTTP responses and `NoContentKeysError` when
 an exchange finishes without content keys. License requests are not automatically retried.
 
+### EME adapter
+
+Both the library's `requestMediaKeySystemAccess` and the Widevine device convenience
+method return a Promise. Await access and pass a nonempty configuration list:
+
+```ts
+setSupportedEngines([engine]);
+const access = await requestMediaKeySystemAccess(engine.keySystem, [
+  { initDataTypes: ['cenc'], sessionTypes: ['temporary'] },
+]);
+const mediaKeys = await access.createMediaKeys();
+const session = mediaKeys.createSession();
+```
+
+The adapter selects the first supported configuration and returns a fresh copy from
+`getConfiguration()`. Its supported subset is temporary `cenc` license acquisition.
+It rejects persistent licenses, required persistent state or distinctive identifiers,
+and audio/video decoding capabilities with `NotSupportedError`. The library adapter
+has no native media decoder or hardware-protection guarantees. The extension's
+playback bridge negotiates decoding separately through the browser.
+
+`generateRequest()` rejects unsupported initialization-data formats and empty data.
+A session accepts one initialization request. `getStatusForPolicy()` rejects HDCP
+queries because the engines cannot verify output protection. `load()` cannot restore
+licenses into temporary sessions; expiration remains `NaN` when unknown.
+
+The native engines and direct `Session` wrapper remain available for protocol
+inspection and serialization. A native Widevine OFFLINE request or a serialized
+session does not provide EME persistent-license storage.
+
 ### Saving and resuming native sessions
 
 Widevine and PlayReady can serialize an open session with `pause()`. This takes
@@ -262,6 +292,34 @@ boxes without changing their inputs.
 Conversion preserves KIDs and encryption signaling but discards other metadata,
 including license URLs and checksums. Supply `laUrl` when converting to PlayReady
 if needed. Converted headers may not meet every license server's requirements.
+
+## Development checks
+
+`pnpm run test:unit` runs the offline suite without private devices or public license
+servers. It ignores device paths from the environment. `pnpm test` runs the same
+suite in watch mode.
+
+`pnpm run test:integration` explicitly enables device and public-demo tests. Set
+`VITEST_WVD_PATH`, `VITEST_PRD_PATH`, and optionally
+`VITEST_WIDEVINE_CLIENT_ID_PATH` / `VITEST_WIDEVINE_PRIVATE_KEY_PATH` in the environment
+or `.env`. Missing configuration produces runner-visible skips. A configured but
+unreadable file fails. Demo tests require content keys and fail on empty results.
+Remote demos additionally require `VITEST_REMOTE_BASE_URL`; optional settings are
+`VITEST_REMOTE_SECRET` and `VITEST_REMOTE_CLIENT`.
+
+After building the library and CLI, `pnpm run test:package` unpacks the npm tarball
+into a temporary consumer and checks both ESM and CommonJS exports using declared
+runtime dependencies from the workspace installation.
+
+For browser checks, run `pnpm exec playwright install chromium`, build Chrome with
+`pnpm run build:chrome`, then run `pnpm run test:e2e:smoke`. These tests use disposable
+Chromium profiles and controlled pages. `pnpm run test:e2e` also includes opt-in
+Bitmovin demos. Native Firefox and Windows PlayReady playback still need separate
+platform testing.
+
+PR checks run compilation, lint, offline tests, library/CLI and Chrome/Firefox builds,
+packaged consumer checks, and Chromium smoke tests. The release workflow must pass
+the same checks before creating archives. Public demos remain opt-in.
 
 ## Disclaimer
 

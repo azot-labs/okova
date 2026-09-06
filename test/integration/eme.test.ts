@@ -1,6 +1,7 @@
+import { beforeEach } from 'vitest';
 import { expect, test } from 'vitest';
-import { fromBase64, fromBuffer, parseBufferSource, toBufferSource } from '../src/lib';
-import { PSSH, LICENSE_URL, createClient } from './utils';
+import { fromBase64, fromBuffer, parseBufferSource, toBufferSource } from '../../src/lib';
+import { PSSH, LICENSE_URL, createClient } from '../utils';
 
 // https://www.w3.org/TR/encrypted-media-2/#example-8
 
@@ -30,6 +31,7 @@ test('encrypted media extensions', async () => {
     const response = await fetch(LICENSE_URL, {
       body: toBufferSource(message),
       method: 'POST',
+      signal: AbortSignal.timeout(30_000),
     });
     const data = await response.arrayBuffer().then((buffer) => new Uint8Array(buffer));
     return handleMessageResponse(keySession, data);
@@ -73,7 +75,7 @@ test('encrypted media extensions', async () => {
   const initDataType = 'cenc';
   const initData = fromBase64(PSSH).toBuffer();
 
-  const keySystemAccess = client.requestMediaKeySystemAccess('com.widevine.alpha', []);
+  const keySystemAccess = await client.requestMediaKeySystemAccess('com.widevine.alpha', [{}]);
   const mediaKeys = await keySystemAccess.createMediaKeys();
   const keySession = mediaKeys.createSession();
   keySession.addEventListener('message', handleMessage, false);
@@ -85,4 +87,8 @@ test('encrypted media extensions', async () => {
     keySession.removeEventListener('message', handleMessage, false);
     keySession.removeEventListener('keystatuseschange', handleKeyStatusesChange, false);
   }
+});
+
+beforeEach(({ skip }) => {
+  if (!process.env.VITEST_WVD_PATH) skip('Set VITEST_WVD_PATH to enable this demo');
 });

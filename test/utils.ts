@@ -10,27 +10,14 @@ export const PSSH =
   'AAAAW3Bzc2gAAAAA7e+LqXnWSs6jyCfc1R0h7QAAADsIARIQ62dqu8s0Xpa7z2FmMPGj2hoNd2lkZXZpbmVfdGVzdCIQZmtqM2xqYVNkZmFsa3IzaioCSEQyAA==';
 export const LICENSE_URL = 'https://cwip-shaka-proxy.appspot.com/no_auth';
 
-export const read = async (filename: string) => readFile(join(WORKDIR, 'clients', filename));
-
 export const loadWidevineClientData = async () => {
-  const clientPath = process.env.VITEST_WVD_PATH ?? join(WORKDIR, 'clients', 'client.wvd');
+  const clientPath = process.env.VITEST_WVD_PATH;
+  if (!clientPath) throw new Error('Set VITEST_WVD_PATH to enable device tests');
   return readFile(clientPath);
 };
 
-export const createClient = async () => {
-  try {
-    const id = await read('device_client_id_blob');
-    const key = await read('device_private_key');
-    return WidevineDeviceCredentials.fromUnpacked(id, key);
-  } catch (error) {
-    const isMissingFixture = error instanceof Error && 'code' in error && error.code === 'ENOENT';
-    if (!isMissingFixture) throw error;
-
-    return WidevineDeviceCredentials.from({
-      wvd: await loadWidevineClientData(),
-    });
-  }
-};
+export const createClient = async () =>
+  WidevineDeviceCredentials.from({ wvd: await loadWidevineClientData() });
 
 export const loadWidevineDeviceCredentials = async () => {
   const clientData = await loadWidevineClientData();
