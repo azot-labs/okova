@@ -7,15 +7,15 @@ import { SessionRegistry, sessionLimitsSchema } from './session-registry';
 
 export const clients = new Map<string, WidevineDeviceCredentials | PlayReadyDeviceCredentials>();
 
-const configSchema = z.object({
+const configSchema = z.strictObject({
   host: z.string().min(1).default('0.0.0.0'),
   port: z.number().int().min(0).max(65535).default(4000),
   clients: z.array(z.string().min(1)).default([]),
   users: z
-    .record(z.string(), z.object({ name: z.string(), clients: z.array(z.string()) }))
+    .record(z.string(), z.strictObject({ name: z.string(), clients: z.array(z.string()) }))
     .default({}),
   forcePrivacyMode: z.boolean().default(true),
-  sessionLimits: sessionLimitsSchema.prefault({}),
+  sessionLimits: sessionLimitsSchema.strict().prefault({}),
 });
 
 export const config = configSchema.parse({});

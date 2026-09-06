@@ -496,7 +496,10 @@ test.each(['close', 'remove'] as const)(
     const native = await engine.createSession();
     const session = new Session('temporary', engine, native);
     const closed = vi.fn();
+    const removed = vi.fn();
     native.addEventListener('closed', closed);
+    native.addEventListener('removed', removed);
+    session.addEventListener('removed', removed);
     const waiting = expect(native.waitForKeys()).rejects.toThrow('Session closed');
     native.keys.set(keyId, key);
     native.keyStatuses.set(keyId, 'usable');
@@ -510,12 +513,13 @@ test.each(['close', 'remove'] as const)(
     await expect(native.update(new Uint8Array())).rejects.toThrow('Session closed');
     await native.close();
     expect(closed).toHaveBeenCalledOnce();
+    expect(removed).not.toHaveBeenCalled();
     expect(fetch).toHaveBeenCalledTimes(2);
   },
 );
 
-test.each(['timeout', 'restart'] as const)(
-  'remote cleanup releases waiters after a server %s',
+test.each(['timeout', 'restart', 'server error'] as const)(
+  'remote cleanup releases waiters after %s',
   async (failure) => {
     const fetch = vi
       .fn<typeof globalThis.fetch>()
@@ -527,6 +531,8 @@ test.each(['timeout', 'restart'] as const)(
       requestTimeoutMs: 50,
     });
     const session = await engine.createSession();
+    const removed = vi.fn();
+    session.addEventListener('removed', removed);
     const waiting = expect(session.waitForKeys()).rejects.toThrow('Session closed');
     if (failure === 'timeout') {
       vi.useFakeTimers();
@@ -543,12 +549,15 @@ test.each(['timeout', 'restart'] as const)(
           ),
       );
     } else {
-      fetch.mockResolvedValueOnce(Response.json({ error: 'Session not found' }, { status: 404 }));
+      fetch.mockResolvedValueOnce(
+        Response.json({ error: 'Cleanup failed' }, { status: failure === 'restart' ? 404 : 500 }),
+      );
     }
-    const closing = expect(session.close()).rejects.toThrow();
+    const closing = expect(session.remove()).rejects.toThrow();
     if (failure === 'timeout') await vi.advanceTimersByTimeAsync(50);
     await closing;
     await waiting;
+    expect(removed).not.toHaveBeenCalled();
     expect(engine.sessions.size).toBe(0);
     await session.close();
     expect(fetch).toHaveBeenCalledTimes(2);

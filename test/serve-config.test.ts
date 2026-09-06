@@ -54,3 +54,15 @@ test('loading a new config resets omitted settings to defaults', async () => {
   expect(config.port).toBe(4000);
   expect(config.clients).toEqual([]);
 });
+
+test.each([
+  { porrt: 8080 },
+  { users: { secret: { name: 'test', clients: [], clietns: ['test.wvd'] } } },
+  { sessionLimits: { maxSession: 1 } },
+])('rejects unknown configuration fields in %j', async (data) => {
+  const path = await setup();
+  const before = structuredClone(config);
+  await writeFile(path, JSON.stringify(data));
+  await expect(loadConfig(path)).rejects.toThrow('Unrecognized key');
+  expect(config).toEqual(before);
+});
