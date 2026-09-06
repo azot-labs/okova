@@ -4,7 +4,10 @@ import { PlayReadyDeviceCredentials } from '../../../lib/playready/device-creden
 import { fromBase64, fromBuffer } from '../../../lib';
 import { asJson } from './utils';
 
+export type BadgeDrmSystem = 'W' | 'P' | 'C';
+
 export type KeyInfo = {
+  drmSystem?: BadgeDrmSystem;
   id: string;
   value: string;
   url: string;

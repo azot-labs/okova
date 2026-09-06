@@ -23,6 +23,15 @@ With EME interception enabled, the extension inspects ClearKey license responses
 
 Experimental request interception detects streaming manifests in page fetch and XMLHttpRequest responses. Requests made inside workers are not inspected.
 
+The toolbar badge shows a count capped at `99+`, followed by `W`, `P`, or `C` for Widevine, PlayReady, or ClearKey, such as `3W` or `99+W`:
+
+- Gray: intercepted key IDs/statuses only, without content keys.
+- Blue: content keys available from saved history for the domain.
+- Green: content keys retrieved during this page visit, including keys retrieved again.
+- Orange with `!`: retrieval failed. Hover over the icon for the error.
+
+Navigation or reload clears the current result; saved content keys then appear blue. The tooltip explains the count and lists DRM results from this visit. Older history without DRM metadata shows only the number. Green indicates key retrieval, not verified playback.
+
 ### Installing Chrome extension
 
 **Developer Mode** needs to be enabled in `chrome://extensions/` page

@@ -17,6 +17,7 @@ vi.mock('../src/lib/widevine/device-credentials', () => ({
 }));
 
 const key: KeyInfo = {
+  drmSystem: 'W',
   id: '00112233445566778899aabbccddeeff',
   value: 'ffeeddccbbaa99887766554433221100',
   url: 'https://example.com/video',
