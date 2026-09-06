@@ -5,6 +5,18 @@ import { chromium } from 'playwright';
 import { expect, test } from 'vitest';
 
 const inline = `
+  // Simulate a site racing the extension's storage read and runtime injection.
+  window.addEventListener('message', (event) => {
+    if (event.source !== window || !['drm-startup', 'drm-message'].includes(event.data?.type)) return;
+    const action = event.data.action ?? event.data.log?.action;
+    if (!['startup-settings', 'load-eme'].includes(action)) return;
+    window.dispatchEvent(new CustomEvent('drm-message-response', { detail: JSON.stringify({
+      requestId: event.data.requestId ?? event.data.token,
+      body: action === 'startup-settings'
+        ? { emeInterception: false, requestInterception: true, spoofing: false, clientPlayback: false }
+        : false,
+    }) }));
+  });
   const cachedCreateKeys = MediaKeySystemAccess.prototype.createMediaKeys;
   const cachedCreateSession = MediaKeys.prototype.createSession;
   const cachedGenerate = MediaKeySession.prototype.generateRequest;
@@ -36,6 +48,9 @@ test('document-start bootstrap handles CSP, Trusted Types, frames, and settings 
         worker.evaluate(async () => (await browser.storage.local.get('settings')).settings),
       )
       .toBeTruthy();
+    await expect
+      .poll(() => worker.evaluate(() => browser.scripting.getRegisteredContentScripts()))
+      .not.toEqual([]);
     const initial = await worker.evaluate(async () =>
       JSON.parse(String((await browser.storage.local.get('settings')).settings)),
     );
@@ -67,6 +82,12 @@ test('document-start bootstrap handles CSP, Trusted Types, frames, and settings 
     await page.goto('http://localhost/plain');
     await expect.poll(() => page.evaluate(() => window.MPD_LIST instanceof Map)).toBe(true);
     expect(await page.evaluate(() => typeof window.__okovaEmeInstaller)).toBe('undefined');
+    expect(
+      await page.evaluate(() => ({
+        fetch: fetch.toString().includes('[native code]'),
+        xhr: XMLHttpRequest.toString().includes('[native code]'),
+      })),
+    ).toEqual({ fetch: true, xhr: true });
     for (const enabled of [true, false, true]) {
       await worker.evaluate(async (enabled) => {
         const stored = await browser.storage.local.get('settings');
@@ -77,6 +98,15 @@ test('document-start bootstrap handles CSP, Trusted Types, frames, and settings 
           }),
         });
       }, enabled);
+      await expect
+        .poll(() =>
+          worker.evaluate(async () =>
+            (await browser.scripting.getRegisteredContentScripts()).some((script) =>
+              script.js?.includes('eme-bootstrap.js'),
+            ),
+          ),
+        )
+        .toBe(enabled);
       await page.goto('http://localhost/startup');
       await expect.poll(() => page.frames().length).toBe(3);
       for (const frame of page.frames()) {
@@ -188,7 +218,7 @@ test('document-start bootstrap handles CSP, Trusted Types, frames, and settings 
     await page.goto('http://localhost/failure');
     for (const frame of page.frames()) {
       await expect
-        .poll(() => frame.evaluate(() => Reflect.get(window, 'startup')))
+        .poll(() => frame.evaluate(() => Reflect.get(window, 'startup')), { timeout: 5_000 })
         .toEqual({ manifestBeforeInline: true, patchedBeforeAccess: false });
     }
     expect(errors).toEqual([]);

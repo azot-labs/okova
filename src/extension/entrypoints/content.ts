@@ -1,5 +1,3 @@
-import { defaultSettings, settingsStorage } from '@/utils/storage/settings';
-
 export default defineContentScript({
   matches: ['https://*/*', 'http://*/*'],
   matchOriginAsFallback: true,
@@ -12,16 +10,24 @@ export default defineContentScript({
       'message',
       async (event) => {
         if (event.source !== window) return;
+        if (event.data?.type === 'drm-startup') {
+          const { action, token } = event.data;
+          if (action !== 'load-eme') return;
+          try {
+            await browser.runtime.sendMessage({ action, token });
+          } catch (error) {
+            console.warn('[okova] Unable to initialize interception', error);
+          }
+          return;
+        }
         if (event.data?.type !== 'drm-message') return;
+        if (['startup-settings', 'load-eme'].includes(event.data.log?.action)) return;
         if (typeof event.data.requestId !== 'string') return;
         if (!event.data.log) return;
         const { requestId, log } = event.data;
         const message = { ...log, url: window.location.href };
         try {
-          const body =
-            log.action === 'startup-settings'
-              ? ((await settingsStorage.getValue()) ?? defaultSettings)
-              : await browser.runtime.sendMessage(message);
+          const body = await browser.runtime.sendMessage(message);
           // Firefox blocks page scripts from reading object detail created in a content script.
           window.dispatchEvent(
             new CustomEvent('drm-message-response', {

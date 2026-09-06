@@ -1,8 +1,4 @@
-export const installNetworkInterception = (enabled: Promise<boolean> = Promise.resolve(true)) => {
-  let isEnabled: boolean | undefined;
-  void enabled.then((value) => {
-    isEnabled = value;
-  });
+export const installNetworkInterception = () => {
   const MAX_SIZE = 1024 * 1024 * 1; // 1 MB
 
   const filterHead = (url: string, headers: Record<string, string>) => {
@@ -23,18 +19,17 @@ export const installNetworkInterception = (enabled: Promise<boolean> = Promise.r
     return isManifest;
   };
 
-  const postMessage = async (url: string, headers: Record<string, string>, text: string) => {
+  const postMessage = (url: string, headers: Record<string, string>, text: string) => {
     const message = {
       namespace: 'okova:network',
       method: 'response',
       params: { url, text, headers },
       id: Date.now(),
     };
-    if (await enabled) window.postMessage(message, '*');
+    window.postMessage(message, '*');
   };
 
   const inspectFetchResponse = async (response: Response) => {
-    if (isEnabled === false) return;
     const url = response.url;
     const headers = Object.fromEntries(response.headers.entries());
     if (!filterHead(url, headers)) return;
@@ -60,7 +55,7 @@ export const installNetworkInterception = (enabled: Promise<boolean> = Promise.r
     } finally {
       reader.releaseLock();
     }
-    if (filterData(url, text)) await postMessage(url, headers, text);
+    if (filterData(url, text)) postMessage(url, headers, text);
   };
 
   const patchFetch = () => {
@@ -99,7 +94,6 @@ export const installNetworkInterception = (enabled: Promise<boolean> = Promise.r
       }
 
       async #handleResponse() {
-        if (isEnabled === false) return;
         const url = this.responseURL;
         const headersString = this.getAllResponseHeaders();
         const headersArray = headersString.trim().split(/[\r\n]+/);
@@ -140,7 +134,7 @@ export const installNetworkInterception = (enabled: Promise<boolean> = Promise.r
         // Reject long strings before allocating a UTF-8 copy for the byte check.
         if (text.length >= MAX_SIZE || new TextEncoder().encode(text).byteLength >= MAX_SIZE)
           return;
-        if (filterData(url, text)) await postMessage(url, headers, text);
+        if (filterData(url, text)) postMessage(url, headers, text);
       }
     }
     window.XMLHttpRequest = PatchedXHR;

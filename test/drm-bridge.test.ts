@@ -2,23 +2,12 @@ import { afterEach, beforeEach, expect, test, vi } from 'vitest';
 import { browser } from 'wxt/browser';
 import type { ContentScriptContext } from 'wxt/utils/content-script-context';
 import content from '../src/extension/entrypoints/content';
-import {
-  defaultSettings,
-  settingsStorage,
-  type Settings,
-} from '../src/extension/utils/storage/settings';
 import { sendDrmMessage } from '../src/extension/utils/drm-bridge';
-
-vi.mock('../src/extension/utils/storage/settings', async (importOriginal) => ({
-  ...(await importOriginal<typeof import('../src/extension/utils/storage/settings')>()),
-  settingsStorage: { getValue: vi.fn<() => Promise<Settings | null>>() },
-}));
 
 const postMessage = vi.fn<(message: { requestId: string }, origin: string) => void>();
 const sendMessage = vi.fn<(message: unknown) => Promise<unknown>>();
 
 beforeEach(() => {
-  vi.mocked(settingsStorage.getValue).mockResolvedValue(null);
   vi.useFakeTimers();
   vi.stubGlobal(
     'window',
@@ -173,25 +162,15 @@ test.each([undefined, 'license challenge', { keys: [{ id: 'key-id', value: 'key-
   },
 );
 
-test('answers startup with defaults before the popup has ever opened', async () => {
+test.each(['load-eme'])('keeps %s off page responses', async (action) => {
   await startContentBridge();
-  await expect(sendDrmMessage({ action: 'startup-settings' })).resolves.toEqual(defaultSettings);
-  expect(sendMessage).not.toHaveBeenCalled();
-});
-
-test('reports settings failures through the already-registered bridge', async () => {
-  vi.mocked(settingsStorage.getValue).mockRejectedValue(new Error('Storage unavailable'));
-  await startContentBridge();
-  await expect(sendDrmMessage({ action: 'startup-settings' })).rejects.toThrow(
-    'Storage unavailable',
-  );
-  expect(vi.getTimerCount()).toBe(0);
-});
-
-test('bounds startup requests independently of license requests', async () => {
-  const request = sendDrmMessage({ action: 'startup-settings' }, 3_000);
-  const rejected = expect(request).rejects.toThrow('Timed out');
-  await vi.advanceTimersByTimeAsync(3_000);
-  await rejected;
-  expect(vi.getTimerCount()).toBe(0);
+  const response = vi.fn();
+  window.addEventListener('drm-message-response', response);
+  const token = crypto.randomUUID();
+  const event = new MessageEvent('message', { data: { type: 'drm-startup', action, token } });
+  Object.defineProperty(event, 'source', { value: window });
+  window.dispatchEvent(event);
+  await Promise.resolve();
+  expect(sendMessage).toHaveBeenCalledExactlyOnceWith({ action, token });
+  expect(response).not.toHaveBeenCalled();
 });

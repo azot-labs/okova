@@ -1,6 +1,8 @@
 import { afterEach, beforeEach, expect, test, vi } from 'vitest';
 import { browser, type Browser } from 'wxt/browser';
 import { fakeBrowser } from 'wxt/testing/fake-browser';
+import { getCaptureUrl } from '../src/extension/utils/capture-url';
+import { appStorage, defaultSettings, getRecentKeysForUrl } from '../src/extension/utils/storage';
 import background from '../src/extension/entrypoints/background';
 import { createPsshBox, psshBoxToBase64, PSSH_SYSTEM_IDS } from '../src/lib/pssh';
 
@@ -83,7 +85,7 @@ test('loads only the requesting frame and requires an installation acknowledgeme
     expect.objectContaining({
       target: { tabId: 12, frameIds: [3] },
       world: 'MAIN',
-      args: [token],
+      args: [token, false],
     }),
   );
 });
@@ -104,4 +106,58 @@ test('reports injection failures without proceeding to installation', async () =
     send({ action: 'load-eme', token: crypto.randomUUID() }, { tab, frameId: 3 }),
   ).resolves.toBeUndefined();
   expect(execute).toHaveBeenCalledOnce();
+});
+
+test('does not load a runtime when stored EME interception is disabled', async () => {
+  const execute = vi.spyOn(browser.scripting, 'executeScript');
+  await appStorage.settings.setValue({ ...defaultSettings, emeInterception: false });
+  const send = start();
+  await expect(
+    send(
+      { action: 'load-eme', token: crypto.randomUUID(), emeInterception: true },
+      { tab, frameId: 3 },
+    ),
+  ).resolves.toBe(false);
+  expect(execute).not.toHaveBeenCalled();
+});
+
+test.each([
+  ['about:blank', 'https://example.com', 'https://example.com/'],
+  ['about:srcdoc', 'https://example.com', 'https://example.com/'],
+  ['data:text/html,hello', 'null', 'https://example.com/watch'],
+  ['blob:https://example.com/uuid', undefined, 'https://example.com/'],
+  ['blob:null/uuid', 'null', 'https://example.com/watch'],
+  ['https://frame.example/watch', 'https://frame.example', 'https://frame.example/watch'],
+])('retains captures from %s under their site', async (url, origin, expectedUrl) => {
+  await appStorage.settings.setValue(defaultSettings);
+  const send = start();
+  const sender = { tab: { ...tab, url: 'https://example.com/watch' }, frameId: 3, url, origin };
+  expect(getCaptureUrl(sender)).toBe(expectedUrl);
+  const license = new TextEncoder().encode(
+    JSON.stringify({
+      keys: [
+        {
+          kty: 'oct',
+          kid: 'AAAAAAAAAAAAAAAAAAAAAA',
+          k: 'AQEBAQEBAQEBAQEBAQEBAQ',
+        },
+      ],
+    }),
+  );
+  await send(
+    {
+      action: 'update',
+      keySystem: 'org.w3.clearkey',
+      url: 'https://forged.example/',
+      message: Object.fromEntries(license.entries()),
+    },
+    sender,
+  );
+  const history = await appStorage.allKeys.getValue();
+  expect(history).toEqual([
+    expect.objectContaining({ url: expectedUrl, value: '01010101010101010101010101010101' }),
+  ]);
+  expect(
+    getRecentKeysForUrl(expectedUrl, await appStorage.recentKeysByDomain.getValue(), []),
+  ).toEqual(history);
 });

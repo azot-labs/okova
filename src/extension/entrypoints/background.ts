@@ -38,6 +38,8 @@ import type { Client } from '@/utils/storage';
 import { z } from 'zod';
 import { getPsshKeyIds, parsePsshBoxes, PSSH_SYSTEM_IDS } from '@okova/lib/pssh';
 import type {} from '@/utils/eme-runtime';
+import { syncInterceptionScripts } from '@/utils/interception-scripts';
+import { getCaptureUrl } from '@/utils/capture-url';
 import { parseClearKeyResponse } from '@/utils/clearkey';
 
 const REQUEST_TIMEOUT_MS = 25_000;
@@ -67,7 +69,16 @@ type SessionEntry = {
 export default defineBackground({
   type: 'module',
   main: () => {
+    let scriptUpdates = Promise.resolve();
+    const updateInterceptionScripts = () => {
+      scriptUpdates = scriptUpdates
+        .then(syncInterceptionScripts)
+        .catch((error) => console.warn('[okova] Startup script registration failed', error));
+    };
+    appStorage.settings.watch(updateInterceptionScripts);
+    updateInterceptionScripts();
     browser.runtime.onInstalled.addListener(() => {
+      updateInterceptionScripts();
       void navigator.locks
         .request('okova:settings', async () => {
           if (!(await appStorage.settings.getValue())) {
@@ -360,7 +371,8 @@ export default defineBackground({
 
     const parseBinary = (data: Record<string, number>) => new Uint8Array(Object.values(data));
 
-    browser.runtime.onMessage.addListener((message, sender, sendResponse) => {
+    browser.runtime.onMessage.addListener((incoming, sender, sendResponse) => {
+      const message = { ...incoming, url: getCaptureUrl(sender) ?? incoming.url };
       const sessionKey =
         typeof message.sessionToken === 'string' && message.sessionToken
           ? JSON.stringify([
@@ -415,6 +427,11 @@ export default defineBackground({
           const token = z.string().uuid().parse(message.token);
           // The token check below also protects Firefox versions without documentIds.
           const target = { tabId, frameIds: [sender.frameId] };
+          const settings = (await run(appStorage.settings.getValue())) ?? defaultSettings;
+          if (!settings.emeInterception) {
+            respond(false);
+            return;
+          }
           await run(
             browser.scripting.executeScript({
               target,
@@ -428,9 +445,9 @@ export default defineBackground({
               target,
               world: 'MAIN',
               injectImmediately: true,
-              func: (token: string) =>
-                window.__okovaStartEme?.(token, window.__okovaEmeInstaller) ?? false,
-              args: [token],
+              func: (token: string, playback: boolean) =>
+                window.__okovaStartEme?.(token, window.__okovaEmeInstaller, playback) ?? false,
+              args: [token, settings.spoofing && settings.clientPlayback],
             }),
           );
           respond(results.some((result) => result.result === true));

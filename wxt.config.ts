@@ -12,14 +12,18 @@ export default defineConfig({
   hooks: {
     'build:done': async (wxt) => {
       if (wxt.config.mode !== 'production') return;
-      // Both scripts run in every matching frame. Heavy DRM code must stay lazy.
+      // Bound both the isolated bridge and the combined MAIN startup scripts.
       const budgetBytes = 20 * 1024;
-      for (const name of ['content', 'bootstrap']) {
-        const { size } = await stat(resolve(wxt.config.outDir, `content-scripts/${name}.js`));
+      for (const paths of [
+        ['content-scripts/content.js'],
+        ['content-scripts/bootstrap.js', 'eme-bootstrap.js', 'network.js'],
+      ]) {
+        const sizes = await Promise.all(
+          paths.map(async (path) => (await stat(resolve(wxt.config.outDir, path))).size),
+        );
+        const size = sizes.reduce((sum, size) => sum + size, 0);
         if (size > budgetBytes) {
-          throw new Error(
-            `${name} content script is ${size} bytes; budget is ${budgetBytes} bytes`,
-          );
+          throw new Error(`${paths.join(' + ')} is ${size} bytes; budget is ${budgetBytes} bytes`);
         }
       }
     },
