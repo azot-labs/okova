@@ -46,7 +46,7 @@ export const installEmeInterception = () => {
     { token: string; ready: Promise<unknown> }
   >();
 
-  const patchEncryptedMediaExtensions = async () => {
+  const patchEncryptedMediaExtensions = () => {
     const onGenerateRequest = async (
       initDataType: string,
       initData: BufferSource,
@@ -332,5 +332,3 @@ export const installEmeInterception = () => {
 
   console.log('[okova] EME interception added');
 };
-
-export default defineUnlistedScript(installEmeInterception);

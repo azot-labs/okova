@@ -1,6 +1,6 @@
 import { DOMParser } from '@xmldom/xmldom';
 import { afterEach, beforeEach, expect, test, vi } from 'vitest';
-import manifest from '../src/extension/entrypoints/manifest';
+import { installManifestInspection } from '../src/extension/utils/manifest-inspection';
 import { findManifest, splitPssh } from '../src/extension/utils/manifest';
 import { createPsshBox, psshBoxToBase64, PSSH_SYSTEM_IDS } from '../src/lib/pssh';
 
@@ -29,7 +29,7 @@ beforeEach(() => {
       receive = callback;
     },
   });
-  manifest.main();
+  installManifestInspection();
 });
 afterEach(() => vi.unstubAllGlobals());
 
@@ -38,7 +38,7 @@ test.each([null, undefined, false, 42, 'page-owned', {}, []])(
   (value) => {
     Reflect.set(window, 'MPD_LIST', value);
     expect(findManifest(widevine)).toBeUndefined();
-    manifest.main();
+    installManifestInspection();
     post(mpd(combined));
     expect(findManifest(widevine)).toBe(url);
     expect(findManifest(playready)).toBe(url);
@@ -48,7 +48,7 @@ test.each([null, undefined, false, 42, 'page-owned', {}, []])(
 test('preserves existing manifest associations when initialized again', () => {
   post(mpd(widevine));
   const cache = window.MPD_LIST;
-  manifest.main();
+  installManifestInspection();
   expect(window.MPD_LIST).toBe(cache);
   expect(findManifest(widevine)).toBe(url);
 });
@@ -115,4 +115,12 @@ test('rejects truncated sequences and handles extended and terminal box sizes', 
   extended.writeBigUInt64BE(0xffffffffffffffffn, 8);
   expect(splitPssh(extended.toString('base64'))).toEqual([]);
   expect(findManifest(undefined)).toBeUndefined();
+});
+
+test('bounds manifest associations and evicts the oldest entry', () => {
+  for (let index = 0; index < 1_000; index++) window.MPD_LIST.set(String(index), url);
+  post(mpd(widevine));
+  expect(window.MPD_LIST.size).toBe(1_000);
+  expect(window.MPD_LIST.has('0')).toBe(false);
+  expect(findManifest(widevine)).toBe(url);
 });

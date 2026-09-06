@@ -1,4 +1,4 @@
-export default defineUnlistedScript(() => {
+export const installNetworkInterception = () => {
   const MAX_SIZE = 1024 * 1024 * 1; // 1 MB
 
   const filterHead = (url: string, headers: Record<string, string>) => {
@@ -144,4 +144,4 @@ export default defineUnlistedScript(() => {
   patchXmlHttpRequest();
 
   console.log('[okova] Response interception added');
-});
+};

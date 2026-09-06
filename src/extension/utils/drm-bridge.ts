@@ -1,6 +1,10 @@
-export const sendDrmMessage = (data: Record<string, unknown>): Promise<unknown> => {
+export const sendDrmMessage = (
+  data: Record<string, unknown>,
+  timeoutMs = 30_000,
+): Promise<unknown> => {
   return new Promise((resolve, reject) => {
-    const requestId = crypto.randomUUID();
+    // getRandomValues also works on HTTP pages where randomUUID is unavailable.
+    const requestId = crypto.getRandomValues(new Uint32Array(4)).join('-');
     const cleanup = () => {
       window.removeEventListener('drm-message-response', onResponse);
       clearTimeout(timer);
@@ -33,7 +37,7 @@ export const sendDrmMessage = (data: Record<string, unknown>): Promise<unknown> 
     const timer = setTimeout(() => {
       cleanup();
       reject(new Error(`Timed out waiting for DRM response to "${data.action}" (${requestId})`));
-    }, 30_000);
+    }, timeoutMs);
 
     window.addEventListener('drm-message-response', onResponse);
     try {

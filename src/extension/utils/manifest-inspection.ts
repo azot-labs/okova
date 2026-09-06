@@ -15,7 +15,7 @@ declare global {
   }
 }
 
-export default defineUnlistedScript(() => {
+export const installManifestInspection = () => {
   if (!(window.MPD_LIST instanceof Map)) window.MPD_LIST = new Map();
 
   window.addEventListener('message', (event: MessageEvent<unknown>) => {
@@ -36,11 +36,17 @@ export default defineUnlistedScript(() => {
       )) {
         for (const child of Array.from(protection.getElementsByTagNameNS(CENC_NAMESPACE, 'pssh'))) {
           if (child.parentNode !== protection) continue;
-          for (const pssh of splitPssh(child.textContent ?? '')) window.MPD_LIST.set(pssh, url);
+          for (const pssh of splitPssh(child.textContent ?? '')) {
+            window.MPD_LIST.set(pssh, url);
+            while (window.MPD_LIST.size > 1_000) {
+              const oldest = window.MPD_LIST.keys().next();
+              if (!oldest.done) window.MPD_LIST.delete(oldest.value);
+            }
+          }
         }
       }
     } catch {
       // An unrelated or malformed response must not break page message dispatch.
     }
   });
-});
+};

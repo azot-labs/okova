@@ -12,29 +12,36 @@ export default defineConfig({
   hooks: {
     'build:done': async (wxt) => {
       if (wxt.config.mode !== 'production') return;
-      // Every matching frame pays this cost. Keep device parsing out of the bridge.
+      // Bound both the isolated bridge and the combined MAIN startup scripts.
       const budgetBytes = 20 * 1024;
-      const { size } = await stat(resolve(wxt.config.outDir, 'content-scripts/content.js'));
-      if (size > budgetBytes) {
-        throw new Error(`Content script is ${size} bytes; budget is ${budgetBytes} bytes`);
+      for (const paths of [
+        ['content-scripts/content.js'],
+        ['content-scripts/bootstrap.js', 'eme-bootstrap.js', 'network.js'],
+      ]) {
+        const sizes = await Promise.all(
+          paths.map(async (path) => (await stat(resolve(wxt.config.outDir, path))).size),
+        );
+        const size = sizes.reduce((sum, size) => sum + size, 0);
+        if (size > budgetBytes) {
+          throw new Error(`${paths.join(' + ')} is ${size} bytes; budget is ${budgetBytes} bytes`);
+        }
       }
     },
   },
   manifest: {
     name: 'Okova',
-    permissions: ['storage', 'tabs', 'activeTab', 'clipboardWrite'],
+    permissions: ['scripting', 'storage', 'tabs', 'activeTab', 'clipboardWrite'],
     host_permissions: ['https://*/*', 'http://*/*'],
-    web_accessible_resources: [
-      {
-        resources: ['eme.js', 'eme-playback.js', 'network.js', 'manifest.js'],
-        matches: ['<all_urls>'],
-      },
-    ],
+    minimum_chrome_version: '111',
+    browser_specific_settings: { gecko: { strict_min_version: '128.0' } },
   },
   webExt: {
     chromiumArgs: ['--user-data-dir=./.wxt/chrome-data'],
     disabled: devEnv.WXT_BROWSER_AUTOSTART === 'false',
-    binaries: devEnv.WXT_CHROMIUM_BINARY ? { chrome: devEnv.WXT_CHROMIUM_BINARY } : undefined,
+    binaries: {
+      ...(devEnv.WXT_CHROMIUM_BINARY && { chrome: devEnv.WXT_CHROMIUM_BINARY }),
+      ...(devEnv.WXT_FIREFOX_BINARY && { firefox: devEnv.WXT_FIREFOX_BINARY }),
+    },
   },
   imports: {
     presets: [

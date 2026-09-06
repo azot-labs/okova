@@ -2,18 +2,12 @@ import { afterEach, beforeEach, expect, test, vi } from 'vitest';
 import { browser } from 'wxt/browser';
 import type { ContentScriptContext } from 'wxt/utils/content-script-context';
 import content from '../src/extension/entrypoints/content';
-import { settingsStorage, type Settings } from '../src/extension/utils/storage/settings';
 import { sendDrmMessage } from '../src/extension/utils/drm-bridge';
-
-vi.mock('../src/extension/utils/storage/settings', () => ({
-  settingsStorage: { getValue: vi.fn<() => Promise<Settings | null>>() },
-}));
 
 const postMessage = vi.fn<(message: { requestId: string }, origin: string) => void>();
 const sendMessage = vi.fn<(message: unknown) => Promise<unknown>>();
 
 beforeEach(() => {
-  vi.mocked(settingsStorage.getValue).mockResolvedValue(null);
   vi.useFakeTimers();
   vi.stubGlobal(
     'window',
@@ -109,11 +103,6 @@ test('cleans up when posting the request throws', async () => {
 
 const startContentBridge = async () => {
   vi.spyOn(browser.runtime, 'sendMessage').mockImplementation(sendMessage);
-  vi.spyOn(browser.runtime, 'getURL').mockImplementation((path) => path);
-  vi.stubGlobal('document', {
-    createElement: () => ({ remove: vi.fn() }),
-    head: { appendChild: (element: { onload: () => void }) => element.onload() },
-  });
   await content.main({} as ContentScriptContext);
   postMessage.mockImplementation((data) => {
     // Node's MessageEvent requires a MessagePort source, so attach the page window separately.
@@ -173,53 +162,15 @@ test.each([undefined, 'license challenge', { keys: [{ id: 'key-id', value: 'key-
   },
 );
 
-test('registers the bridge before loading scripts and waits for manifest initialization', async () => {
-  vi.mocked(settingsStorage.getValue).mockResolvedValue({
-    emeInterception: true,
-    spoofing: true,
-    clientPlayback: true,
-    requestInterception: true,
-    theme: 'auto',
-  });
-  vi.spyOn(browser.runtime, 'getURL').mockImplementation((path) => path);
-  const listen = vi.spyOn(window, 'addEventListener');
-  const scripts: { src: string; onload: () => void; remove: () => void }[] = [];
-  vi.stubGlobal('document', {
-    createElement: () => ({ remove: vi.fn() }),
-    head: {
-      appendChild: (element: (typeof scripts)[number]) => {
-        expect(listen).toHaveBeenCalledWith('message', expect.any(Function), false);
-        scripts.push(element);
-      },
-    },
-  });
-  const starting = content.main({} as ContentScriptContext);
-  await vi.waitFor(() => expect(scripts).toHaveLength(1));
-  expect(scripts[0]?.src).toBe('/manifest.js');
-  scripts[0]?.onload();
-  await vi.waitFor(() => expect(scripts).toHaveLength(3));
-  expect(scripts.map((script) => script.src)).toEqual([
-    '/manifest.js',
-    '/network.js',
-    '/eme-playback.js',
-  ]);
-  scripts[1]?.onload();
-  scripts[2]?.onload();
-  await starting;
-  for (const script of scripts) expect(script.remove).toHaveBeenCalledOnce();
-});
-
-test('reports script load failures and removes the failed element', async () => {
-  const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
-  const remove = vi.fn();
-  vi.stubGlobal('document', {
-    createElement: () => ({ remove }),
-    head: { appendChild: (element: { onerror: () => void }) => element.onerror() },
-  });
-  await content.main({} as ContentScriptContext);
-  expect(warn).toHaveBeenCalledWith(
-    '[okova] Script injection failed',
-    expect.objectContaining({ message: 'Failed to inject /manifest.js' }),
-  );
-  expect(remove).toHaveBeenCalledOnce();
+test.each(['load-eme'])('keeps %s off page responses', async (action) => {
+  await startContentBridge();
+  const response = vi.fn();
+  window.addEventListener('drm-message-response', response);
+  const token = crypto.randomUUID();
+  const event = new MessageEvent('message', { data: { type: 'drm-startup', action, token } });
+  Object.defineProperty(event, 'source', { value: window });
+  window.dispatchEvent(event);
+  await Promise.resolve();
+  expect(sendMessage).toHaveBeenCalledExactlyOnceWith({ action, token });
+  expect(response).not.toHaveBeenCalled();
 });

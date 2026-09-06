@@ -1,4 +1,4 @@
-import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
+import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { chromium } from 'playwright';
@@ -76,22 +76,12 @@ test('built content bridge associates DASH and reads playback configuration thro
       const page = await context.newPage();
       const errors: string[] = [];
       page.on('pageerror', (error) => errors.push(error.message));
-      const readinessMs: number[] = [];
       for (let index = 0; index < 5; index++) {
         const ready = page.waitForEvent('console', {
           predicate: (message) => message.text() === '[okova] Response interception added',
         });
         await page.goto(`https://okova.test/page-${index}`);
         await ready;
-        // Resource timing covers loading the content script's dependent page script.
-        readinessMs.push(
-          await page.evaluate(() => {
-            const entry = performance
-              .getEntriesByType('resource')
-              .find((item) => item.name.endsWith('/manifest.js'));
-            return entry ? entry.startTime + entry.duration : performance.now();
-          }),
-        );
         await page.evaluate(async (url) => {
           window.postMessage(null, '*');
           window.postMessage({ method: 'response', params: null }, '*');
@@ -125,12 +115,6 @@ test('built content bridge associates DASH and reads playback configuration thro
       );
       expect(activeSystem).toBe('com.widevine.alpha');
       expect(errors).toEqual([]);
-      const artifacts = resolve('output/playwright/manifest');
-      await mkdir(artifacts, { recursive: true });
-      await writeFile(
-        join(artifacts, 'timing.json'),
-        JSON.stringify({ manifestLoadedMs: readinessMs }, null, 2),
-      );
     } finally {
       await context.close();
     }

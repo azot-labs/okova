@@ -276,3 +276,86 @@ test.each([
   expect(await appStorage.recentKeys.getValue()).toEqual(expected);
   expect(await appStorage.recentKeysByDomain.getValue()).toEqual({ 'example.com': expected });
 });
+
+test('evicts the oldest timestamps at 1,001 records, preserving newer captures', async () => {
+  const keys = Array.from({ length: 1_000 }, (_, index) => ({
+    ...key,
+    id: String(index),
+    createdAt: 1_000 - index,
+  }));
+  await appStorage.allKeys.setValue(keys);
+  await appStorage.allKeys.add({ ...key, id: 'new', createdAt: 1_001 });
+  const stored = await appStorage.allKeys.getValue();
+  expect(stored).toHaveLength(1_000);
+  expect(stored?.some((key) => key.id === '999')).toBe(false);
+  expect(stored?.at(-1)?.id).toBe('new');
+});
+
+test('bounds legacy oversized history and concurrent additions', async () => {
+  const keys = Array.from({ length: 1_050 }, (_, index) => ({
+    ...key,
+    id: String(index),
+    createdAt: index,
+  }));
+  await appStorage.allKeys.raw.setValue(keys);
+  await Promise.all([
+    appStorage.allKeys.add({ ...key, id: 'a', createdAt: 1_050 }),
+    appStorage.allKeys.add({ ...key, id: 'b', createdAt: 1_051 }),
+  ]);
+  const stored = await appStorage.allKeys.getValue();
+  expect(stored).toHaveLength(1_000);
+  expect(stored?.[0]?.id).toBe('52');
+  expect(stored?.slice(-2).map((key) => key.id)).toEqual(['a', 'b']);
+});
+
+test('bounds direct and recent writes, including the shared domain cache budget', async () => {
+  const keys = Array.from({ length: 1_005 }, (_, index) => ({
+    ...key,
+    id: String(index),
+    createdAt: index,
+  }));
+  await appStorage.allKeys.setValue(keys);
+  await appStorage.recentKeys.setValue(keys);
+  expect(await appStorage.allKeys.getValue()).toEqual(keys.slice(5));
+  expect(await appStorage.recentKeys.getValue()).toEqual(keys.slice(5));
+  await appStorage.recentKeysByDomain.setValue(
+    Object.fromEntries(keys.map((key) => [`${key.id}.example`, [key]])),
+  );
+  await appStorage.recentKeysByDomain.setForUrl('https://latest.example', [
+    { ...key, id: 'latest', createdAt: 2_000 },
+  ]);
+  const domains = await appStorage.recentKeysByDomain.getValue();
+  expect(Object.values(domains ?? {}).flat()).toHaveLength(1_000);
+  expect(domains?.['5.example']).toBeUndefined();
+  expect(domains?.['latest.example']?.[0]?.id).toBe('latest');
+  await appStorage.recentKeysByDomain.setForUrl('https://latest.example', keys);
+  expect(Object.values((await appStorage.recentKeysByDomain.getValue()) ?? {}).flat()).toHaveLength(
+    1_000,
+  );
+});
+
+test('preserves explicit empty domain results without allowing empty domains to grow unbounded', async () => {
+  await appStorage.recentKeysByDomain.setForUrl(key.url, []);
+  expect(await appStorage.recentKeysByDomain.getValue()).toEqual({ 'example.com': [] });
+  await appStorage.recentKeysByDomain.setValue(
+    Object.fromEntries(Array.from({ length: 1_005 }, (_, index) => [`${index}.example`, []])),
+  );
+  expect(Object.keys((await appStorage.recentKeysByDomain.getValue()) ?? {})).toHaveLength(1_000);
+});
+
+test('merges a whole capture batch before eviction so a late status cannot replace an evicted key', async () => {
+  const keys = Array.from({ length: 1_000 }, (_, index) => ({
+    ...key,
+    id: String(index),
+    createdAt: index,
+  }));
+  await appStorage.allKeys.setValue(keys);
+  await appStorage.allKeys.add(
+    { ...key, id: 'new', createdAt: 1_001 },
+    { ...key, id: '0', value: 'expired', createdAt: 1_002 },
+  );
+  const stored = await appStorage.allKeys.getValue();
+  expect(stored).toHaveLength(1_000);
+  expect(stored?.some((record) => record.id === '0')).toBe(false);
+  expect(stored?.[0]?.id).toBe('1');
+});
