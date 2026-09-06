@@ -51,44 +51,47 @@ export const KeysList: Component<KeysListProps> = (props) => {
   return (
     <>
       <Show when={props.selectable && props.keys().length}>
-        <div class="sticky top-0 z-10 flex flex-col gap-1 rounded-lg bg-white p-1 shadow-sm dark:bg-neutral-800">
-          <div class="flex items-center justify-between gap-2 px-2 text-[13px]">
-            <label class="flex min-h-11 cursor-pointer items-center gap-3">
-              <input
-                type="checkbox"
-                class="size-5 cursor-pointer accent-blue-600"
-                checked={selectedRecords().length === props.keys().length}
-                ref={(input) =>
-                  createEffect(() => {
-                    input.indeterminate =
-                      selectedRecords().length > 0 &&
-                      selectedRecords().length < props.keys().length;
-                  })
-                }
-                onChange={(event) =>
-                  setSelected(event.currentTarget.checked ? props.keys().map(keyRecordToken) : [])
-                }
-              />
-              Select All Results
-            </label>
-            <span aria-live="polite">{selectedRecords().length} selected</span>
-            <Show when={selectedRecords().length > 0}>
-              <button
-                type="button"
-                class="min-h-11 px-2 text-blue-600 dark:text-blue-400"
-                onClick={() => setSelected([])}
-              >
-                Clear
-              </button>
-            </Show>
-          </div>
+        <Section>
+          <Cell
+            selection={{
+              label: 'Select All Results',
+              checked: selectedRecords().length === props.keys().length,
+              indeterminate:
+                selectedRecords().length > 0 && selectedRecords().length < props.keys().length,
+              onChange: (checked) => setSelected(checked ? props.keys().map(keyRecordToken) : []),
+            }}
+            onClick={() =>
+              setSelected(
+                selectedRecords().length === props.keys().length
+                  ? []
+                  : props.keys().map(keyRecordToken),
+              )
+            }
+            subtitle={<span aria-live="polite">{selectedRecords().length} selected</span>}
+            after={
+              <Show when={selectedRecords().length > 0}>
+                <button
+                  type="button"
+                  class="-my-2 min-h-11 px-2 text-[13px] text-blue-600 dark:text-blue-400"
+                  onClick={(event) => {
+                    event.stopPropagation();
+                    setSelected([]);
+                  }}
+                >
+                  Clear
+                </button>
+              </Show>
+            }
+          >
+            Select All Results
+          </Cell>
           <DeleteKeys
             label="Delete Selected"
             scope={{ kind: 'selected', records: selectedRecords() }}
             disabled={!selectedRecords().length}
             onDeleted={() => setSelected([])}
           />
-        </div>
+        </Section>
       </Show>
       <div ref={list}>
         <Show when={props.keys().length > 0}>
@@ -96,29 +99,27 @@ export const KeysList: Component<KeysListProps> = (props) => {
             <Section header={props.header} footer={props.footer}>
               <For each={rows.filter((row) => row.visible)}>
                 {(row) => (
-                  <div
-                    data-history-row={row.identity}
-                    class="flex items-stretch rounded-lg bg-white dark:bg-neutral-800 [&>div]:rounded-[inherit]"
-                  >
-                    <Show when={props.selectable}>
-                      <label class="flex min-w-11 cursor-pointer items-center justify-center rounded-l-lg has-[:checked]:bg-blue-50 dark:has-[:checked]:bg-blue-950">
-                        <input
-                          type="checkbox"
-                          class="size-5 cursor-pointer accent-blue-600"
-                          aria-label={`Select record ${row.key.id} from ${row.key.url}`}
-                          checked={selected().includes(keyRecordToken(row.key))}
-                          onChange={(event) => {
-                            const token = keyRecordToken(row.key);
-                            setSelected((tokens) =>
-                              event.currentTarget.checked
-                                ? [...tokens, token]
-                                : tokens.filter((item) => item !== token),
-                            );
-                          }}
-                        />
-                      </label>
-                    </Show>
-                    <Cell class="group min-w-0" onClick={() => setOpenedIdentity(row.identity)}>
+                  <div data-history-row={row.identity} class="[&>div]:rounded-[inherit]">
+                    <Cell
+                      class="group min-w-0"
+                      onClick={() => setOpenedIdentity(row.identity)}
+                      selection={
+                        props.selectable
+                          ? {
+                              label: `Select record ${row.key.id} from ${row.key.url}`,
+                              checked: selected().includes(keyRecordToken(row.key)),
+                              onChange: (checked) => {
+                                const token = keyRecordToken(row.key);
+                                setSelected((tokens) =>
+                                  checked
+                                    ? [...tokens, token]
+                                    : tokens.filter((item) => item !== token),
+                                );
+                              },
+                            }
+                          : undefined
+                      }
+                    >
                       <code title="Click to copy" class="text-[13px] truncate flex w-full">
                         <span class="w-1/2 truncate">{row.key.id}</span>:
                         {/* value may be a status if Spoofing disabled */}

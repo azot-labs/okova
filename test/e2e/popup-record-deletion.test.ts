@@ -142,7 +142,7 @@ test('deletes individual records and confirms frozen selected, site, and all-rec
       expect(JSON.parse(String((await readRecords())['all-keys']))).toEqual([otherSite, arriving]);
       await popup.getByLabel('Search by KID or site').fill('');
       await popup.screenshot({ path: resolve('output/playwright/bulk-deletion/selection.png') });
-      await dashboard.getByRole('button', { name: 'Delete This Site', exact: true }).click();
+      await dashboard.getByRole('button', { name: 'Delete Site Keys', exact: true }).click();
       const siteDialog = dashboard.getByRole('dialog');
       await expect.poll(() => siteDialog.isVisible()).toBe(true);
       expect(await siteDialog.innerText()).toContain('example.com');

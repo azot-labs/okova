@@ -66,7 +66,7 @@ export const Dashboard = () => {
 
         <Show when={activeDomain()}>
           {(domain) => (
-            <DeleteKeys label="Delete This Site" scope={{ kind: 'site', domain: domain() }} />
+            <DeleteKeys label="Delete Site Keys" scope={{ kind: 'site', domain: domain() }} />
           )}
         </Show>
         <KeysList
