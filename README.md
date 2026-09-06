@@ -4,9 +4,9 @@
 ![GitHub Downloads (all assets, latest release)](https://img.shields.io/github/downloads/azot-labs/okova/latest/total?style=flat&color=black)
 [![npm downloads](https://img.shields.io/npm/dt/okova?style=flat&color=black)](https://www.npmjs.com/package/okova)
 
-Okova is a set of tools (JavaScript library, command-line utility and browser extension) for diagnosing, researching, and pentesting [DRM](https://www.urbandictionary.com/define.php?term=DRM) systems used in playable media content.
+Okova is a toolkit (browser extension, command-line tool, and JavaScript library) for inspecting DRM-protected media and working with Widevine, PlayReady, and ClearKey.
 
-> Okova is still in the early stages of development, so until version 1.0 is released, performance may be unstable and major changes may be made
+> Okova is under active development. APIs and behavior may change before version 1.0.
 
 ## Features
 
@@ -30,11 +30,9 @@ The toolbar badge shows a count capped at `99+`, followed by `W`, `P`, or `C` fo
 - Green: content keys retrieved during this page visit, including keys retrieved again.
 - Orange with `!`: retrieval failed. Hover over the icon for the error.
 
-Navigation or reload clears the current result; saved content keys then appear blue. The tooltip explains the count and lists DRM results from this visit. Older history without DRM metadata shows only the number. Green indicates key retrieval, not verified playback.
+Reloading or navigating clears the current result; saved keys then appear blue. Hover over the badge for details. Green indicates key retrieval, not verified playback.
 
 ### Installing Chrome extension
-
-**Developer Mode** needs to be enabled in `chrome://extensions/` page
 
 1. Download archive from [latest release](https://github.com/azot-labs/okova/releases/latest)
 2. Go to `chrome://extensions/` page
@@ -72,6 +70,8 @@ Convert DRM client files `./drm-files/device_client_id_blob` and `./drm-files/de
 okova client pack ./drm-files ./unknown_android-sdk-built-for-x86.wvd
 ```
 
+Output example:
+
 ```text
 Client packed: /Users/.../unknown_android-sdk-built-for-x86.wvd
 ```
@@ -81,6 +81,8 @@ Show DRM client info:
 ```bash
 okova client info ./unknown_android-sdk-built-for-x86.wvd
 ```
+
+Output example:
 
 ```text
 application_name: org.chromium.webview_shell
@@ -155,22 +157,10 @@ async function main() {
 }
 ```
 
-`fetchDecryptionKeys` rejects unsuccessful HTTP responses with `LicenseHttpError`,
-which exposes `status` and `endpoint`. The endpoint excludes URL credentials, query
-parameters, and fragments; the error does not include the response body. Status is
-checked after any `transformResponse` callback. PlayReady requests default to
-`Content-Type: text/xml; charset=utf-8` unless you provide that header.
-
-Acquisition has a 30-second overall deadline. Pass `timeoutMs` to change it and
-`signal` to cancel, including pending license HTTP requests. Request transforms
-retain the acquisition signal even when they return a new `Request`. Custom
-fetch implementations and transforms should honor that signal; cancellation stops
-waiting for them and prevents further exchanges when they eventually finish.
-Cleanup has a separate one-second grace period and does not replace the original
-result or error. License POSTs are never automatically retried.
-
-A completed update must provide content keys or emit a message for another
-exchange. Otherwise, the helper rejects with `NoContentKeysError`.
+`fetchDecryptionKeys` handles license exchanges with a 30-second default timeout.
+Use `timeoutMs` to change the deadline and `signal` to cancel. It throws
+`LicenseHttpError` for unsuccessful HTTP responses and `NoContentKeysError` when
+an exchange finishes without content keys. License requests are not automatically retried.
 
 ### Saving and resuming native sessions
 
@@ -184,11 +174,8 @@ await session.close();
 const resumed = engine.resumeSession(state);
 ```
 
-Snapshots are versioned and validated when resumed. Existing unversioned
-snapshots remain readable. Resume with the same device credentials. Native
-Widevine `load()` returns `false`; it does not implement persistent-license
-storage. The EME wrapper's `keyStatuses` is read-only and matches KIDs by their
-bytes. Repeated `close()` calls are safe.
+Resume with the same device credentials. Native Widevine sessions do not support
+persistent-license storage through `load()`.
 
 ### PlayReady custom challenge data
 
@@ -199,36 +186,17 @@ const engine = new PlayReady({ deviceCredentials, customData: applicationData })
 const keys = await fetchDecryptionKeys({ cdm: engine, pssh, server: licenseUrl });
 ```
 
-The engine includes it as XML-escaped text in the signed `<CustomData>` element
-for new and resumed sessions. Omitting `customData` omits the element; an empty
-string produces an empty element. Pass the original text, without XML escaping.
-Direct calls can override it with
-`session.getLicenseChallenge(wrmHeader, revocationListsXml, customData)`.
+Pass the original text without XML escaping. Remote clients accept the same
+`customData` option; REST clients include it in the `POST /sessions` body.
 
-Remote integrations accept the same `customData` constructor option on `Remote`.
-REST clients supply the optional string in the `POST /sessions` JSON body; it
-applies to PlayReady challenges generated by that session.
+### Remote sessions
 
-`POST /sessions` accepts `keySystem` and selects the first authorized device for
-that system when `client` is omitted. An explicit client must match the requested
-system. Omitting both fields preserves the first configured device as the default.
-The response includes `id`, the resolved `client` path, and the canonical
-`keySystem`. `sessionType` accepts only `temporary` or `persistent-license`; this
-validation does not add persistent storage support.
+`POST /sessions` accepts `keySystem` and an optional `client`. Without a client,
+the server selects the first authorized device for that DRM system. An explicit
+client must match the requested system.
 
-Supported DRM names are `com.widevine.alpha`, `com.microsoft.playready`,
-`com.microsoft.playready.recommendation`,
-`com.microsoft.playready.recommendation.3000`, and
-`com.microsoft.playready.hardware`. PlayReady aliases resolve to
-`com.microsoft.playready.recommendation`; they do not imply hardware CDM support.
-The extension checks these names against the selected device and reports a
-mismatch in the popup. Its DRM operations time out after 25 seconds and cancel on
-tab navigation, tab removal, or an explicit session close.
-
-Remote sessions accept one mutation at a time. Overlapping challenge generation,
-certificate changes, updates, close, or delete requests return HTTP 409. Wait for
-the active request to finish before retrying. Requests for different sessions
-can run concurrently; key retrieval remains available during mutations.
+Wait for each session mutation to finish before starting another; overlapping
+requests return HTTP 409. Requests for different sessions can run concurrently.
 
 The server limits sessions and concurrent requests across all users and devices.
 In `okova.config.json`, optional `sessionLimits` fields override these defaults:
@@ -244,16 +212,9 @@ In `okova.config.json`, optional `sessionLimits` fields override these defaults:
 }
 ```
 
-Limits must be positive integers. Excess session opens or concurrent requests
-return HTTP 503; clients can retry after existing work finishes or sessions close.
-Session capacity includes opens still loading a device. Each request for an
-existing session refreshes its idle timer. Idle expiry closes the native session,
-clears its keys, and releases waiting requests. Keep sessions active while using
-them and create a new one after expiry. Server shutdown also closes sessions.
-
-`GET /sessions/:id/keys` returns HTTP 504 if no key-status event arrives before
-`keyWaitTimeoutMs`. Disconnecting cancels that request's wait without closing the
-session. Each session keeps its own certificates and custom PlayReady data.
+Limits must be positive integers. Exceeding session or request limits returns
+HTTP 503. Idle sessions expire and must be recreated. Waiting for keys beyond
+`keyWaitTimeoutMs` returns HTTP 504.
 
 ### Inspect, edit, and convert PSSH boxes
 
@@ -279,43 +240,17 @@ console.log(box.systemId, box.version, getPsshKeyIds(box));
 const restored = convertPsshBox(box, 'widevine');
 ```
 
-`parsePsshBoxes` accepts bytes or base64 containing one or more full PSSH boxes. It
-rejects malformed boxes, raw DRM headers, and other MP4 box types. The returned
-`ParsedPsshBox` exposes `systemId`, `version`, `flags`, `keyIds`, and raw payload
-`data`. Unknown system IDs and opaque payloads can be parsed and serialized.
-`serializePsshBox` returns full box bytes; `psshBoxToBase64` returns base64. Both
-write a normal 32-bit size field, including for inputs parsed with extended sizes.
+`parsePsshBoxes` accepts bytes or base64 containing full PSSH boxes.
+`serializePsshBox` returns bytes; `psshBoxToBase64` returns base64.
+IDs accept 16-byte arrays, UUID strings, or 32 hex digits.
 
-Widevine and PlayReady challenge generation use the same bounded box parser,
-including extended-size and size-to-end boxes. A box sequence must contain the
-requested DRM system; malformed boxes are rejected instead of treated as raw
-payloads. Widevine still accepts non-box opaque initialization data for vendor
-compatibility. PlayReady also accepts raw UTF-16LE WRMHEADER XML, complete PROs,
-and standalone type-1 records. PRO and record lengths must match their contents;
-headers support Unicode and an optional UTF-16LE BOM.
+Use `getPsshKeyIds` to inspect KIDs and `setPsshKeyIds` to replace Widevine KIDs.
+PlayReady KID replacement is not supported. Editing and conversion return new
+boxes without changing their inputs.
 
-`fromHex` rejects odd-length input and non-hexadecimal characters. Empty input
-converts to an empty buffer or string. WVD export rejects private-key and client-ID
-fields larger than 65,535 bytes before writing the file.
-
-IDs accept 16-byte arrays, UUID strings, or 32 hex digits. Inspection returns
-lowercase hex in UUID byte order, accounting for PlayReady's GUID byte order.
-`getPsshKeyIds` prefers nonempty version 1 box KIDs, then reads Widevine protobuf
-or PlayReady Object headers, versions 4.0 through 4.3. `createPsshBox` wraps raw
-payload bytes or base64; its `keyIds` option is only available with `version: 1`
-and sets box KIDs. Use `setPsshKeyIds` to populate or replace Widevine payload KIDs.
-It also updates version 1 box KIDs and preserves other protobuf fields. Editing
-and conversion return new boxes without changing their inputs. PlayReady KID
-replacement is not supported.
-
-Conversion carries KIDs, box version, flags, and `cenc`/`cbcs` encryption signaling.
-Widevine data without an explicit scheme defaults to AES-CTR. Unsupported or mixed
-PlayReady algorithms are rejected. Conversion discards other source metadata,
-including license URLs, provider data, custom attributes, and checksums. Supply
-`laUrl` when converting to PlayReady if needed. Generated PlayReady 4.3 headers
-omit checksums because computing them requires content keys. Converted headers
-may not meet a particular license server's requirements. See Microsoft's
-[PlayReady header specification](https://learn.microsoft.com/en-us/playready/specifications/playready-header-specification).
+Conversion preserves KIDs and encryption signaling but discards other metadata,
+including license URLs and checksums. Supply `laUrl` when converting to PlayReady
+if needed. Converted headers may not meet every license server's requirements.
 
 ## Disclaimer
 
