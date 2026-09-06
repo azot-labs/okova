@@ -1,6 +1,7 @@
 import { Component } from 'solid-js';
 import { TbOutlineClipboardText, TbOutlineTrash } from 'solid-icons/tb';
-import { appStorage, KeyInfo } from '@/utils/storage';
+import { appStorage, getWebsiteDomain, KeyInfo } from '@/utils/storage';
+import { DeleteKeys } from '../components/delete-keys';
 import { Header } from '../components/header';
 import { Layout } from '../components/layout';
 import { List } from '../components/list';
@@ -101,6 +102,11 @@ export const KeySettings: Component<KeySettingsProps> = (props) => {
             Delete
           </Cell>
         </Section>
+        <Show when={getWebsiteDomain(props.key.url)}>
+          {(domain) => (
+            <DeleteKeys label="Delete This Site" scope={{ kind: 'site', domain: domain() }} />
+          )}
+        </Show>
         <Section header="Command builder (Bash / Zsh)">
           <Cell class="w-full">
             <textarea

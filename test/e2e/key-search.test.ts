@@ -79,7 +79,11 @@ test('saved keys filter immediately by KID, page URL, and manifest URL', async (
       await expect.poll(() => count.textContent()).toBe('2 / 2 keys');
       await search.fill('');
       await popup.screenshot({ path: resolve('output/playwright/key-search/all-keys.png') });
-      await popup.getByText('Delete All', { exact: true }).click();
+      await popup.getByRole('button', { name: 'Delete All', exact: true }).click();
+      await popup
+        .getByRole('dialog')
+        .getByRole('button', { name: 'Delete 2 records', exact: true })
+        .click();
       await expect.poll(() => count.textContent()).toBe('0 / 0 keys');
       expect(await popup.getByRole('heading', { name: 'Keys will appear here' }).isVisible()).toBe(
         true,
