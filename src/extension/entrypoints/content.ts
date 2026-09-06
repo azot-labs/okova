@@ -3,9 +3,9 @@ import { appStorage } from '@/utils/storage';
 import type { PublicPath } from 'wxt/browser';
 
 const getActiveClientKeySystem = async () => {
-  const client = await appStorage.clients.active.raw.getValue();
+  const client = await appStorage.clients.active.getInfo();
   if (!client) return null;
-  if (typeof client === 'string' || client.type === 'wvd') return CLIENT_KEY_SYSTEMS.widevine;
+  if (client.type === 'wvd') return CLIENT_KEY_SYSTEMS.widevine;
   if (client.type === 'remote') return client.config.keySystem;
   return CLIENT_KEY_SYSTEMS.playready;
 };

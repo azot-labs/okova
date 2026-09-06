@@ -15,7 +15,7 @@ import { Header } from '../components/header';
 import { CellImportClient } from '../components/cell-import-client';
 import { NoKeys } from '../components/no-keys';
 import { KeysList } from '../components/keys-list';
-import { appStorage, getRecentKeysForUrl, getWebsiteDomain, drmStages } from '@/utils/storage';
+import { getRecentKeysForUrl, getWebsiteDomain, drmStages } from '@/utils/storage';
 
 export const Dashboard = () => {
   const [failure] = useDrmFailure();
@@ -24,7 +24,7 @@ export const Dashboard = () => {
   const [recentKeys] = useRecentKeys();
   const [recentKeysByDomain] = useRecentKeysByDomain();
   const [activeTabUrl] = useActiveTabUrl();
-  const [activeClient, setActiveClient] = useActiveClient();
+  const [activeClient] = useActiveClient();
   const activeFailure = createMemo(() => failure()?.url === activeTabUrl() && failure());
   const activeDomain = createMemo(() => getWebsiteDomain(activeTabUrl()));
   const recentKeysHeader = createMemo(() =>
@@ -32,14 +32,6 @@ export const Dashboard = () => {
   );
   const activeDomainRecentKeys = createMemo(() => {
     return getRecentKeysForUrl(activeTabUrl(), recentKeysByDomain(), recentKeys());
-  });
-
-  createEffect(() => {
-    if (clients().length === 1) {
-      const client = clients()[0];
-      setActiveClient(client);
-      appStorage.clients.active.setValue(client);
-    }
   });
 
   return (
@@ -54,7 +46,7 @@ export const Dashboard = () => {
 
         <Show when={activeClient()}>
           <Cell class="capitalize" component="label" subtitle="Active">
-            {`${activeClient()?.label}`}
+            {`${activeClient()?.client.label}`}
           </Cell>
         </Show>
 

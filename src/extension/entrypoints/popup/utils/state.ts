@@ -1,4 +1,12 @@
-import { appStorage, Client, KeyInfo, RecentKeysByDomain, Settings } from '@/utils/storage';
+import {
+  appStorage,
+  StoredClient,
+  ClientSnapshot,
+  defaultSettings,
+  KeyInfo,
+  RecentKeysByDomain,
+  Settings,
+} from '@/utils/storage';
 import { getDrmFailureStorage, type DrmFailure } from '@/utils/storage';
 import { createSignal, onCleanup, onMount } from 'solid-js';
 import { createStore } from 'solid-js/store';
@@ -6,11 +14,18 @@ import { createStore } from 'solid-js/store';
 const clientImportWarningSignal = createSignal<string>();
 export const useClientImportWarning = () => clientImportWarningSignal;
 
-const clientsSignal = createSignal<Client[]>([]);
+const clientsSignal = createSignal<StoredClient[]>([]);
 export const useClients = () => clientsSignal;
 
-const activeClientSignal = createSignal<Client | null>(null);
+const activeClientSignal = createSignal<StoredClient | null>(null);
 export const useActiveClient = () => activeClientSignal;
+
+export const syncClients = (snapshot: ClientSnapshot) => {
+  clientsSignal[1](snapshot.clients);
+  activeClientSignal[1](
+    snapshot.clients.find((entry) => entry.id === snapshot.activeClientId) ?? null,
+  );
+};
 
 const recentKeysSignal = createSignal<KeyInfo[]>([]);
 export const useRecentKeys = () => recentKeysSignal;
@@ -24,20 +39,11 @@ export const useDrmFailure = () => drmFailureSignal;
 const activeTabUrlSignal = createSignal<string | null>(null);
 export const useActiveTabUrl = () => activeTabUrlSignal;
 
-const defaultSettings: Settings = {
-  emeInterception: true,
-  spoofing: false,
-  clientPlayback: false,
-  requestInterception: false,
-  theme: 'auto',
-};
 const settingsStore = createStore<Settings>(defaultSettings);
 export const useSettings = () => settingsStore;
 
 export const useSyncStateWithStorage = () => {
   const [, setSettings] = useSettings();
-  const [, setClients] = useClients();
-  const [, setActiveClient] = useActiveClient();
   const [, setRecentKeys] = useRecentKeys();
   const [, setRecentKeysByDomain] = useRecentKeysByDomain();
   const [, setActiveTabUrl] = useActiveTabUrl();
@@ -55,12 +61,12 @@ export const useSyncStateWithStorage = () => {
     if (settings) {
       const syncedSettings = { ...defaultSettings, ...settings };
       setSettings(syncedSettings);
-      if (!settings.theme) appStorage.settings.setValue(syncedSettings);
+      if (!settings.theme) await appStorage.settings.setValue(syncedSettings);
     } else {
-      appStorage.settings.setValue(defaultSettings);
+      await appStorage.settings.setValue(defaultSettings);
     }
 
-    appStorage.clients.getValue().then((clients) => setClients(clients));
+    appStorage.clients.getSnapshot().then(syncClients);
     browser.tabs.query({ active: true, currentWindow: true }).then(async ([tab]) => {
       if (isDisposed) return;
       setActiveTabUrl(tab?.url ?? null);
@@ -83,8 +89,5 @@ export const useSyncStateWithStorage = () => {
     appStorage.recentKeysByDomain.watch((newKeysByDomain) =>
       setRecentKeysByDomain(newKeysByDomain || {}),
     );
-    appStorage.clients.active
-      .getValue()
-      .then((activeClient) => activeClient && setActiveClient(activeClient));
   });
 };

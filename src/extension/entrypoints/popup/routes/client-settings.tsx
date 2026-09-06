@@ -5,13 +5,15 @@ import { Client } from '@/utils/storage';
 import { Header } from '../components/header';
 import { Layout } from '../components/layout';
 import { List } from '../components/list';
-import { Section } from '../components/section';
+import { Section, SectionFooter } from '../components/section';
 import { Cell } from '../components/cell';
 import { WidevineDeviceCredentials } from '../../../../lib/widevine/device-credentials';
 import { PlayReadyDeviceCredentials } from '../../../../lib/playready/device-credentials';
 
 type ClientSettingsProps = {
   client: Client;
+  error?: string;
+  disabled?: boolean;
   onExport: (client: Client) => void;
   onDelete: (client: Client) => void;
   onClose: () => void;
@@ -40,6 +42,11 @@ export const ClientSettings: Component<ClientSettingsProps> = (props) => {
   return (
     <Layout>
       <Header onClose={props.onClose}>Client Settings</Header>
+      <Show when={props.error}>
+        <SectionFooter>
+          <span role="alert">{props.error}</span>
+        </SectionFooter>
+      </Show>
       <List>
         <Section header="Details">
           <Cell class="capitalize group" subtitle={props.client.label}>
@@ -71,6 +78,7 @@ export const ClientSettings: Component<ClientSettingsProps> = (props) => {
           <Cell
             before={<TbOutlineTrash />}
             variant="danger"
+            disabled={props.disabled}
             onClick={() => props.onDelete(props.client)}
           >
             Delete
