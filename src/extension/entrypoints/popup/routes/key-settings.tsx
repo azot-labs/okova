@@ -18,17 +18,14 @@ type KeySettingsProps = {
 export const KeySettings: Component<KeySettingsProps> = (props) => {
   const [isDeleting, setIsDeleting] = createSignal(false);
   const [deleteError, setDeleteError] = createSignal<string>();
-  const [command, setCommand] = createSignal(buildDownloadCommand(props.key));
-
-  const getMainLayoutElement = () => {
-    return document.querySelector<HTMLDivElement>('#root > main');
-  };
-
-  const close = () => {
-    const mainLayout = getMainLayoutElement();
-    if (mainLayout) mainLayout.style.display = 'block';
-    props.onClose();
-  };
+  const generatedCommand = createMemo(() => buildDownloadCommand(props.key));
+  const [command, setCommand] = createSignal(generatedCommand());
+  let previousCommand = generatedCommand();
+  createEffect(() => {
+    const nextCommand = generatedCommand();
+    setCommand((current) => (current === previousCommand ? nextCommand : current));
+    previousCommand = nextCommand;
+  });
 
   const deleteRecord = async () => {
     if (isDeleting()) return;
@@ -36,7 +33,7 @@ export const KeySettings: Component<KeySettingsProps> = (props) => {
     setDeleteError(undefined);
     try {
       await appStorage.allKeys.remove(props.key);
-      close();
+      props.onClose();
     } catch {
       setDeleteError('Deletion failed. Please try again.');
     } finally {
@@ -45,17 +42,26 @@ export const KeySettings: Component<KeySettingsProps> = (props) => {
   };
 
   onMount(() => {
-    const mainLayout = getMainLayoutElement();
-    if (!mainLayout) return;
-    mainLayout.style.display = 'none';
+    const mainLayout = document.querySelector<HTMLElement>('#root > main');
+    const root = document.getElementById('root');
+    if (!mainLayout || !root) return;
+    const visibility = mainLayout.style.visibility;
+    const overflow = root.style.overflowY;
+    const inert = mainLayout.inert;
+    // Keep the list's layout and scroll position while details scroll independently.
+    mainLayout.style.visibility = 'hidden';
+    mainLayout.inert = true;
+    root.style.overflowY = 'hidden';
     onCleanup(() => {
-      mainLayout.style.display = 'block';
+      mainLayout.style.visibility = visibility;
+      mainLayout.inert = inert;
+      root.style.overflowY = overflow;
     });
   });
 
   return (
-    <Layout className="w-full h-full">
-      <Header onClose={close}>Key Settings</Header>
+    <Layout className="fixed top-0 left-0 w-full h-full min-h-0 max-h-[600px] overflow-y-auto [scrollbar-gutter:stable]">
+      <Header onClose={props.onClose}>Key Settings</Header>
       <List>
         <Section header="Details">
           <Cell subtitle={props.key.url} onClick={() => window.open(props.key.url, '_blank')}>
