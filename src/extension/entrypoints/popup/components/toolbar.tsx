@@ -5,27 +5,34 @@ import {
   TbOutlineShieldCog as TbShieldCog,
 } from 'solid-icons/tb';
 import { CardButton } from './card-button';
+import { Section } from './section';
 
 export const Toolbar = () => {
   return (
     <div class="grid grid-cols-3 gap-2">
       <A href="/clients">
-        <CardButton>
-          <TbShieldCog />
-          Clients
-        </CardButton>
+        <Section>
+          <CardButton>
+            <TbShieldCog />
+            Clients
+          </CardButton>
+        </Section>
       </A>
       <A href="/keys">
-        <CardButton>
-          <TbKey />
-          Keys
-        </CardButton>
+        <Section>
+          <CardButton>
+            <TbKey />
+            Keys
+          </CardButton>
+        </Section>
       </A>
       <A href="/settings">
-        <CardButton>
-          <TbSettings2 class="w-5 h-5" />
-          Settings
-        </CardButton>
+        <Section>
+          <CardButton>
+            <TbSettings2 class="w-5 h-5" />
+            Settings
+          </CardButton>
+        </Section>
       </A>
     </div>
   );

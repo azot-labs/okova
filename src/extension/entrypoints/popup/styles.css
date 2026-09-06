@@ -13,11 +13,11 @@
 }
 
 .dark {
-  --popup-bg: #0a0a0a;
+  --popup-bg: #171717;
   --popup-fg: #fafafa;
   --popup-switch-track: #3f3f46;
   --popup-switch-thumb: #fafafa;
-  --scroll-bg: #0a0a0a;
+  --scroll-bg: #171717;
   --scroll-thumb: #52525b;
   --scroll-thumb-hover: #71717a;
 }

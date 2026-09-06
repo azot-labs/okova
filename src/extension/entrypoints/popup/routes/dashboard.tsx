@@ -17,6 +17,7 @@ import { CellImportClient } from '../components/cell-import-client';
 import { NoKeys } from '../components/no-keys';
 import { KeysList } from '../components/keys-list';
 import { getRecentKeysForUrl, getWebsiteDomain, drmStages } from '@/utils/storage';
+import { Section } from '../components/section';
 
 export const Dashboard = () => {
   const [failure] = useDrmFailure();
@@ -46,9 +47,11 @@ export const Dashboard = () => {
         </Show>
 
         <Show when={activeClient()}>
-          <Cell class="capitalize" component="label" subtitle="Active">
-            {`${activeClient()?.client.label}`}
-          </Cell>
+          <Section>
+            <Cell class="capitalize" component="label" subtitle="Active">
+              {`${activeClient()?.client.label}`}
+            </Cell>
+          </Section>
         </Show>
 
         <Show when={activeFailure()}>
@@ -66,7 +69,9 @@ export const Dashboard = () => {
 
         <Show when={activeDomain()}>
           {(domain) => (
-            <DeleteKeys label="Delete Site Keys" scope={{ kind: 'site', domain: domain() }} />
+            <Section>
+              <DeleteKeys label="Delete Site Keys" scope={{ kind: 'site', domain: domain() }} />
+            </Section>
           )}
         </Show>
         <KeysList

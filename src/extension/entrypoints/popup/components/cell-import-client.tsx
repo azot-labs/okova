@@ -1,6 +1,6 @@
 import { Component, createSignal, Show } from 'solid-js';
 import { z } from 'zod';
-import { SectionFooter } from './section';
+import { Section, SectionFooter } from './section';
 import { TbOutlineShieldPlus as TbShieldPlus } from 'solid-icons/tb';
 import { Cell } from './cell';
 import { syncClients, useClientImportWarning, useSettings } from '../utils/state';
@@ -53,18 +53,20 @@ export const CellImportClient: Component<{
 
   return (
     <>
-      <Cell before={<TbShieldPlus />} variant="primary" component="label">
-        {isImporting() ? 'Importing client…' : 'Import client'}
-        <input
-          class="hidden"
-          id="file"
-          name="client"
-          multiple
-          type="file"
-          disabled={props.disabled || isImporting()}
-          onChange={handleFileChange}
-        />
-      </Cell>
+      <Section>
+        <Cell before={<TbShieldPlus />} variant="warning" component="label">
+          {isImporting() ? 'Importing client…' : 'Import client'}
+          <input
+            class="hidden"
+            id="file"
+            name="client"
+            multiple
+            type="file"
+            disabled={props.disabled || isImporting()}
+            onChange={handleFileChange}
+          />
+        </Cell>
+      </Section>
       <Show when={error()}>
         <SectionFooter>
           <span role="alert" class="text-red-500 break-words">

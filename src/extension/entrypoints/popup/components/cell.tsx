@@ -7,7 +7,7 @@ interface CellProps {
   subtitle?: JSX.Element;
   children: JSX.Element;
   size?: 'md' | 'lg';
-  variant?: 'default' | 'primary' | 'danger';
+  variant?: 'default' | 'primary' | 'danger' | 'warning';
   before?: JSX.Element;
   after?: JSX.Element;
   selection?: {
@@ -30,9 +30,10 @@ export const Cell: Component<CellProps> = (props) => {
       class={cn(
         'bg-white w-full min-h-9 py-2 rounded-lg text-[13px] flex items-center px-3 cursor-pointer text-left text-neutral-950',
         'transition-colors hover:duration-0 hover:bg-slate-50 active:bg-slate-100',
-        'dark:bg-neutral-800 dark:text-neutral-50 dark:hover:bg-neutral-700 dark:active:bg-neutral-700',
+        'dark:bg-neutral-800/50 dark:text-neutral-50 dark:hover:bg-neutral-700/30 dark:active:bg-neutral-700/60',
         props.variant === 'primary' && 'text-[#007AFF] dark:text-blue-400',
         props.variant === 'danger' && 'text-[#E53935] dark:text-red-400',
+        props.variant === 'warning' && 'text-[#d07200] dark:text-orange-400',
         props.disabled && 'cursor-default pointer-events-none opacity-70',
         props.class,
       )}
