@@ -38,7 +38,8 @@ test('saved keys filter immediately by KID, page URL, and manifest URL', async (
         await browser.storage.local.set({ 'all-keys': JSON.stringify(keys) });
       }, keys);
       const popup = await context.newPage();
-      await popup.goto(`chrome-extension://${new URL(worker.url()).hostname}/popup.html#/keys`);
+      await popup.goto(`chrome-extension://${new URL(worker.url()).hostname}/popup.html`);
+      await popup.getByRole('link', { name: 'Keys', exact: true }).click();
       const search = popup.getByRole('searchbox', { name: 'Search by KID or site' });
       const count = popup.getByRole('status');
       await expect.poll(() => count.textContent()).toBe('2 / 2 keys');
@@ -78,7 +79,7 @@ test('saved keys filter immediately by KID, page URL, and manifest URL', async (
       await expect.poll(() => count.textContent()).toBe('2 / 2 keys');
       await search.fill('');
       await popup.screenshot({ path: resolve('output/playwright/key-search/all-keys.png') });
-      await popup.getByRole('button', { name: 'Delete All', exact: true }).click();
+      await popup.getByText('Delete All', { exact: true }).click();
       await expect.poll(() => count.textContent()).toBe('0 / 0 keys');
       expect(await popup.getByRole('heading', { name: 'Keys will appear here' }).isVisible()).toBe(
         true,

@@ -31,6 +31,7 @@ export const Cell: Component<CellProps> = (props) => {
         props.class,
       )}
       title={props.title}
+      disabled={cellProps.component === 'button' ? props.disabled : undefined}
       onClick={props.onClick}
     >
       {props.before && <div class="[&>svg]:w-[18px] [&>svg]:h-[18px] mr-3">{props.before}</div>}
