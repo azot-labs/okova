@@ -1,4 +1,4 @@
-import { createMemo, createSignal } from 'solid-js';
+import { createSignal } from 'solid-js';
 import { z } from 'zod';
 import { compare } from 'semver';
 import { formatRelativeTime } from './date';
@@ -14,9 +14,8 @@ const [updateInfo, setUpdateInfo] = createSignal<{
   url: string;
   timeSinceRelease: string;
 } | null>(null);
-const hasUpdate = createMemo(
-  () => updateInfo() !== null && updateInfo()?.version !== browser.runtime.getManifest().version,
-);
+const hasUpdate = () =>
+  updateInfo() !== null && updateInfo()?.version !== browser.runtime.getManifest().version;
 const [allowUpdateCheck, setAllowUpdateCheck] = createSignal(true);
 const [updateCheckError, setUpdateCheckError] = createSignal<string | null>(null);
 const [isCheckingForUpdates, setIsCheckingForUpdates] = createSignal(false);
