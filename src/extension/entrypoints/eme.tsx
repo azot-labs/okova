@@ -6,7 +6,7 @@ import { isClearKeyRequest } from '@/utils/clearkey';
 
 declare global {
   interface MediaKeySession {
-    okovaInitData?: string;
+    _initData?: string;
     initDataType?: string;
     messages?: Map<MediaKeyMessageType, string>;
   }
@@ -53,7 +53,7 @@ export const installEmeInterception = () => {
       session: MediaKeySession,
     ) => {
       session.initDataType = initDataType;
-      session.okovaInitData = bytesToBase64(initData);
+      session._initData = bytesToBase64(initData);
       session.messages = new Map();
       const token = crypto.randomUUID();
       const ready = send({
@@ -63,7 +63,7 @@ export const installEmeInterception = () => {
         serverCertificate: getServerCertificate(session),
         sessionId: session.sessionId,
         initDataType,
-        initData: session.okovaInitData,
+        initData: session._initData,
       });
 
       sessionRequests.set(session, { token, ready });
@@ -76,14 +76,14 @@ export const installEmeInterception = () => {
 
       console.groupCollapsed(`[okova] [${session.sessionId}] Generated request`);
       console.log(`Initialization Data Type: ${session.initDataType}`);
-      console.log(`Initialization Data (PSSH): ${session.okovaInitData}`);
+      console.log(`Initialization Data (PSSH): ${session._initData}`);
       console.groupEnd();
     };
 
     const onKeyStatusesChange = async (session: MediaKeySession) => {
       console.groupCollapsed(`[okova] [${session.sessionId}] Key statuses changed`);
       console.log(`Initialization data type: ${session.initDataType}`);
-      console.log(`Initialization data (PSSH): ${session.okovaInitData}`);
+      console.log(`Initialization data (PSSH): ${session._initData}`);
       console.log(`Keys count: ${session.keyStatuses.size}`);
       console.groupEnd();
 
@@ -97,9 +97,9 @@ export const installEmeInterception = () => {
         sessionId: session.sessionId,
         action: 'keystatuseschange',
         keySystem: getKeySystem(session),
-        initData: session.okovaInitData,
+        initData: session._initData,
         initDataType: session.initDataType,
-        mpd: findManifest(session.okovaInitData),
+        mpd: findManifest(session._initData),
         keyStatuses,
       });
       return;
@@ -114,7 +114,7 @@ export const installEmeInterception = () => {
         `[okova] [${session.sessionId}] New message from browser CDM: ${messageType}`,
       );
       console.log(`Initialization data type: ${session.initDataType}`);
-      console.log(`Initialization data (PSSH): ${session.okovaInitData}`);
+      console.log(`Initialization data (PSSH): ${session._initData}`);
       console.log(`Message type: ${messageType}`);
       console.log(`Message: ${session.messages?.get(messageType)}`);
       console.groupEnd();
@@ -128,7 +128,7 @@ export const installEmeInterception = () => {
         serverCertificate: getServerCertificate(session),
         sessionToken: request?.token,
         action: messageType,
-        initData: session.okovaInitData,
+        initData: session._initData,
         initDataType: session.initDataType,
         message: session.messages?.get(messageType),
       });
@@ -142,7 +142,7 @@ export const installEmeInterception = () => {
         `[okova] [${session.sessionId}] Swapping a message from CDM with ours`,
       );
       console.log(`Initialization data type: ${session.initDataType}`);
-      console.log(`Initialization data (PSSH): ${session.okovaInitData}`);
+      console.log(`Initialization data (PSSH): ${session._initData}`);
       console.log(`Message type: ${messageType}`);
       console.log(`Message from browser CDM: ${session.messages?.get(messageType)}`);
       console.log(`Message from our CDM: ${response}`);
@@ -161,7 +161,7 @@ export const installEmeInterception = () => {
 
       console.groupCollapsed(`[okova] [${session.sessionId}] Update session with response`);
       console.log(`Initialization data type: ${session.initDataType}`);
-      console.log(`Initialization data (PSSH): ${session.okovaInitData}`);
+      console.log(`Initialization data (PSSH): ${session._initData}`);
       console.log(`Response: ${messageBase64}`);
       console.groupEnd();
 
@@ -172,11 +172,11 @@ export const installEmeInterception = () => {
         sessionId,
         action: 'update',
         keySystem: getKeySystem(session),
-        initData: session.okovaInitData,
+        initData: session._initData,
         initDataType: session.initDataType,
         message,
         messageBase64,
-        mpd: findManifest(session.okovaInitData),
+        mpd: findManifest(session._initData),
       });
 
       if (result?.keys) {

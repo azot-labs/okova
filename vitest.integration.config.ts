@@ -9,12 +9,7 @@ export default defineConfig({
     alias: { '@okova/lib': fileURLToPath(new URL('./src/lib', import.meta.url)) },
   },
   test: {
-    include: [
-      'test/integration/**/*.test.ts',
-      'test/crypto-common.test.ts',
-      'test/pssh-acquisition.test.ts',
-      'test/extension-session-restart.test.ts',
-    ],
+    include: ['test/integration/**/*.test.ts'],
     env: loadEnv('test', process.cwd(), 'VITEST_'),
     testTimeout: 60_000,
     hookTimeout: 30_000,
