@@ -56,6 +56,16 @@ test('retrieves new Widevine keys from the Bitmovin DRM demo with Spoofing enabl
       await popup.getByRole('link', { name: 'Clients', exact: true }).click();
       await popup.getByLabel('Import client').setInputFiles(resolve(clientPath));
       await expect.poll(() => popup.getByText(/^Widevine L\d$/).count()).toBe(1);
+      // The UI updates before the imported client has finished writing to storage.
+      await expect
+        .poll(() =>
+          worker.evaluate(async () => {
+            const raw: unknown = (await chrome.storage.local.get('clients')).clients;
+            const clients: unknown = typeof raw === 'string' ? JSON.parse(raw) : raw;
+            return Array.isArray(clients) && clients.length === 1;
+          }),
+        )
+        .toBe(true);
       // Returning to the dashboard persists the sole imported client as active.
       await popup.goto(popupUrl);
       await expect.poll(() => popup.getByText('Active', { exact: true }).count()).toBe(1);
