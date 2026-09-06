@@ -45,9 +45,16 @@ export const Keys = () => {
     }
   };
 
+  let hasHistoryUpdate = false;
+  onCleanup(
+    appStorage.allKeys.raw.watch((keys) => {
+      hasHistoryUpdate = true;
+      setKeys(keys ?? []);
+    }),
+  );
   onMount(async () => {
     const keys = await appStorage.allKeys.getValue();
-    if (keys) setKeys(keys);
+    if (!hasHistoryUpdate) setKeys(keys ?? []);
   });
 
   const clearKeys = async () => {

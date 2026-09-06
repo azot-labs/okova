@@ -352,17 +352,35 @@ export const appStorage = {
       }),
     remove: (key: KeyInfo) =>
       mutateKeyHistory(async () => {
-        const keys = (await appStorage.allKeys.getValue()) || [];
-        const index = keys.findIndex(
-          (storedKey) =>
-            storedKey.id === key.id &&
-            storedKey.value === key.value &&
-            storedKey.pssh === key.pssh &&
-            storedKey.url === key.url,
-        );
-        if (index === -1) return;
-        keys.splice(index, 1);
-        await appStorage.allKeys.raw.setValue(retainKeys(keys));
+        // Match the history identity; recent captures may have newer timestamps.
+        const keepRecord = (storedKey: KeyInfo) =>
+          storedKey.id !== key.id ||
+          storedKey.value !== key.value ||
+          storedKey.pssh !== key.pssh ||
+          storedKey.url !== key.url;
+        const [keys, recent, domains] = await Promise.all([
+          appStorage.allKeys.getValue(),
+          recentKeys.getValue(),
+          appStorage.recentKeysByDomain.getValue(),
+        ]);
+        await storage.setItems([
+          {
+            key: appStorage.allKeys.raw.key,
+            value: JSON.stringify((keys ?? []).filter(keepRecord)),
+          },
+          { key: recentKeys.key, value: JSON.stringify((recent ?? []).filter(keepRecord)) },
+          {
+            key: appStorage.recentKeysByDomain.raw.key,
+            value: JSON.stringify(
+              Object.fromEntries(
+                Object.entries(domains ?? {}).map(([domain, records]) => [
+                  domain,
+                  records.filter(keepRecord),
+                ]),
+              ),
+            ),
+          },
+        ]);
       }),
   },
 

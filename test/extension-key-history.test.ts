@@ -359,3 +359,39 @@ test('merges a whole capture batch before eviction so a late status cannot repla
   expect(stored?.some((record) => record.id === '0')).toBe(false);
   expect(stored?.[0]?.id).toBe('1');
 });
+
+test('deletes only the chosen record from history and both recent caches', async () => {
+  const otherPage = { ...key, url: 'https://example.com/another-video' };
+  const otherDomain = { ...key, url: 'https://other.example/video' };
+  const otherValue = { ...key, value: '000102030405060708090a0b0c0d0e0f' };
+  const otherPssh = { ...key, pssh: 'other-pssh' };
+  const remaining = [otherPage, otherDomain, otherValue, otherPssh];
+  await appStorage.allKeys.setValue([key, ...remaining]);
+  await appStorage.recentKeys.setValue([{ ...key, createdAt: 2 }, ...remaining]);
+  await appStorage.recentKeysByDomain.setValue({
+    'example.com': [{ ...key, createdAt: 2 }, otherPage, otherValue, otherPssh],
+    'other.example': [otherDomain],
+  });
+
+  await appStorage.allKeys.remove(key);
+
+  expect(await appStorage.allKeys.getValue()).toEqual(remaining);
+  expect(await appStorage.recentKeys.getValue()).toEqual(remaining);
+  expect(await appStorage.recentKeysByDomain.getValue()).toEqual({
+    'example.com': [otherPage, otherValue, otherPssh],
+    'other.example': [otherDomain],
+  });
+});
+
+test('deletes a recent-only status and preserves the explicit empty domain cache', async () => {
+  const status = { ...key, value: 'usable' };
+  await appStorage.recentKeys.setValue([status]);
+  await appStorage.recentKeysByDomain.setForUrl(key.url, [status]);
+
+  await appStorage.allKeys.remove(status);
+  await appStorage.allKeys.remove(status);
+
+  expect(await appStorage.allKeys.getValue()).toEqual([]);
+  expect(await appStorage.recentKeys.getValue()).toEqual([]);
+  expect(await appStorage.recentKeysByDomain.getValue()).toEqual({ 'example.com': [] });
+});
