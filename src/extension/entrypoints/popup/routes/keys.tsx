@@ -9,22 +9,20 @@ import { NoKeys } from '../components/no-keys';
 import { Section } from '../components/section';
 import { serializeHistory, type HistoryExportFormat } from '../utils/history-export';
 import { saveFile } from '../utils/file';
+import { filterHistory, type HistoryFilters } from '../utils/history-filters';
 
 export const Keys = () => {
   const [keys, setKeys] = createSignal<KeyInfo[]>([]);
   const [search, setSearch] = createSignal('');
-  const filteredKeys = createMemo(() => {
-    const query = search().trim().toLowerCase();
-    if (!query) return keys();
-
-    const kidQuery = query.replaceAll('-', '');
-    return keys().filter(
-      (key) =>
-        (kidQuery.length > 0 && key.id.toLowerCase().replaceAll('-', '').includes(kidQuery)) ||
-        key.url.toLowerCase().includes(query) ||
-        key.mpd?.toLowerCase().includes(query),
-    );
-  });
+  const [drm, setDrm] = createSignal<HistoryFilters['drm']>('all');
+  const [order, setOrder] = createSignal<HistoryFilters['order']>('newest');
+  const filteredKeys = createMemo(() =>
+    filterHistory(keys(), { search: search(), drm: drm(), order: order() }),
+  );
+  const clearFilters = () => {
+    setSearch('');
+    setDrm('all');
+  };
   const [isExporting, setIsExporting] = createSignal(false);
   const [exportError, setExportError] = createSignal<string>();
 
@@ -33,7 +31,7 @@ export const Keys = () => {
     setIsExporting(true);
     setExportError(undefined);
     try {
-      const records = (await appStorage.allKeys.getValue()) ?? [];
+      const records = filteredKeys();
       const content = serializeHistory(records, format);
       const filename = format === 'json' ? 'okova-history.json' : 'okova-keys.txt';
       await saveFile(new TextEncoder().encode(content), filename);
@@ -78,21 +76,21 @@ export const Keys = () => {
             component="button"
             before={<TbOutlineDownload />}
             variant="primary"
-            subtitle="All records, including statuses and metadata"
-            disabled={isExporting()}
+            subtitle="Matching records, including statuses and metadata"
+            disabled={isExporting() || !filteredKeys().length}
             onClick={() => exportKeys('json')}
           >
-            Export All as JSON
+            Export Results as JSON
           </Cell>
           <Cell
             component="button"
             before={<TbOutlineDownload />}
             variant="primary"
             subtitle="Unique KID:KEY pairs, one per line"
-            disabled={isExporting()}
+            disabled={isExporting() || !filteredKeys().length}
             onClick={() => exportKeys('txt')}
           >
-            Export All as TXT
+            Export Results as TXT
           </Cell>
           <DeleteKeys label="Delete All" scope={{ kind: 'all' }} />
         </Section>
@@ -101,6 +99,44 @@ export const Keys = () => {
           allKeys={keys}
           header="All Keys"
           search={{ value: search(), onChange: setSearch }}
+          controls={
+            <>
+              <select
+                aria-label="DRM"
+                class="min-w-[105px] min-h-4 px-0.5 outline-none font-normal rounded-md bg-transparent hover:bg-neutral-100 hover:dark:bg-neutral-800 hover:cursor-pointer dark:[color-scheme:dark]"
+                value={drm()}
+                onChange={(event) => {
+                  const value = event.currentTarget.value;
+                  if (
+                    value === 'all' ||
+                    value === 'W' ||
+                    value === 'P' ||
+                    value === 'C' ||
+                    value === 'unknown'
+                  )
+                    setDrm(value);
+                }}
+              >
+                <option value="all">All DRM systems</option>
+                <option value="W">Widevine</option>
+                <option value="P">PlayReady</option>
+                <option value="C">ClearKey</option>
+                <option value="unknown">Unknown</option>
+              </select>
+              <select
+                aria-label="Order"
+                class="min-w-[82px] min-h-4 px-0.5 outline-none font-normal rounded-md bg-transparent hover:bg-neutral-100 hover:dark:bg-neutral-800 hover:cursor-pointer dark:[color-scheme:dark]"
+                value={order()}
+                onChange={(event) => {
+                  const value = event.currentTarget.value;
+                  if (value === 'newest' || value === 'oldest') setOrder(value);
+                }}
+              >
+                <option value="newest">Newest first</option>
+                <option value="oldest">Oldest first</option>
+              </select>
+            </>
+          }
           selectable
         />
         <Show when={!filteredKeys().length}>
@@ -108,14 +144,14 @@ export const Keys = () => {
             <div class="flex flex-col items-center gap-1 py-4 text-center">
               <h1 class="text-[16px] font-semibold">No matching keys</h1>
               <p class="text-[13px] text-neutral-800 dark:text-neutral-300">
-                Try another KID, page URL, or manifest URL.
+                Try another search or adjust filters.
               </p>
               <button
                 type="button"
-                onClick={() => setSearch('')}
+                onClick={clearFilters}
                 class="rounded px-3 py-2 text-[13px] text-blue-600 hover:underline focus-visible:outline-2 dark:text-blue-400"
               >
-                Clear search
+                Clear filters
               </button>
             </div>
           </Show>

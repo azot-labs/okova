@@ -62,7 +62,22 @@ export const KeySettings: Component<KeySettingsProps> = (props) => {
 
   return (
     <Layout className="fixed top-0 left-0 w-full h-full min-h-0 max-h-[600px] overflow-y-auto [scrollbar-gutter:stable]">
-      <Header onClose={props.onClose}>Key Settings</Header>
+      <Header
+        actions={
+          <Cell
+            component="button"
+            variant="danger"
+            size="sm"
+            disabled={isDeleting()}
+            onClick={deleteRecord}
+          >
+            Delete Key
+          </Cell>
+        }
+        onClose={props.onClose}
+      >
+        Key Details
+      </Header>
       <List>
         <Section header="Details">
           <Cell subtitle={props.key.url} onClick={() => window.open(props.key.url, '_blank')}>
@@ -92,15 +107,6 @@ export const KeySettings: Component<KeySettingsProps> = (props) => {
             </Show>
           }
         >
-          <Cell
-            component="button"
-            before={<TbOutlineTrash />}
-            variant="danger"
-            disabled={isDeleting()}
-            onClick={deleteRecord}
-          >
-            Delete
-          </Cell>
           <Show when={getWebsiteDomain(props.key.url)}>
             {(domain) => (
               <DeleteKeys label="Delete Site Keys" scope={{ kind: 'site', domain: domain() }} />

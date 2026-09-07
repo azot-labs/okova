@@ -54,9 +54,9 @@ test('deletes individual records and confirms frozen selected, site, and all-rec
       await popup.getByRole('link', { name: 'Keys', exact: true }).click();
       await expect.poll(() => popup.locator('code').count()).toBe(2);
       await popup.locator('code').first().click();
-      await popup.getByRole('button', { name: 'Delete', exact: true }).click();
+      await popup.getByRole('button', { name: 'Delete Key', exact: true }).click();
       await expect.poll(() => popup.locator('code').count()).toBe(1);
-      expect(await popup.getByRole('status').innerText()).toBe('1 / 1 keys');
+      expect(await popup.getByRole('status').innerText()).toBe('0 selected / 1 filtered / 1 total');
       await expect.poll(() => dashboard.locator('code').count()).toBe(1);
       expect(await popup.locator('#root > main').isVisible()).toBe(true);
       const readRecords = () =>
@@ -69,8 +69,10 @@ test('deletes individual records and confirms frozen selected, site, and all-rec
         'recent-keys-by-domain': JSON.stringify({ 'example.com': [otherPage] }),
       });
       await dashboard.locator('code').click();
-      await dashboard.getByRole('button', { name: 'Delete', exact: true }).click();
-      await expect.poll(() => popup.getByRole('status').innerText()).toBe('0 / 0 keys');
+      await dashboard.getByRole('button', { name: 'Delete Key', exact: true }).click();
+      await expect
+        .poll(() => popup.getByRole('status').innerText())
+        .toBe('0 selected / 0 filtered / 0 total');
       expect(await popup.locator('#root > main').isVisible()).toBe(true);
       expect(await readRecords()).toEqual({
         'all-keys': '[]',
@@ -103,11 +105,15 @@ test('deletes individual records and confirms frozen selected, site, and all-rec
           .getByRole('checkbox', { name: 'Select All Results' })
           .evaluate((element: HTMLInputElement) => element.indeterminate),
       ).toBe(true);
-      expect(await popup.getByText('1 selected', { exact: true }).isVisible()).toBe(true);
-      expect(await popup.getByRole('heading', { name: 'Key Settings' }).count()).toBe(0);
-      await popup.getByLabel('Search by KID or site').fill('other.example');
-      await expect.poll(() => popup.getByText('0 selected', { exact: true }).count()).toBe(1);
-      await popup.getByLabel('Search by KID or site').fill('example.com');
+      await expect
+        .poll(() => popup.getByRole('status').innerText())
+        .toBe('1 selected / 3 filtered / 3 total');
+      expect(await popup.getByRole('heading', { name: 'Key Details' }).count()).toBe(0);
+      await popup.getByLabel('Search').fill('other.example');
+      await expect
+        .poll(() => popup.getByRole('status').innerText())
+        .toBe('0 selected / 1 filtered / 3 total');
+      await popup.getByLabel('Search').fill('example.com');
       await popup.getByRole('checkbox', { name: 'Select All Results' }).check();
       await popup.getByRole('button', { name: 'Delete Selected', exact: true }).click();
       const dialog = popup.getByRole('dialog');
@@ -129,17 +135,16 @@ test('deletes individual records and confirms frozen selected, site, and all-rec
       // Let a mistakenly bubbled click finish preparing a second confirmation.
       await popup.waitForTimeout(150);
       expect(await dialog.count()).toBe(0);
-      expect(await popup.getByText('2 selected', { exact: true }).isVisible()).toBe(true);
-      expect(
-        await popup
-          .getByRole('button', { name: 'Clear', exact: true })
-          .evaluate((button) => getComputedStyle(button).cursor),
-      ).toBe('pointer');
+      await expect
+        .poll(() => popup.getByRole('status').innerText())
+        .toBe('2 selected / 2 filtered / 3 total');
       await popup.getByRole('button', { name: 'Delete Selected', exact: true }).click();
       await dialog.waitFor({ state: 'visible' });
       await popup.keyboard.press('Escape');
       expect(await dialog.count()).toBe(0);
-      expect(await popup.getByText('2 selected', { exact: true }).isVisible()).toBe(true);
+      await expect
+        .poll(() => popup.getByRole('status').innerText())
+        .toBe('2 selected / 2 filtered / 3 total');
       await popup.getByRole('button', { name: 'Delete Selected', exact: true }).click();
       const arriving = { ...key, url: 'https://example.com/new', createdAt: key.createdAt + 100 };
       await seed([...records, arriving]);
@@ -159,7 +164,7 @@ test('deletes individual records and confirms frozen selected, site, and all-rec
       await popup.evaluate(() => document.documentElement.classList.remove('dark'));
       await expect.poll(() => popup.locator('code').count()).toBe(1);
       expect(JSON.parse(String((await readRecords())['all-keys']))).toEqual([otherSite, arriving]);
-      await popup.getByLabel('Search by KID or site').fill('');
+      await popup.getByLabel('Search').fill('');
       await popup.screenshot({ path: resolve('output/playwright/bulk-deletion/selection.png') });
       await dashboard.getByRole('button', { name: 'Delete Site Keys', exact: true }).click();
       const siteDialog = dashboard.getByRole('dialog');
@@ -168,7 +173,7 @@ test('deletes individual records and confirms frozen selected, site, and all-rec
       await siteDialog.getByRole('button', { name: 'Delete 1 record', exact: true }).click();
       await expect.poll(() => popup.locator('code').count()).toBe(1);
       expect(JSON.parse(String((await readRecords())['all-keys']))).toEqual([otherSite]);
-      await popup.getByLabel('Search by KID or site').fill('no-match');
+      await popup.getByLabel('Search').fill('no-match');
       await popup.getByRole('button', { name: 'Delete All', exact: true }).click();
       await expect.poll(() => dialog.isVisible()).toBe(true);
       expect(await dialog.innerText()).toContain(

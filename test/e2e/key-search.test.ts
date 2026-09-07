@@ -40,9 +40,9 @@ test('saved keys filter immediately by KID, page URL, and manifest URL', async (
       const popup = await context.newPage();
       await popup.goto(`chrome-extension://${new URL(worker.url()).hostname}/popup.html`);
       await popup.getByRole('link', { name: 'Keys', exact: true }).click();
-      const search = popup.getByRole('searchbox', { name: 'Search by KID or site' });
+      const search = popup.getByRole('searchbox', { name: 'Search' });
       const count = popup.getByRole('status');
-      await expect.poll(() => count.textContent()).toBe('2 / 2 keys');
+      await expect.poll(() => count.textContent()).toBe('0 selected / 2 filtered / 2 total');
       for (const query of [
         'aabbccdd-1122-3344-5566-77889900aabb',
         ' DD-1122 ',
@@ -52,19 +52,19 @@ test('saved keys filter immediately by KID, page URL, and manifest URL', async (
         'MANIFEST.MPD',
       ]) {
         await search.fill(query);
-        await expect.poll(() => count.textContent()).toBe('1 / 2 keys');
+        await expect.poll(() => count.textContent()).toBe('0 selected / 1 filtered / 2 total');
         expect(await popup.locator('code').allTextContents()).toEqual([
           `${keys[0]!.id}:${keys[0]!.value}`,
         ]);
       }
       await search.fill('5678ABCDEF90');
-      await expect.poll(() => count.textContent()).toBe('1 / 2 keys');
+      await expect.poll(() => count.textContent()).toBe('0 selected / 1 filtered / 2 total');
       expect(await popup.locator('code').allTextContents()).toEqual([
         `${keys[1]!.id}:${keys[1]!.value}`,
       ]);
       for (const query of ['missing.example', '---', keys[0]!.value]) {
         await search.fill(query);
-        await expect.poll(() => count.textContent()).toBe('0 / 2 keys');
+        await expect.poll(() => count.textContent()).toBe('0 selected / 0 filtered / 2 total');
         expect(await popup.getByRole('heading', { name: 'No matching keys' }).isVisible()).toBe(
           true,
         );
@@ -72,11 +72,11 @@ test('saved keys filter immediately by KID, page URL, and manifest URL', async (
       }
       await mkdir(resolve('output/playwright/key-search'), { recursive: true });
       await popup.screenshot({ path: resolve('output/playwright/key-search/no-matches.png') });
-      await popup.getByRole('button', { name: 'Clear search', exact: true }).click();
-      await expect.poll(() => count.textContent()).toBe('2 / 2 keys');
+      await popup.getByRole('button', { name: 'Clear filters', exact: true }).click();
+      await expect.poll(() => count.textContent()).toBe('0 selected / 2 filtered / 2 total');
       expect(await search.inputValue()).toBe('');
       await search.fill('   ');
-      await expect.poll(() => count.textContent()).toBe('2 / 2 keys');
+      await expect.poll(() => count.textContent()).toBe('0 selected / 2 filtered / 2 total');
       await search.fill('');
       await popup.screenshot({ path: resolve('output/playwright/key-search/all-keys.png') });
       await popup.getByRole('button', { name: 'Delete All', exact: true }).click();
@@ -84,7 +84,7 @@ test('saved keys filter immediately by KID, page URL, and manifest URL', async (
         .getByRole('dialog')
         .getByRole('button', { name: 'Delete 2 records', exact: true })
         .click();
-      await expect.poll(() => count.textContent()).toBe('0 / 0 keys');
+      await expect.poll(() => count.textContent()).toBe('0 selected / 0 filtered / 0 total');
       expect(await popup.getByRole('heading', { name: 'Keys will appear here' }).isVisible()).toBe(
         true,
       );
