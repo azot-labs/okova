@@ -8,11 +8,50 @@ import { SessionRegistry, sessionLimitsSchema } from './session-registry';
 export const clients = new Map<string, WidevineDeviceCredentials | PlayReadyDeviceCredentials>();
 
 const configSchema = z.strictObject({
-  host: z.string().min(1).default('0.0.0.0'),
+  host: z.string().min(1).default('127.0.0.1'),
+  public: z.boolean().default(false),
+  maxRequestBodyBytes: z
+    .number()
+    .int()
+    .positive()
+    .max(64 * 1024 * 1024)
+    .default(1024 * 1024),
+  allowedHosts: z
+    .array(
+      z
+        .string()
+        .min(1)
+        .refine((host) => {
+          try {
+            const url = new URL(`http://${host}`);
+            return (
+              /^[a-z0-9._-]+$|^\[[0-9a-f:]+\]$/.test(host) &&
+              url.host === host &&
+              url.hostname === host
+            );
+          } catch {
+            return false;
+          }
+        }, 'Expected a lowercase hostname or bracketed IPv6 address without a port'),
+    )
+    .default([]),
+  allowedOrigins: z
+    .array(
+      z.string().refine((origin) => {
+        try {
+          const url = new URL(origin);
+          return ['http:', 'https:'].includes(url.protocol) && url.origin === origin;
+        } catch {
+          return false;
+        }
+      }, 'Expected an HTTP(S) origin without a trailing slash'),
+    )
+    .optional()
+    .transform((origins) => origins ?? null),
   port: z.number().int().min(0).max(65535).default(4000),
   clients: z.array(z.string().min(1)).default([]),
   users: z
-    .record(z.string(), z.strictObject({ name: z.string(), clients: z.array(z.string()) }))
+    .record(z.string().min(1), z.strictObject({ name: z.string(), clients: z.array(z.string()) }))
     .default({}),
   forcePrivacyMode: z.boolean().default(true),
   sessionLimits: sessionLimitsSchema.strict().prefault({}),

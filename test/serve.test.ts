@@ -38,6 +38,7 @@ test.each([true, false])('binds using CLI overrides when supplied: %s', async (h
       clients: ['clients/client.wvd'],
       sessionLimits: { maxSessions: 3 },
       users: {},
+      public: true,
     }),
   );
 
@@ -118,6 +119,7 @@ test.each([false, true])(
           port: 0,
           clients: [clientPath],
           users: {},
+          public: true,
         }),
       );
       await serve({ config: configPath });
@@ -185,6 +187,25 @@ test.each([false, true])(
         }
       }
       vi.restoreAllMocks();
+      await rm(directory, { recursive: true, force: true });
+    }
+  },
+);
+
+test.each([{}, { host: '0.0.0.0', public: true }, { host: '::', public: true }])(
+  'rejects unsafe startup before opening a socket: %j',
+  async (settings) => {
+    const directory = await mkdtemp(join(tmpdir(), 'okova-startup-'));
+    const path = join(directory, 'config.json');
+    const originalConfig = structuredClone(config);
+    const startServer = vi.mocked(nodeServer.serve);
+    startServer.mockClear();
+    try {
+      await writeFile(path, JSON.stringify(settings));
+      await expect(serve({ config: path })).rejects.toThrow();
+      expect(startServer).not.toHaveBeenCalled();
+    } finally {
+      Object.assign(config, originalConfig);
       await rm(directory, { recursive: true, force: true });
     }
   },

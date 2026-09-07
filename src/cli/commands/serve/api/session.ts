@@ -10,6 +10,7 @@ import { WidevineDeviceCredentials } from '../../../../lib/widevine/device-crede
 import { PlayReadyDeviceCredentials } from '../../../../lib/playready/device-credentials';
 import { clients, config, resolveClient, sessions } from '../state';
 import { normalizeKeySystem } from '../../../../lib/key-system';
+import { requestBody } from '../request-boundary';
 import { WidevineSession } from '../../../../lib/widevine/session';
 
 const app = new Hono();
@@ -17,12 +18,11 @@ const SESSION_MESSAGE_TIMEOUT_MS = 5_000;
 const SESSION_UPDATE_SYNC_TIMEOUT_MS = 250;
 
 const secretKeyMiddleware = createMiddleware(async (c, next) => {
-  // If no users are configured, allow public access
-  const isPublic = Object.keys(config.users).length === 0;
-  const isSecretRequired = !isPublic;
-
   const secretKey = c.req.header('x-secret-key');
-  if (isSecretRequired && !secretKey) {
+  if (secretKey && !Object.hasOwn(config.users, secretKey)) {
+    return c.json({ error: 'Invalid secret key' }, 403);
+  }
+  if (!secretKey && !config.public) {
     return c.json({ error: 'No secret key provided' }, 403);
   }
 
@@ -40,6 +40,8 @@ app.use(async (c, next) => {
   }
 });
 
+app.use(requestBody);
+
 const reserveSession = createMiddleware(async (c, next) => {
   const release = sessions.reserve();
   if (!release) return c.json({ error: 'Session capacity reached' }, 503);
@@ -49,6 +51,14 @@ const reserveSession = createMiddleware(async (c, next) => {
     release();
   }
 });
+
+const base64 = z
+  .base64()
+  .min(1)
+  .refine(
+    (value) => Buffer.from(value, 'base64').toString('base64') === value,
+    'Expected canonical padded base64',
+  );
 
 const busySessions = new WeakSet<Session>();
 
@@ -169,8 +179,8 @@ app.post(
     'json',
     z.object({
       initDataType: z.string().optional(),
-      initData: z.string(),
-      serverCertificate: z.base64().min(1).optional(),
+      initData: base64,
+      serverCertificate: base64.optional(),
     }),
   ),
   async (c) => {
@@ -258,7 +268,7 @@ app.post(
   '/:id/update',
   exclusiveSessionMutation,
   zValidator('param', z.object({ id: z.string() })),
-  zValidator('json', z.object({ response: z.string() })),
+  zValidator('json', z.object({ response: base64 })),
   async (c) => {
     const secretKey = c.req.header('x-secret-key') as string;
     const sessionId = c.req.valid('param').id;

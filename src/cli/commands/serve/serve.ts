@@ -8,6 +8,7 @@ import { serve as nodeServe } from '@hono/node-server';
 import { help } from './help';
 import { config, loadConfig, sessions } from './state';
 import session from './api/session';
+import { requestBoundary } from './request-boundary';
 
 type ServeOptions = {
   host?: string;
@@ -15,6 +16,7 @@ type ServeOptions = {
   config?: string;
   client?: string;
   secret?: string;
+  public?: boolean;
 };
 
 export const serve = async (options: ServeOptions = {}) => {
@@ -27,10 +29,25 @@ export const serve = async (options: ServeOptions = {}) => {
   }
   if (options.secret) {
     const anonymousUser = { name: 'anonymous', clients: [] };
-    const user = config.users[options.secret] || anonymousUser;
+    const user = Object.hasOwn(config.users, options.secret)
+      ? config.users[options.secret]!
+      : anonymousUser;
     const clientPath = options.client ?? config.clients.at(-1);
     if (!user.clients.length && clientPath) user.clients.push(resolve(clientPath));
-    config.users[options.secret] = user;
+    config.users = { ...config.users, [options.secret]: user };
+  }
+
+  config.public = options.public ?? config.public;
+  config.host = options.host ?? config.host;
+  if (!config.public && !Object.keys(config.users).length) {
+    throw new Error(
+      'Configure users or --secret, or explicitly enable anonymous access with --public',
+    );
+  }
+  if (['0.0.0.0', '::'].includes(config.host) && !config.allowedHosts.length) {
+    throw new Error(
+      'Wildcard binding requires allowedHosts with the names or IP addresses clients use',
+    );
   }
 
   const app = new Hono();
@@ -52,6 +69,8 @@ export const serve = async (options: ServeOptions = {}) => {
   app.use(logger());
   app.use(secureHeaders());
 
+  app.use(requestBoundary);
+
   app.route('/sessions', session);
 
   showRoutes(app);
@@ -59,7 +78,7 @@ export const serve = async (options: ServeOptions = {}) => {
   const server = nodeServe({
     fetch: app.fetch,
     port: options.port ?? config.port ?? 4000,
-    hostname: options.host ?? config.host ?? '0.0.0.0',
+    hostname: config.host,
   });
 
   const shutdown = () => {

@@ -50,6 +50,7 @@ const main = async () => {
         host: { type: 'string' },
         port: { type: 'string' },
         secret: { type: 'string', short: 's' },
+        public: { type: 'boolean' },
         config: { type: 'string' },
         client: { type: 'string', short: 'c' },
       });

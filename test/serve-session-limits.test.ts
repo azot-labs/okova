@@ -29,6 +29,7 @@ const credentials = new WidevineDeviceCredentials(
 beforeEach(() => {
   config.clients = ['test.wvd'];
   config.users = {};
+  config.public = true;
   config.forcePrivacyMode = false;
   config.sessionLimits = sessionLimitsSchema.parse({ maxSessions: 2, idleTimeoutMs: 1000 });
   clients.set(resolve('test.wvd'), credentials);

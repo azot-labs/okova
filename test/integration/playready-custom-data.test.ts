@@ -109,6 +109,7 @@ test('helper sends the configured custom data in the license request', async () 
 test('remote API keeps custom data separate for sessions sharing credentials', async () => {
   config.clients = ['custom-data.prd'];
   config.users = {};
+  config.public = true;
   config.forcePrivacyMode = false;
   clients.set(resolve('custom-data.prd'), deviceCredentials);
   const app = new Hono().route('/sessions', sessionApi);
@@ -165,6 +166,7 @@ test.each([
 test('remote capacity applies across separate PlayReady engines', async () => {
   config.clients = ['capacity.prd'];
   config.users = {};
+  config.public = true;
   config.sessionLimits = { ...originalConfig.sessionLimits, maxSessions: 16 };
   clients.set(resolve('capacity.prd'), deviceCredentials);
   const responses = await Promise.all(
