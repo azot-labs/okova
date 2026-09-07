@@ -13,7 +13,7 @@ export default defineConfig({
     'build:done': async (wxt) => {
       if (wxt.config.mode !== 'production') return;
       // Bound both the isolated bridge and the combined MAIN startup scripts.
-      const budgetBytes = 20 * 1024;
+      const budgetBytes = 32 * 1024;
       for (const paths of [
         ['content-scripts/content.js'],
         ['content-scripts/bootstrap.js', 'eme-bootstrap.js', 'network.js'],

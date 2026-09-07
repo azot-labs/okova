@@ -362,6 +362,19 @@ export const appStorage = {
   recentKeys: {
     ...recentKeys,
     setValue: (keys: KeyInfo[]) => mutateKeyHistory(() => recentKeys.setValue(retainKeys(keys))),
+    setForUrl: (url: string | undefined, keys: KeyInfo[]) =>
+      mutateKeyHistory(async () => {
+        const domain = getWebsiteDomain(url);
+        const items = [{ key: recentKeys.key, value: JSON.stringify(retainKeys(keys)) }];
+        if (domain) {
+          const domains = (await appStorage.recentKeysByDomain.getValue()) ?? {};
+          items.push({
+            key: appStorage.recentKeysByDomain.raw.key,
+            value: JSON.stringify(retainDomains({ ...domains, [domain]: keys })),
+          });
+        }
+        await storage.setItems(items);
+      }),
   },
   recentKeysByDomain: {
     raw: asJson(storage.defineItem<RecentKeysByDomain>('local:recent-keys-by-domain')),

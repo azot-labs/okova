@@ -508,8 +508,7 @@ export default defineBackground({
         stage = 'setup';
         const settings = await run(appStorage.settings.getValue());
         const setRecentKeys = async (keys: KeyInfo[]) => {
-          await run(appStorage.recentKeys.setValue(keys));
-          await run(appStorage.recentKeysByDomain.setForUrl(message.url, keys));
+          await run(appStorage.recentKeys.setForUrl(message.url, keys));
           updateBadgeForTabInBackground(sender.tab);
         };
 
