@@ -16,10 +16,10 @@ const mpd = (pssh: string, scheme: string = PSSH_SYSTEM_IDS.widevine) => `
       <other:pssh>\n ${pssh.slice(0, 16)}\n ${pssh.slice(16)} \n</other:pssh>
     </dash:ContentProtection></dash:AdaptationSet></dash:Period>
   </dash:MPD>`;
-const post = (text: string) =>
+const post = (text: string, manifestUrl = url) =>
   receive({
     source: window,
-    data: { namespace: 'okova:network', method: 'response', params: { url, text } },
+    data: { namespace: 'okova:network', method: 'response', params: { url: manifestUrl, text } },
   });
 
 beforeEach(() => {
@@ -32,6 +32,38 @@ beforeEach(() => {
   installManifestInspection();
 });
 afterEach(() => vi.unstubAllGlobals());
+
+test.each([
+  'javascript:alert(1)',
+  'data:application/dash+xml,<MPD/>',
+  'file:///tmp/manifest.mpd',
+  'blob:https://example.test/manifest',
+  'ftp://example.test/manifest.mpd',
+  '//example.test/manifest.mpd',
+  '/manifest.mpd',
+  'not a URL',
+  'https://',
+  '',
+])('rejects unsafe or invalid manifest URLs: %s', (manifestUrl) => {
+  post(mpd(widevine), manifestUrl);
+  expect(window.MPD_LIST.size).toBe(0);
+
+  // The page can also write directly to the cache.
+  window.MPD_LIST.set(widevine, manifestUrl);
+  expect(findManifest(widevine)).toBeUndefined();
+  expect(findManifest(combined)).toBeUndefined();
+  window.MPD_LIST.set(playready, url);
+  window.MPD_LIST.set(combined, manifestUrl);
+  expect(findManifest(combined)).toBe(url);
+});
+
+test.each(['http://example.test/manifest.mpd', url, 'HTTPS://example.test/manifest.mpd'])(
+  'accepts HTTP(S) manifest URLs: %s',
+  (manifestUrl) => {
+    post(mpd(widevine), manifestUrl);
+    expect(findManifest(widevine)).toBe(manifestUrl);
+  },
+);
 
 test.each([null, undefined, false, 42, 'page-owned', {}, []])(
   'replaces an incompatible page-owned manifest cache: %j',

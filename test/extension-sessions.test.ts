@@ -528,11 +528,11 @@ test('an old document cannot clear a new document failure after navigation', asy
   const send = startBackground();
   const started = Promise.withResolvers<void>();
   const resumeWrite = Promise.withResolvers<void>();
-  const setRecentKeys = appStorage.recentKeys.setValue;
-  vi.spyOn(appStorage.recentKeys, 'setValue').mockImplementationOnce(async (keys) => {
+  const setRecentKeys = appStorage.recentKeys.setForUrl;
+  vi.spyOn(appStorage.recentKeys, 'setForUrl').mockImplementationOnce(async (url, keys) => {
     started.resolve();
     await resumeWrite.promise;
-    await setRecentKeys(keys);
+    await setRecentKeys(url, keys);
   });
   const oldRequest = send(
     'keystatuseschange',

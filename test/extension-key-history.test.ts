@@ -101,6 +101,62 @@ test('serializes status upgrades and duplicate captures', async () => {
   expect(await appStorage.allKeys.getValue()).toEqual([key]);
 });
 
+test('keeps recent stores consistent across captures and deletion snapshots', async () => {
+  const otherKey = { ...key, url: 'https://other.example/video' };
+  const [, snapshot, stores] = await Promise.all([
+    appStorage.recentKeys.setForUrl(key.url, [key]),
+    prepareKeyDeletion({ kind: 'all' }),
+    navigator.locks.request('okova:key-history', async () => ({
+      recent: await appStorage.recentKeys.getValue(),
+      domains: await appStorage.recentKeysByDomain.getValue(),
+    })),
+    appStorage.recentKeys.setForUrl(otherKey.url, [otherKey]),
+  ]);
+
+  expect(snapshot.count).toBe(1);
+  expect(stores).toEqual({ recent: [key], domains: { 'example.com': [key] } });
+  expect(await appStorage.recentKeys.getValue()).toEqual([otherKey]);
+  expect(await appStorage.recentKeysByDomain.getValue()).toEqual({
+    'example.com': [key],
+    'other.example': [otherKey],
+  });
+
+  await Promise.all([appStorage.recentKeys.setForUrl(key.url, [key]), appStorage.allKeys.clear()]);
+  expect(await appStorage.recentKeys.getValue()).toEqual([]);
+  expect(await appStorage.recentKeysByDomain.getValue()).toEqual({});
+});
+
+test('releases the recent-store lock after a failed batch write', async () => {
+  await appStorage.recentKeys.setForUrl(key.url, [key]);
+  const error = new Error('Storage write failed');
+  vi.spyOn(browser.storage.local, 'set').mockRejectedValueOnce(error);
+
+  await expect(appStorage.recentKeys.setForUrl(key.url, [])).rejects.toThrow(error);
+  expect(await appStorage.recentKeys.getValue()).toEqual([key]);
+  expect(await appStorage.recentKeysByDomain.getValue()).toEqual({ 'example.com': [key] });
+
+  await appStorage.recentKeys.setForUrl(key.url, []);
+  expect(await appStorage.recentKeys.getValue()).toEqual([]);
+  expect(await appStorage.recentKeysByDomain.getValue()).toEqual({ 'example.com': [] });
+});
+
+test('bounds combined recent writes and preserves empty and unscoped results', async () => {
+  const keys = Array.from({ length: 1_005 }, (_, index) => ({
+    ...key,
+    id: String(index),
+    createdAt: index,
+  }));
+  await appStorage.recentKeys.setForUrl(key.url, keys);
+  expect(await appStorage.recentKeys.getValue()).toEqual(keys.slice(5));
+  expect(await appStorage.recentKeysByDomain.getValue()).toEqual({
+    'example.com': keys.slice(5),
+  });
+  await appStorage.recentKeys.setForUrl(key.url, []);
+  await appStorage.recentKeys.setForUrl(undefined, [key]);
+  expect(await appStorage.recentKeys.getValue()).toEqual([key]);
+  expect(await appStorage.recentKeysByDomain.getValue()).toEqual({ 'example.com': [] });
+});
+
 test('serializes removals with captures and ignores repeated removals', async () => {
   const otherKey = { ...key, id: '112233445566778899aabbccddeeff00' };
   await appStorage.allKeys.add(key);

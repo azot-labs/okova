@@ -1,12 +1,15 @@
 import { z } from 'zod/mini';
-import { splitPssh } from '@/utils/manifest';
+import { isManifestUrl, splitPssh } from '@/utils/manifest';
 
 const DASH_NAMESPACE = 'urn:mpeg:dash:schema:mpd:2011';
 const CENC_NAMESPACE = 'urn:mpeg:cenc:2013';
 const responseSchema = z.object({
   namespace: z.literal('okova:network'),
   method: z.literal('response'),
-  params: z.object({ url: z.string(), text: z.string().check(z.maxLength(1024 * 1024)) }),
+  params: z.object({
+    url: z.string().check(z.refine(isManifestUrl)),
+    text: z.string().check(z.maxLength(1024 * 1024)),
+  }),
 });
 
 declare global {

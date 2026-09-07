@@ -28,13 +28,23 @@ export const splitPssh = (initData: string): string[] => {
   }
 };
 
+export const isManifestUrl = (value: unknown): value is string => {
+  if (typeof value !== 'string') return false;
+  try {
+    const url = new URL(value);
+    return url.protocol === 'http:' || url.protocol === 'https:';
+  } catch {
+    return false;
+  }
+};
+
 export const findManifest = (initData: string | undefined) => {
   if (!initData || !(window.MPD_LIST instanceof Map)) return undefined;
   const exact = window.MPD_LIST.get(initData);
-  if (exact) return exact;
+  if (isManifestUrl(exact)) return exact;
   for (const pssh of splitPssh(initData)) {
     const url = window.MPD_LIST.get(pssh);
-    if (url) return url;
+    if (isManifestUrl(url)) return url;
   }
   return undefined;
 };
