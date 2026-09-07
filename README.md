@@ -11,7 +11,7 @@ Okova is a toolkit (browser extension, command-line tool, and JavaScript library
 ## Features
 
 - **Custom CDM client support**: bring your WVD, PRD, raw device files, or remote CDM JSON config and import them into browser extension
-- **Playback of DRM-protected content** (using custom client) in browsers that do not support DRM like [Zen](https://zen-browser.app/) or [Helium](https://helium.computer/)
+- **Playback of DRM-protected content** using custom client (including browsers that do not support DRM like [Zen](https://zen-browser.app/) or [Helium](https://helium.computer/))
 - **Logging** details from [EME](https://w3c.github.io/encrypted-media/index.html) events in DevTools console
 - **Network-independent interception** via browser extension, so it doesn't matter if license request has one-time tokens or a custom request/response body format
 - **Remote instance** to manage sessions via REST API
