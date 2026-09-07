@@ -157,25 +157,44 @@ const ExtDataSignKeyInfo = b.object({
   key: b.bytes((ctx) => ctx.key_length / 8),
 });
 
-const DataRecord = b.object({
-  data_size: b.uint32(),
-  data: b.bytes((ctx) => ctx.data_size),
-});
-
 const ExtDataSignature = b.object({
   signature_type: b.uint16(),
   signature_size: b.uint16(),
   signature: b.bytes((ctx) => ctx.signature_size),
 });
 
-export const ExtDataRecordSet = b.object({
-  record_count: b.uint32(),
-  records: b.array(DataRecord, (ctx) => ctx.record_count),
+const ExtDataHwid = b.object({
+  record_length: b.uint32(),
+  record_data: b.bytes((ctx) => ctx.record_length),
+  padding: b.bytes((ctx) => (4 - (ctx.record_length % 4)) % 4),
 });
 
+// The extdata signature covers the HWID object header, data, and alignment padding.
+export const ExtDataHwidRecord = b.sized(
+  b.object({
+    flags: b.uint16(),
+    tag: b.uint16(),
+    length: b.uint32(),
+    record_length: b.uint32(),
+    record_data: b.bytes((ctx) => ctx.record_length),
+    padding: b.bytes((ctx) => (4 - (ctx.record_length % 4)) % 4),
+  }),
+  (record) => record.length,
+);
+
 const ExtDataContainer = b.object({
-  record: ExtDataRecordSet,
-  signature: ExtDataSignature,
+  record: ExtDataHwidRecord,
+  signature: b.sized(
+    b.object({
+      flags: b.uint16(),
+      tag: b.uint16(),
+      length: b.uint32(),
+      signature_type: b.uint16(),
+      signature_size: b.uint16(),
+      signature: b.bytes((ctx) => ctx.signature_size),
+    }),
+    (signature) => signature.length,
+  ),
 });
 
 const ServerInfo = b.object({
@@ -210,7 +229,7 @@ export const Attribute = b.sized(
           [BCertObjType.EXTDATASIGNKEY]: ExtDataSignKeyInfo,
           [BCertObjType.EXTDATACONTAINER]: ExtDataContainer,
           [BCertObjType.EXTDATASIGNATURE]: ExtDataSignature,
-          [BCertObjType.EXTDATA_HWID]: b.bytes((ctx) => ctx.length - 8),
+          [BCertObjType.EXTDATA_HWID]: ExtDataHwid,
           [BCertObjType.SERVER]: ServerInfo,
           [BCertObjType.SECURITY_VERSION]: SecurityVersion,
           [BCertObjType.SECURITY_VERSION_2]: SecurityVersion,
@@ -480,7 +499,15 @@ export class Certificate {
     uncompressedPublicKey[0] = 0x04;
     uncompressedPublicKey.set(signKeyObject.key as Uint8Array, 1);
 
-    const signPayload = ExtDataRecordSet.build(extDataObject.record);
+    if (
+      extDataObject.record.tag !== BCertObjType.EXTDATA_HWID ||
+      extDataObject.signature.tag !== BCertObjType.EXTDATASIGNATURE ||
+      extDataObject.signature.signature_type !== BCertSignatureType.P256
+    ) {
+      throw new InvalidCertificate(`Unsupported extdata object in certificate ${index}`);
+    }
+
+    const signPayload = ExtDataHwidRecord.build(extDataObject.record);
     const signature = extDataObject.signature.signature as Uint8Array;
     const isValid = await ecc256Verify(uncompressedPublicKey, signPayload, signature);
 
