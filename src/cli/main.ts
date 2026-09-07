@@ -6,6 +6,7 @@ import { license } from './commands/license';
 import pkg from '../../package.json' with { type: 'json' };
 import { col } from './utils';
 import { serve } from './commands/serve/serve';
+import { pssh } from './commands/pssh';
 
 const helpOption = { help: { type: 'boolean', short: 'h' } } satisfies ParseArgsOptionsConfig;
 const parse = <T extends ParseArgsOptionsConfig>(args: string[], options: T) =>
@@ -22,6 +23,7 @@ const help = () => {
   console.log(col('serve') + 'Run your API instance');
   console.log(col('license <url>') + 'Make a license request');
   console.log(col('client <subcommand>') + 'Widevine and PlayReady client utilities');
+  console.log(col('pssh <subcommand>') + 'Inspect PSSH boxes, extract KIDs, or convert DRM');
   console.log('\nFlags:');
   console.log(col('-v, --version') + 'Print version and exit');
   console.log(col('-h, --help') + 'Display this menu and exit');
@@ -119,6 +121,8 @@ const main = async () => {
       return;
     }
     case 'pssh':
+      await pssh(argv);
+      return;
     case 'test':
       throw new Error(`Command not implemented: ${command}`);
     default:
