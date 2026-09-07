@@ -207,34 +207,27 @@ Pass the original text without XML escaping. Remote clients accept the same
 
 ### Remote sessions
 
-`POST /sessions` accepts `keySystem` and an optional `client`. Without a client,
-the server selects the first authorized device for that DRM system. An explicit
-client must match the requested system.
+Start a local API with your device file and a secret of your choice:
 
-Wait for each session mutation to finish before starting another; overlapping
-requests return HTTP 409. Requests for different sessions can run concurrently.
-
-`okova serve` reads `okova.config.json` in the current directory and uses defaults
-if that file is absent. An explicit `--config <path>` must be readable. Malformed
-JSON or invalid settings stop startup before the server opens a listening socket.
-
-The server limits sessions and concurrent requests across all users and devices.
-In `okova.config.json`, optional `sessionLimits` fields override these defaults:
-
-```json
-{
-  "sessionLimits": {
-    "maxSessions": 64,
-    "maxConcurrentRequests": 64,
-    "idleTimeoutMs": 300000,
-    "keyWaitTimeoutMs": 30000
-  }
-}
+```sh
+okova serve --client client.wvd --secret 'replace-with-your-secret'
 ```
 
-Limits must be positive integers. Exceeding session or request limits returns
-HTTP 503. Idle sessions expire and must be recreated. Waiting for keys beyond
-`keyWaitTimeoutMs` returns HTTP 504.
+The API uses the host and port from `okova.config.json`, defaulting to
+`http://127.0.0.1:4000`. Create a session using your server address:
+
+```sh
+curl http://127.0.0.1:4000/sessions \
+  -H 'Content-Type: application/json' \
+  -H 'x-secret-key: replace-with-your-secret' \
+  -d '{"keySystem":"com.widevine.alpha"}'
+```
+
+For anonymous access, replace `--secret ...` with `--public` and remove the
+`x-secret-key` header from the curl command.
+
+See the [remote client example](examples/remote-session) to request licenses and
+keys.
 
 ### Inspect, edit, and convert PSSH boxes
 

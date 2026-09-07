@@ -1,6 +1,6 @@
 import { afterEach, expect, test, vi } from 'vitest';
 import app from '../src/cli/commands/serve/api/session';
-import { sessions } from '../src/cli/commands/serve/state';
+import { config, sessions } from '../src/cli/commands/serve/state';
 import { Session } from '../src/lib/api';
 import { EccKey } from '../src/lib/crypto/ecc-key';
 import { Key } from '../src/lib/playready/key';
@@ -14,6 +14,8 @@ import {
   SignedDrmCertificate,
 } from '../src/lib/widevine/proto';
 import { WidevineSession } from '../src/lib/widevine/session';
+
+const originalConfig = structuredClone(config);
 
 const KEY_ID = '00112233445566778899aabbccddeeff';
 const KEY = 'ffeeddccbbaa99887766554433221100';
@@ -68,6 +70,7 @@ const createSession = (kind: string) => {
 
 afterEach(async () => {
   await sessions.clear();
+  Object.assign(config, structuredClone(originalConfig));
   vi.restoreAllMocks();
 });
 
@@ -76,6 +79,7 @@ for (const kind of ['widevine', 'playready']) {
     '%s releases a ' + kind + ' session and rejects subsequent HTTP operations',
     async (operation) => {
       const { session, native, engine } = createSession(kind);
+      config.users = { owner: { name: 'owner', clients: [] } };
       const sessionKey = `owner:${session.sessionId}`;
       sessions.set(sessionKey, session);
       const headers = { 'x-secret-key': 'owner', 'content-type': 'application/json' };

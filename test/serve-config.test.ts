@@ -25,6 +25,9 @@ test('only a missing implicit configuration uses defaults', async () => {
     process.chdir(directories[0]!);
     await loadConfig();
     expect(config.port).toBe(4000);
+    expect(config.host).toBe('127.0.0.1');
+    expect(config.public).toBe(false);
+    expect(config.maxRequestBodyBytes).toBe(1024 * 1024);
     expect(config.clients).toEqual([]);
     await writeFile('okova.config.json', '{');
     await expect(loadConfig()).rejects.toThrow('Invalid server config');
@@ -46,13 +49,15 @@ test.each(['{', 'null', '[]', '{"port":"4000"}', '{"clients":false}'])(
 
 test('loading a new config resets omitted settings to defaults', async () => {
   const path = await setup();
-  await writeFile(path, JSON.stringify({ port: 1234, clients: ['test.wvd'] }));
+  await writeFile(path, JSON.stringify({ port: 1234, clients: ['test.wvd'], allowedOrigins: [] }));
   await loadConfig(path);
   expect(config.port).toBe(1234);
+  expect(config.allowedOrigins).toEqual([]);
   await writeFile(path, '{}');
   await loadConfig(path);
   expect(config.port).toBe(4000);
   expect(config.clients).toEqual([]);
+  expect(config.allowedOrigins).toBeNull();
 });
 
 test.each([
@@ -65,4 +70,22 @@ test.each([
   await writeFile(path, JSON.stringify(data));
   await expect(loadConfig(path)).rejects.toThrow('Unrecognized key');
   expect(config).toEqual(before);
+});
+
+test.each([
+  { public: 'true' },
+  { maxRequestBodyBytes: 0 },
+  { maxRequestBodyBytes: 1.5 },
+  { maxRequestBodyBytes: 64 * 1024 * 1024 + 1 },
+  { allowedHosts: ['*'] },
+  { allowedHosts: ['localhost:4000'] },
+  { allowedHosts: ['user@localhost'] },
+  { allowedOrigins: ['null'] },
+  { allowedOrigins: ['*'] },
+  { allowedOrigins: ['https://example.com/'] },
+  { users: { '': { name: 'test', clients: [] } } },
+])('rejects invalid security settings %j', async (data) => {
+  const path = await setup();
+  await writeFile(path, JSON.stringify(data));
+  await expect(loadConfig(path)).rejects.toThrow('Invalid server config');
 });

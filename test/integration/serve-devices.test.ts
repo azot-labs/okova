@@ -20,6 +20,7 @@ beforeEach(async () => {
   await writeFile(clientPath, await loadWidevineClientData());
   config.clients = [relative(process.cwd(), clientPath)];
   config.users = {};
+  config.public = true;
 });
 
 afterEach(async () => {

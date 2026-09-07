@@ -23,6 +23,7 @@ const app = new Hono().route('/sessions', sessionApi);
 beforeEach(async () => {
   config.clients = ['test.wvd'];
   config.users = {};
+  config.public = true;
   config.forcePrivacyMode = true;
   clients.set(resolve('test.wvd'), await loadWidevineDeviceCredentials());
 });
