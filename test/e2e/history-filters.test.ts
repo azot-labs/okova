@@ -110,10 +110,7 @@ test('filters and ordering control visible history and both export formats', asy
       await popup.getByLabel('DRM', { exact: true }).selectOption('W');
       await expect.poll(visible).toEqual([pair(records[0]!), pair(records[3]!)]);
       await popup.getByLabel('DRM', { exact: true }).selectOption('C');
-      await popup
-        .getByRole('button', { name: 'Clear search and filters', exact: true })
-        .first()
-        .click();
+      await popup.getByRole('button', { name: 'Clear filters', exact: true }).first().click();
       await expect
         .poll(visible)
         .toEqual([records[0]!, records[3]!, records[1]!, records[2]!].map(pair));

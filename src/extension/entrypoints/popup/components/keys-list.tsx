@@ -103,7 +103,7 @@ export const KeysList: Component<KeysListProps> = (props) => {
         </Section>
       </Show>
       <div ref={list}>
-        <Show when={props.keys().length > 0}>
+        <Show when={props.keys().length > 0 || props.search}>
           <List>
             <Section
               header={props.header}

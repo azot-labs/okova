@@ -35,7 +35,7 @@ test('history updates preserve search, visible rows, and live details', async ()
       const search = popup.getByRole('searchbox');
       await search.fill('history.example');
       const count = popup.getByRole('status');
-      await expect.poll(() => count.textContent()).toBe('60 / 60 keys');
+      await expect.poll(() => count.textContent()).toBe('0 selected / 60 filtered / 60 total');
       const root = popup.locator('#root');
       await root.evaluate((element) => {
         element.scrollTop = 1100;
@@ -43,10 +43,11 @@ test('history updates preserve search, visible rows, and live details', async ()
       const anchor = popup.locator('[data-history-row]').nth(20);
       const anchorIdentity = await anchor.getAttribute('data-history-row');
       const stableAnchor = popup.locator(`[data-history-row="${anchorIdentity}"]`);
+      const anchorKid = await stableAnchor.locator('code span').first().textContent();
       const before = await stableAnchor.evaluate((element) => element.getBoundingClientRect().top);
       records = [{ ...records[0]!, id: 'new-record' }, ...records];
       await save();
-      await expect.poll(() => count.textContent()).toBe('61 / 61 keys');
+      await expect.poll(() => count.textContent()).toBe('0 selected / 61 filtered / 61 total');
       await expect
         .poll(async () =>
           Math.abs(
@@ -57,7 +58,7 @@ test('history updates preserve search, visible rows, and live details', async ()
         .toBeLessThanOrEqual(1);
       records = records.slice(6);
       await save();
-      await expect.poll(() => count.textContent()).toBe('55 / 55 keys');
+      await expect.poll(() => count.textContent()).toBe('0 selected / 55 filtered / 55 total');
       await expect
         .poll(async () =>
           Math.abs(
@@ -72,7 +73,7 @@ test('history updates preserve search, visible rows, and live details', async ()
       const details = popup.locator('main').last();
       const command = details.getByRole('textbox');
       await expect.poll(() => command.inputValue()).toContain('usable');
-      const selected = records.find((record) => record.id === (20).toString(16).padStart(32, '0'))!;
+      const selected = records.find((record) => record.id === anchorKid)!;
       const captured = { ...selected, value: 'a'.repeat(32), mpd: 'https://cdn.example/live.mpd' };
       records = records.map((record) => (record === selected ? captured : record));
       await save();
@@ -91,7 +92,7 @@ test('history updates preserve search, visible rows, and live details', async ()
       expect(await command.inputValue()).toBe('my custom command');
       expect(await details.evaluate((element) => element.scrollTop)).toBe(detailsScroll);
       await details.locator('svg').first().click();
-      await expect.poll(() => popup.getByText('Key Settings', { exact: true }).count()).toBe(0);
+      await expect.poll(() => popup.getByText('Key Details', { exact: true }).count()).toBe(0);
       expect(await search.isVisible()).toBe(true);
       expect(
         Math.abs(
@@ -106,19 +107,19 @@ test('history updates preserve search, visible rows, and live details', async ()
       await expect
         .poll(() => details.getByText('https://outside.example', { exact: true }).count())
         .toBe(1);
-      expect(await popup.getByText('Key Settings', { exact: true }).isVisible()).toBe(true);
+      expect(await popup.getByText('Key Details', { exact: true }).isVisible()).toBe(true);
       records = records.filter((record) => record.id !== selected.id);
       await save();
-      await expect.poll(() => popup.getByText('Key Settings', { exact: true }).count()).toBe(0);
+      await expect.poll(() => popup.getByText('Key Details', { exact: true }).count()).toBe(0);
       expect(await search.isVisible()).toBe(true);
       expect(await search.inputValue()).toBe('history.example');
       await worker.evaluate(async () => {
         await browser.storage.local.remove('all-keys');
       });
-      await expect.poll(() => count.textContent()).toBe('0 / 0 keys');
+      await expect.poll(() => count.textContent()).toBe('0 selected / 0 filtered / 0 total');
       records = [captured];
       await save();
-      await expect.poll(() => count.textContent()).toBe('1 / 1 keys');
+      await expect.poll(() => count.textContent()).toBe('0 selected / 1 filtered / 1 total');
     } finally {
       await context.close();
     }

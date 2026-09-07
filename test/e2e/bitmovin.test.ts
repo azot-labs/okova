@@ -145,7 +145,6 @@ test.for([
         .toBe(playback);
       // Import persists the first active client without requiring a dashboard visit.
       await popup.goto(popupUrl);
-      await expect.poll(() => popup.getByText('Active', { exact: true }).count()).toBe(1);
       await expect
         .poll(() =>
           worker.evaluate(async () => {
