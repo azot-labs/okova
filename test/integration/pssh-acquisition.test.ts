@@ -2,9 +2,9 @@ import { readFile } from 'node:fs/promises';
 import { assert, expect, test } from 'vitest';
 import {
   PlayReady,
-  PlayReadyDeviceCredentials,
+  PlayReadyClientCredentials,
   Widevine,
-  WidevineDeviceCredentials,
+  WidevineClientCredentials,
 } from '../../src/lib';
 import { LicenseRequest, SignedMessage } from '../../src/lib/widevine/proto';
 import { widevineInputs, playreadyInputs, payload, xml } from '../helpers/pssh-acquisition';
@@ -17,7 +17,7 @@ test.skipIf(!wvdPath).each(widevineInputs)(
   async ({ bytes }) => {
     assert(wvdPath, 'Set VITEST_WVD_PATH to enable offline challenge tests');
     const engine = new Widevine({
-      deviceCredentials: await WidevineDeviceCredentials.from({ wvd: await readFile(wvdPath) }),
+      clientCredentials: await WidevineClientCredentials.from({ wvd: await readFile(wvdPath) }),
     });
     const session = engine.createSession();
     const messages: Uint8Array[] = [];
@@ -42,7 +42,7 @@ test.skipIf(!prdPath).each(playreadyInputs)(
   async ({ bytes }) => {
     assert(prdPath, 'Set VITEST_PRD_PATH to enable offline challenge tests');
     const engine = new PlayReady({
-      deviceCredentials: await PlayReadyDeviceCredentials.from({ prd: await readFile(prdPath) }),
+      clientCredentials: await PlayReadyClientCredentials.from({ prd: await readFile(prdPath) }),
     });
     const session = engine.createSession();
     const messages: Uint8Array[] = [];

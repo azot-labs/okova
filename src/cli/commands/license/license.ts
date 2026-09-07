@@ -1,12 +1,12 @@
 import { help } from './help';
-import { importClient } from '../../utils';
+import { importClientCredentials } from '../../utils';
 import { fetchDecryptionKeys, PlayReady, Widevine, toBufferSource } from '../../../lib';
-import { WidevineDeviceCredentials } from '../../../lib/widevine/device-credentials';
+import { WidevineClientCredentials } from '../../../lib/widevine/client-credentials';
 
 type LicenseCommandParams = {
   url: string;
   pssh: string;
-  clientPath?: string;
+  credentialsPath?: string;
   encrypt?: boolean;
   headers?: string[];
 };
@@ -19,11 +19,11 @@ export const license = async (params: LicenseCommandParams) => {
       return [header.slice(0, separator).trim(), header.slice(separator + 1).trim()];
     }) || [],
   );
-  const client = await importClient(params.clientPath || process.cwd());
+  const credentials = await importClientCredentials(params.credentialsPath || process.cwd());
   const cdm =
-    client instanceof WidevineDeviceCredentials
-      ? new Widevine({ deviceCredentials: client })
-      : new PlayReady({ deviceCredentials: client });
+    credentials instanceof WidevineClientCredentials
+      ? new Widevine({ clientCredentials: credentials })
+      : new PlayReady({ clientCredentials: credentials });
   if (params.encrypt) {
     if (!(cdm instanceof Widevine)) {
       throw new Error('--encrypt is supported only for Widevine');

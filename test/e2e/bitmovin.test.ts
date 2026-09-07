@@ -29,10 +29,10 @@ test.for([
   { drm: 'widevine', playback: true },
   { drm: 'playready', playback: true },
 ])('captures Bitmovin $drm keys with playback=$playback', async ({ drm, playback }, { skip }) => {
-  const clientPath =
-    drm === 'playready' ? process.env.VITEST_PRD_PATH : process.env.VITEST_WIDEVINE_CLIENT_PATH;
-  if (!clientPath || !existsSync(resolve(clientPath))) {
-    skip('Set VITEST_WIDEVINE_CLIENT_PATH or VITEST_PRD_PATH to a local client file');
+  const credentialsPath =
+    drm === 'playready' ? process.env.VITEST_PRD_PATH : process.env.VITEST_WVD_PATH;
+  if (!credentialsPath || !existsSync(resolve(credentialsPath))) {
+    skip('Set VITEST_WVD_PATH or VITEST_PRD_PATH to a local credential file');
     return;
   }
 
@@ -67,15 +67,15 @@ test.for([
       const popup = await context.newPage();
       await popup.setViewportSize({ width: 500, height: 600 });
       await popup.goto(popupUrl);
-      await popup.getByRole('link', { name: 'Clients', exact: true }).click();
-      await popup.getByLabel('Import client').setInputFiles(resolve(clientPath));
+      await popup.getByRole('link', { name: 'Credentials', exact: true }).click();
+      await popup.getByLabel('Import credentials').setInputFiles(resolve(credentialsPath));
       await expect
         .poll(() =>
           popup.getByText(drm === 'widevine' ? /^Widevine L\d$/ : /^PlayReady SL\d+$/).count(),
         )
         .toBe(1);
       await popup.getByText(drm === 'widevine' ? /^Widevine L\d$/ : /^PlayReady SL\d+$/).hover();
-      await popup.locator('svg').filter({ hasText: 'Client Settings' }).click();
+      await popup.locator('svg').filter({ hasText: 'Credentials Settings' }).click();
       await expect
         .poll(() =>
           popup
@@ -91,15 +91,15 @@ test.for([
       await expect
         .poll(() =>
           worker.evaluate(async () => {
-            const raw: unknown = (await chrome.storage.local.get('client-registry'))[
-              'client-registry'
+            const raw: unknown = (await chrome.storage.local.get('credentials-registry'))[
+              'credentials-registry'
             ];
             return (
               typeof raw === 'object' &&
               raw !== null &&
-              'clients' in raw &&
-              Array.isArray(raw.clients) &&
-              raw.clients.length === 1
+              'credentials' in raw &&
+              Array.isArray(raw.credentials) &&
+              raw.credentials.length === 1
             );
           }),
         )
@@ -108,10 +108,10 @@ test.for([
       await popup.getByRole('link', { name: 'Settings', exact: true }).click();
       const playbackRow = popup
         .locator('label')
-        .filter({ hasText: 'Use the active client to play protected content' });
+        .filter({ hasText: 'Use the active credentials to play protected content' });
       const spoofingRow = popup
         .locator('label')
-        .filter({ hasText: 'Use the active client to obtain content keys' });
+        .filter({ hasText: 'Use the active credentials to obtain content keys' });
       await expect.poll(() => spoofingRow.getByRole('checkbox').isChecked()).toBe(true);
       await expect.poll(() => playbackRow.getByRole('checkbox').isChecked()).toBe(true);
       expect(
@@ -143,19 +143,19 @@ test.for([
           }),
         )
         .toBe(playback);
-      // Import persists the first active client without requiring a dashboard visit.
+      // Import persists the first active credentials without requiring a dashboard visit.
       await popup.goto(popupUrl);
       await expect
         .poll(() =>
           worker.evaluate(async () => {
-            const raw: unknown = (await chrome.storage.local.get('client-registry'))[
-              'client-registry'
+            const raw: unknown = (await chrome.storage.local.get('credentials-registry'))[
+              'credentials-registry'
             ];
             return (
               typeof raw === 'object' &&
               raw !== null &&
-              'activeClientId' in raw &&
-              typeof raw.activeClientId === 'string'
+              'activeCredentialsId' in raw &&
+              typeof raw.activeCredentialsId === 'string'
             );
           }),
         )

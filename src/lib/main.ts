@@ -169,9 +169,14 @@ export * from './api';
 export * from './decrypt';
 export * from './pssh';
 export * from './widevine/engine';
-export * from './widevine/device-credentials';
+export * from './widevine/client-credentials';
 export * from './playready/engine';
-export * from './playready/device-credentials';
+export * from './playready/client-credentials';
 export * from './remote/engine';
 
-export { parseRemoteConfig, type RemoteConfig } from './remote/config';
+export {
+  RemoteCredentials,
+  parseRemoteCredentialsData,
+  type RemoteCredentialsData,
+} from './remote/credentials';
+export type { Credentials } from './credentials';

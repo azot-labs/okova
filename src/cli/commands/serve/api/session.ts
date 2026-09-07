@@ -6,9 +6,9 @@ import { z } from 'zod';
 import { zValidator } from '@hono/zod-validator';
 
 import { fromBuffer, MediaKeyMessageEvent, PlayReady, Widevine, Session } from '../../../../lib';
-import { WidevineDeviceCredentials } from '../../../../lib/widevine/device-credentials';
-import { PlayReadyDeviceCredentials } from '../../../../lib/playready/device-credentials';
-import { clients, config, resolveClient, sessions } from '../state';
+import { WidevineClientCredentials } from '../../../../lib/widevine/client-credentials';
+import { PlayReadyClientCredentials } from '../../../../lib/playready/client-credentials';
+import { credentialCache, config, resolveCredentials, sessions } from '../state';
 import { normalizeKeySystem } from '../../../../lib/key-system';
 import { requestBody } from '../request-boundary';
 import { WidevineSession } from '../../../../lib/widevine/session';
@@ -85,12 +85,17 @@ app.post(
     z.object({
       sessionType: z.enum(['temporary', 'persistent-license']).optional(),
       keySystem: z.string().optional(),
-      client: z.string().optional(),
+      credentials: z.string().optional(),
       customData: z.string().optional(),
     }),
   ),
   async (c) => {
-    const { client: clientName, keySystem, sessionType, customData } = c.req.valid('json');
+    const {
+      credentials: credentialsName,
+      keySystem,
+      sessionType,
+      customData,
+    } = c.req.valid('json');
     let requestedSystem: ReturnType<typeof normalizeKeySystem> | undefined;
     try {
       requestedSystem = keySystem === undefined ? undefined : normalizeKeySystem(keySystem);
@@ -100,49 +105,53 @@ app.post(
     const secretKey = c.req.header('x-secret-key');
     const user = secretKey ? config.users[secretKey] : undefined;
     const isAllowed = (path: string) =>
-      !secretKey || user?.clients.some((identifier) => resolveClient(identifier) === path);
-    const defaultPath = config.clients[0];
-    const explicitPath = clientName === undefined ? undefined : resolveClient(clientName);
+      !secretKey || user?.credentials.some((identifier) => resolveCredentials(identifier) === path);
+    const defaultPath = config.credentials[0];
+    const explicitPath =
+      credentialsName === undefined ? undefined : resolveCredentials(credentialsName);
     // Preserve the legacy default only when the caller omits its DRM system.
     let candidates: string[];
-    if (clientName !== undefined) {
+    if (credentialsName !== undefined) {
       candidates = explicitPath ? [explicitPath] : [];
     } else if (requestedSystem) {
-      candidates = config.clients.map((path) => resolve(path)).filter(isAllowed);
+      candidates = config.credentials.map((path) => resolve(path)).filter(isAllowed);
     } else {
       candidates = defaultPath ? [resolve(defaultPath)] : [];
     }
     if (secretKey && (!candidates.length || !candidates.some(isAllowed))) {
-      return c.json({ error: 'Client is not found or you are not authorized to use it.' }, 403);
+      return c.json(
+        { error: 'Credentials were not found or you are not authorized to use them.' },
+        403,
+      );
     }
 
     let selected: { path: string; engine: Widevine | PlayReady } | null = null;
     for (const path of candidates) {
       if (!isAllowed(path)) continue;
-      let client = clients.get(path);
-      if (!client) {
+      let credentials = credentialCache.get(path);
+      if (!credentials) {
         try {
-          const clientData = await readFile(path);
-          const magic = fromBuffer(clientData.subarray(0, 3)).toText();
+          const credentialsData = await readFile(path);
+          const magic = fromBuffer(credentialsData.subarray(0, 3)).toText();
           if (magic === 'WVD') {
-            client = await WidevineDeviceCredentials.from({ wvd: clientData });
+            credentials = await WidevineClientCredentials.from({ wvd: credentialsData });
           } else if (magic === 'PRD') {
-            client = await PlayReadyDeviceCredentials.from({ prd: clientData });
+            credentials = await PlayReadyClientCredentials.from({ prd: credentialsData });
           } else {
-            if (clientName === undefined && requestedSystem) continue;
-            return c.json({ error: 'Client is not a valid WVD or PRD file' }, 400);
+            if (credentialsName === undefined && requestedSystem) continue;
+            return c.json({ error: 'Credential file is not a valid WVD or PRD file' }, 400);
           }
         } catch (error) {
           // Automatic selection can recover from stale paths and malformed provisions.
-          if (clientName === undefined && requestedSystem) continue;
+          if (credentialsName === undefined && requestedSystem) continue;
           throw error;
         }
-        clients.set(path, client);
+        credentialCache.set(path, credentials);
       }
       const engine =
-        client instanceof WidevineDeviceCredentials
-          ? new Widevine({ deviceCredentials: client })
-          : new PlayReady({ deviceCredentials: client, customData });
+        credentials instanceof WidevineClientCredentials
+          ? new Widevine({ clientCredentials: credentials })
+          : new PlayReady({ clientCredentials: credentials, customData });
       if (!requestedSystem || engine.keySystem === requestedSystem) {
         selected = { path, engine };
         break;
@@ -152,8 +161,8 @@ app.post(
       return c.json(
         {
           error: requestedSystem
-            ? `No configured, authorized client matches ${requestedSystem}`
-            : 'Client not found',
+            ? `No configured, authorized credentials match ${requestedSystem}`
+            : 'Credentials not found',
         },
         400,
       );
@@ -164,7 +173,7 @@ app.post(
     sessions.set(sessionKey, session);
     return c.json({
       id: session.sessionId,
-      client: selected.path,
+      credentials: selected.path,
       keySystem: selected.engine.keySystem,
     });
   },

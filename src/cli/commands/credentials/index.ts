@@ -3,4 +3,4 @@ import { info } from './info';
 import { pack } from './pack';
 import { unpack } from './unpack';
 
-export const client = { info, pack, unpack, help };
+export const credentials = { info, pack, unpack, help };

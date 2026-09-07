@@ -23,7 +23,7 @@ const WRM_HEADER =
 
 const createPlayReady = () =>
   new PlayReady({
-    deviceCredentials: {
+    clientCredentials: {
       certificateChain: new Uint8Array(),
       encryptionKey: EccKey.generate().dumps(),
       signingKey: EccKey.generate().dumps(),

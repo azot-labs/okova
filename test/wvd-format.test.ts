@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'vitest';
 import { tryGetUtf16Le } from '../src/lib/buffer';
-import { WidevineDeviceCredentials } from '../src/lib/widevine/device-credentials';
+import { WidevineClientCredentials } from '../src/lib/widevine/client-credentials';
 import { ClientIdentification } from '../src/lib/widevine/proto';
 import { buildWvd, parseWvd, WVD_DEVICE_TYPES } from '../src/lib/widevine/wvd';
 import { fromText } from '../src/lib/utils';
@@ -65,7 +65,7 @@ describe('WVD format', () => {
       clientId: new Uint8Array([1, 2, 3]),
     });
 
-    await expect(WidevineDeviceCredentials.fromPacked(wvd)).rejects.toThrow(
+    await expect(WidevineClientCredentials.fromPacked(wvd)).rejects.toThrow(
       'Invalid Widevine client ID',
     );
   });
@@ -83,7 +83,7 @@ describe('WVD format', () => {
       clientId,
     });
 
-    await expect(WidevineDeviceCredentials.fromPacked(wvd)).rejects.toThrow(
+    await expect(WidevineClientCredentials.fromPacked(wvd)).rejects.toThrow(
       'Invalid Widevine signed DRM certificate',
     );
   });

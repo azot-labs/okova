@@ -1,13 +1,13 @@
-import { RemoteClient } from '@/utils/remote-client';
+import { RemoteCredentials } from '@okova/lib/remote/credentials';
 import { usesPywidevineFallback } from '@okova/lib/remote/pywidevine';
-import { WidevineDeviceCredentials } from '@okova/lib/widevine/device-credentials';
-import { PlayReadyDeviceCredentials } from '@okova/lib/playready/device-credentials';
-import type { Client } from '@/utils/storage';
+import { WidevineClientCredentials } from '@okova/lib/widevine/client-credentials';
+import { PlayReadyClientCredentials } from '@okova/lib/playready/client-credentials';
+import type { Credentials } from '@/utils/storage';
 
 // A selection is one packed device/configuration or one complete raw credential pair.
-export const parseClientFiles = async (
+export const parseCredentialsFiles = async (
   files: File[],
-): Promise<{ client: Client; warning?: string }> => {
+): Promise<{ credentials: Credentials; warning?: string }> => {
   const read = async (file: File) => new Uint8Array(await file.arrayBuffer());
   const file = files[0];
   if (files.length === 1 && file) {
@@ -15,17 +15,17 @@ export const parseClientFiles = async (
     if (name.endsWith('.json')) {
       if (file.size > 64 * 1024) throw new Error('Remote configuration must be smaller than 64 KB');
       const config: unknown = JSON.parse(await file.text());
-      const client = await RemoteClient.from(config);
+      const credentials = await RemoteCredentials.from(config);
       const warning = usesPywidevineFallback(config)
         ? 'DRM system not specified. Imported as Widevine. Add "security_level" to the JSON for better detection.'
         : undefined;
-      return { client, warning };
+      return { credentials, warning };
     }
     if (name.endsWith('.wvd')) {
-      return { client: await WidevineDeviceCredentials.from({ wvd: await read(file) }) };
+      return { credentials: await WidevineClientCredentials.from({ wvd: await read(file) }) };
     }
     if (name.endsWith('.prd')) {
-      return { client: await PlayReadyDeviceCredentials.from({ prd: await read(file) }) };
+      return { credentials: await PlayReadyClientCredentials.from({ prd: await read(file) }) };
     }
   }
   if (files.length === 2) {
@@ -35,14 +35,17 @@ export const parseClientFiles = async (
     const key = find('device_private_key');
     if (id && key) {
       return {
-        client: await WidevineDeviceCredentials.from({ id: await read(id), key: await read(key) }),
+        credentials: await WidevineClientCredentials.from({
+          id: await read(id),
+          key: await read(key),
+        }),
       };
     }
     const groupCertificate = find('bgroupcert.dat', 'bgroupcert');
     const groupKey = find('zgpriv.dat', 'zgpriv');
     if (groupCertificate && groupKey) {
       return {
-        client: await PlayReadyDeviceCredentials.from({
+        credentials: await PlayReadyClientCredentials.from({
           groupKey: await read(groupKey),
           groupCertificate: await read(groupCertificate),
         }),

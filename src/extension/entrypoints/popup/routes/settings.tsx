@@ -54,7 +54,7 @@ export const Settings = () => {
       <List>
         <Section
           header="General"
-          footer="Spoofing can interrupt playback. Enable Playback to play supported videos with your active client. Reload the video page after changing these settings."
+          footer="Spoofing can interrupt playback. Enable Playback to play supported videos with your active credentials. Reload the video page after changing these settings."
         >
           <Cell
             title="You can view logs from an Encrypted Media Extensions (EME) session in Developer Tools under the Console tab"
@@ -73,7 +73,7 @@ export const Settings = () => {
             EME interception
           </Cell>
           <Cell
-            subtitle="Use the active client to obtain content keys"
+            subtitle="Use the active credentials to obtain content keys"
             component="label"
             disabled={!settings.emeInterception}
             after={
@@ -87,7 +87,7 @@ export const Settings = () => {
             Spoofing
           </Cell>
           <Cell
-            subtitle="Use the active client to play protected content"
+            subtitle="Use the active credentials to play protected content"
             component="label"
             disabled={!settings.emeInterception || !settings.spoofing}
             after={

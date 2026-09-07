@@ -11,9 +11,9 @@ import {
   privateHistory,
   clearClosedPrivateHistory,
   defaultSettings,
-  clientInfoSchema,
-  fromClientToInfo,
-  fromInfoToClient,
+  credentialsInfoSchema,
+  serializeCredentials,
+  deserializeCredentials,
   getRecentKeysForUrl,
   isCapturedKey,
 } from '@/utils/storage';
@@ -28,16 +28,17 @@ import {
   setSupportedEngines,
   toBufferSource,
   Widevine,
+  Remote,
 } from '@okova/lib';
 import { parseCertificate } from '@okova/lib/widevine/certificate';
 import { SignedDrmCertificate, SignedMessage } from '@okova/lib/widevine/proto';
 import { isServiceCertificate as isWidevineServiceCertificate } from '@okova/lib/widevine/message';
-import { WidevineDeviceCredentials } from '@okova/lib/widevine/device-credentials';
+import { WidevineClientCredentials } from '@okova/lib/widevine/client-credentials';
 import { withAbort } from '@okova/lib/abort';
 import { CLIENT_KEY_SYSTEMS, normalizeKeySystem } from '@okova/lib/key-system';
 import { Session } from '@okova/lib/api';
-import { RemoteClient } from '@/utils/remote-client';
-import type { Client } from '@/utils/storage';
+import { RemoteCredentials } from '@okova/lib/remote/credentials';
+import type { Credentials } from '@/utils/storage';
 import { z } from 'zod';
 import { getPsshKeyIds, parsePsshBoxes, PSSH_SYSTEM_IDS } from '@okova/lib/pssh';
 import type {} from '@/utils/eme-runtime';
@@ -52,7 +53,7 @@ const SESSION_IDLE_TIMEOUT_MS = 5 * 60_000;
 const SESSION_STORAGE_PREFIX = 'pending-session:';
 const storedSessionSchema = z.object({
   state: z.string(),
-  client: clientInfoSchema,
+  credentials: credentialsInfoSchema,
   tabId: z.number().optional(),
   expiresAt: z.number(),
   serverCertificate: z.string().optional(),
@@ -60,7 +61,7 @@ const storedSessionSchema = z.object({
 });
 
 type SessionEntry = {
-  client: z.infer<typeof storedSessionSchema>['client'];
+  credentials: z.infer<typeof storedSessionSchema>['credentials'];
   expiresAt: number;
   challenge: string;
   session: Session;
@@ -157,7 +158,7 @@ export default defineBackground({
       await browser.storage.session.set({
         [SESSION_STORAGE_PREFIX + id]: {
           state: entry.session.pause(),
-          client: entry.client,
+          credentials: entry.credentials,
           tabId: entry.tabId,
           expiresAt: entry.expiresAt,
           serverCertificate: entry.serverCertificate,
@@ -171,11 +172,17 @@ export default defineBackground({
       }
     };
 
-    const createCdm = (client: Client) => {
-      if (client instanceof RemoteClient) return client.createEngine();
-      if (client instanceof WidevineDeviceCredentials)
-        return new Widevine({ deviceCredentials: client });
-      return new PlayReady({ deviceCredentials: client });
+    const createCdm = (credentials: Credentials) => {
+      if (credentials instanceof RemoteCredentials) {
+        // Leave time for multi-request operations inside the extension's 25s deadline.
+        return new Remote({
+          ...credentials.config,
+          requestTimeoutMs: Math.min(credentials.config.requestTimeoutMs ?? 7_000, 7_000),
+        });
+      }
+      if (credentials instanceof WidevineClientCredentials)
+        return new Widevine({ clientCredentials: credentials });
+      return new PlayReady({ clientCredentials: credentials });
     };
 
     const closeRestoredSession = (session: Session) => {
@@ -192,18 +199,26 @@ export default defineBackground({
         if (!key.startsWith(SESSION_STORAGE_PREFIX)) continue;
         const id = key.slice(SESSION_STORAGE_PREFIX.length);
         try {
-          const record = storedSessionSchema.parse(value);
+          // Pending sessions from earlier versions used `client` for credential data.
+          const record = storedSessionSchema.parse(
+            typeof value === 'object' &&
+              value !== null &&
+              'client' in value &&
+              !('credentials' in value)
+              ? { ...value, credentials: value.client }
+              : value,
+          );
           if (record.expiresAt <= Date.now()) {
             await browser.storage.session.remove(key);
-            if (record.client.type === 'remote') {
-              const client = await RemoteClient.from(record.client.config);
-              closeRestoredSession(Session.resume(record.state, client.createEngine()));
+            if (record.credentials.type === 'remote') {
+              const credentials = await RemoteCredentials.from(record.credentials.config);
+              closeRestoredSession(Session.resume(record.state, createCdm(credentials)));
             }
             continue;
           }
-          const client = await fromInfoToClient(record.client);
-          if (!client) throw new Error('Stored client is unavailable');
-          const engine = createCdm(client);
+          const credentials = await deserializeCredentials(record.credentials);
+          if (!credentials) throw new Error('Stored credentials are unavailable');
+          const engine = createCdm(credentials);
           if (record.serverCertificate && engine.keySystem === 'com.widevine.alpha') {
             await engine.setServerCertificate(fromBase64(record.serverCertificate).toBuffer());
           }
@@ -252,7 +267,7 @@ export default defineBackground({
         const owner: unknown = JSON.parse(id);
         if (Array.isArray(owner) && owner[0] === tabId) {
           activeRequests.get(id)?.abort(new Error('Tab closed or navigated'));
-          // Close active sessions immediately; cancelled client loads cannot open new ones.
+          // Close active sessions immediately; cancelled credentials loads cannot open new ones.
           const closing = state.sessions.has(id)
             ? closeSession(id)
             : runForSession(id, () => closeSession(id));
@@ -270,14 +285,14 @@ export default defineBackground({
         .catch((error: unknown) => console.warn('[okova] Unable to clear badge', error));
     });
 
-    const loadClient = async () => {
-      console.log('[okova] Loading DRM client...');
-      const client = await appStorage.clients.active.getValue();
-      if (client) {
-        console.log('[okova] DRM client loaded');
-        return client;
+    const loadCredentials = async () => {
+      console.log('[okova] Loading DRM credentials...');
+      const credentials = await appStorage.credentials.active.getValue();
+      if (credentials) {
+        console.log('[okova] DRM credentials loaded');
+        return credentials;
       } else {
-        console.log('[okova] Unable to load client');
+        console.log('[okova] Unable to load credentials');
         return null;
       }
     };
@@ -495,12 +510,14 @@ export default defineBackground({
           return;
         }
         if (message.action === 'playback-config') {
-          const client = await run(appStorage.clients.active.getInfo());
-          if (!client) respond(null);
-          else if (client.type === 'remote') respond(client.config.keySystem);
+          const credentials = await run(appStorage.credentials.active.getInfo());
+          if (!credentials) respond(null);
+          else if (credentials.type === 'remote') respond(credentials.config.keySystem);
           else
             respond(
-              client.type === 'wvd' ? CLIENT_KEY_SYSTEMS.widevine : CLIENT_KEY_SYSTEMS.playready,
+              credentials.type === 'wvd'
+                ? CLIENT_KEY_SYSTEMS.widevine
+                : CLIENT_KEY_SYSTEMS.playready,
             );
           return;
         }
@@ -613,15 +630,17 @@ export default defineBackground({
             return;
           }
           await run(clearFailure());
-          stage = 'client';
-          const client = await run(loadClient());
-          if (!client)
-            throw new Error('No active DRM client. Import or select a client in the popup.');
-          const cdm = createCdm(client);
+          stage = 'credentials';
+          const credentials = await run(loadCredentials());
+          if (!credentials)
+            throw new Error(
+              'No active DRM credentials. Import or select credentials in the popup.',
+            );
+          const cdm = createCdm(credentials);
           if (typeof message.keySystem !== 'string') throw new Error('DRM key system is required');
           if (normalizeKeySystem(message.keySystem) !== cdm.keySystem) {
             throw new Error(
-              `Selected client uses ${cdm.keySystem}. Select a client for ${message.keySystem} in the popup.`,
+              `Selected credentials use ${cdm.keySystem}. Select credentials for ${message.keySystem} in the popup.`,
             );
           }
           const serverCertificate =
@@ -634,14 +653,14 @@ export default defineBackground({
           setSupportedEngines([cdm]);
           const keySystemAccess = await requestMediaKeySystemAccess(cdm.keySystem, [{}]);
           const mediaKeys = await run(keySystemAccess.createMediaKeys());
-          const clientInfo = await run(fromClientToInfo(client));
+          const credentialsInfo = await run(serializeCredentials(credentials));
           const session = mediaKeys.createSession();
           // Close after five minutes of inactivity, including silently removed frames.
           const expiresAt = Date.now() + SESSION_IDLE_TIMEOUT_MS;
           const timer = scheduleExpiry(sessionKey, expiresAt);
           const entry: SessionEntry = {
             session,
-            client: clientInfo,
+            credentials: credentialsInfo,
             expiresAt,
             challenge: '',
             tabId: sender.tab?.id,

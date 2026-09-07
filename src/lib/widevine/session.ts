@@ -12,7 +12,7 @@ import {
 } from './proto';
 import { createHmacSha256, getRandomBytes, getRandomHex } from '../crypto/common';
 import { Key } from './key';
-import { WidevineDeviceCredentials } from './device-credentials';
+import { WidevineClientCredentials } from './client-credentials';
 import { PSSH, createPssh } from './pssh';
 import { deriveContext, deriveKeys } from './context';
 import { getMessageType } from './message';
@@ -103,7 +103,7 @@ export class WidevineSession extends BaseMediaKeysEngineSession {
   expiration: number;
   closed: Promise<MediaKeySessionClosedReason>;
   sessionType: SessionType;
-  deviceCredentials: WidevineDeviceCredentials;
+  clientCredentials: WidevineClientCredentials;
   sessionNumber: number;
   initData?: Uint8Array;
   initDataType?: string;
@@ -117,11 +117,11 @@ export class WidevineSession extends BaseMediaKeysEngineSession {
 
   constructor(
     sessionType: SessionType = 'temporary',
-    deviceCredentials: WidevineDeviceCredentials,
+    clientCredentials: WidevineClientCredentials,
     dispose: (sessionId: string, session: MediaKeysEngineSession) => void = () => {},
     getServiceCertificate: ServiceCertificateProvider = () => undefined,
     sessionNumber = 1,
-    sessionId = generateSessionId(deviceCredentials.type ?? 'android'),
+    sessionId = generateSessionId(clientCredentials.type ?? 'android'),
   ) {
     super(sessionType, sessionId);
     this.expiration = NaN;
@@ -129,7 +129,7 @@ export class WidevineSession extends BaseMediaKeysEngineSession {
       this.addEventListener('closed', () => resolve('closed-by-application'));
     });
     this.sessionType = sessionType;
-    this.deviceCredentials = deviceCredentials;
+    this.clientCredentials = clientCredentials;
     this.sessionNumber = sessionNumber;
     this.contexts = new Map();
     this.log = console;
@@ -199,13 +199,13 @@ export class WidevineSession extends BaseMediaKeysEngineSession {
   async #createLicenseRequest(pssh: PSSH) {
     const serviceCertificate = this.#getCurrentServiceCertificate();
     const requestId = generateRequestId(
-      this.deviceCredentials.type ?? 'android',
+      this.clientCredentials.type ?? 'android',
       this.sessionNumber,
     );
     const entity = LicenseRequest.create({
-      clientId: serviceCertificate ? undefined : this.deviceCredentials.id,
+      clientId: serviceCertificate ? undefined : this.clientCredentials.id,
       encryptedClientId: serviceCertificate
-        ? await this.deviceCredentials.encryptId(serviceCertificate)
+        ? await this.clientCredentials.encryptId(serviceCertificate)
         : undefined,
       contentId: {
         widevinePsshData: {
@@ -232,7 +232,7 @@ export class WidevineSession extends BaseMediaKeysEngineSession {
     const entity = SignedMessage.create({
       type,
       msg: message,
-      signature: await this.deviceCredentials.signWithKey(message),
+      signature: await this.clientCredentials.signWithKey(message),
     });
     const bytes = SignedMessage.encode(entity).finish();
     return { entity, bytes };
@@ -293,7 +293,7 @@ export class WidevineSession extends BaseMediaKeysEngineSession {
       throw new Error(`Failed to find context to decrypt keys, requestId: ${requestId}`);
     }
 
-    const sessionKey = await this.deviceCredentials.decryptWithKey(signedLicense.sessionKey);
+    const sessionKey = await this.clientCredentials.decryptWithKey(signedLicense.sessionKey);
     const derivedKeys = await deriveKeys(context.enc, context.auth, sessionKey);
 
     const { success, signature } = await this.#verifyMessage(
@@ -420,7 +420,7 @@ export class WidevineSession extends BaseMediaKeysEngineSession {
   resume(state: string) {
     return WidevineSession.resume(
       state,
-      this.deviceCredentials,
+      this.clientCredentials,
       this.#dispose,
       this.#getServiceCertificate,
     );
@@ -428,14 +428,14 @@ export class WidevineSession extends BaseMediaKeysEngineSession {
 
   static resume(
     state: string,
-    deviceCredentials: WidevineDeviceCredentials,
+    clientCredentials: WidevineClientCredentials,
     dispose?: (sessionId: string, session: MediaKeysEngineSession) => void,
     getServiceCertificate: ServiceCertificateProvider = () => undefined,
   ) {
     const values = stateSchema.parse(JSON.parse(state));
     const session = new WidevineSession(
       values.sessionType,
-      deviceCredentials,
+      clientCredentials,
       dispose,
       getServiceCertificate,
       values.sessionNumber,

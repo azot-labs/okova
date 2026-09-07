@@ -8,11 +8,11 @@ import { z } from 'zod';
 declare const chrome: typeof import('wxt/browser').browser;
 
 const registrySchema = z.object({
-  clients: z.array(z.object({ id: z.string() })),
-  activeClientId: z.string().nullable(),
+  credentials: z.array(z.object({ id: z.string() })),
+  activeCredentialsId: z.string().nullable(),
 });
 
-test('imports, selects, exports, and deletes remote clients in the popup', async () => {
+test('imports, selects, exports, and deletes remote credentials in the popup', async () => {
   const profile = await mkdtemp(join(tmpdir(), 'okova-remote-ui-'));
   const extension = resolve('.output/chrome-mv3');
   const context = await chromium.launchPersistentContext(profile, {
@@ -25,7 +25,7 @@ test('imports, selects, exports, and deletes remote clients in the popup', async
     const worker = context.serviceWorkers()[0] ?? (await context.waitForEvent('serviceworker'));
     const popup = await context.newPage();
     await popup.goto(`chrome-extension://${new URL(worker.url()).hostname}/popup.html`);
-    await popup.getByRole('link', { name: 'Clients', exact: true }).click();
+    await popup.getByRole('link', { name: 'Credentials', exact: true }).click();
     const input = popup.locator('input[type=file]');
     await input.waitFor({ state: 'attached' });
     await input.setInputFiles({
@@ -49,11 +49,11 @@ test('imports, selects, exports, and deletes remote clients in the popup', async
     });
     await popup.getByText('Fallback device @ cdm.test', { exact: true }).waitFor();
     expect(await popup.getByRole('status').textContent()).toContain('Imported as Widevine');
-    await mkdir(resolve('output/playwright/remote-client'), { recursive: true });
+    await mkdir(resolve('output/playwright/remote-credentials'), { recursive: true });
     await popup.screenshot({
-      path: resolve('output/playwright/remote-client/fallback-warning.png'),
+      path: resolve('output/playwright/remote-credentials/fallback-warning.png'),
     });
-    await popup.getByRole('link', { name: 'Clients', exact: true }).click();
+    await popup.getByRole('link', { name: 'Credentials', exact: true }).click();
     await popup.getByText('Widevine · Remote · pywidevine', { exact: true }).waitFor();
     await popup.getByRole('button', { name: 'Dismiss import warning' }).click();
     expect(await popup.getByRole('status').count()).toBe(0);
@@ -70,7 +70,7 @@ test('imports, selects, exports, and deletes remote clients in the popup', async
       buffer: Buffer.from(JSON.stringify(config)),
     });
     await popup.getByText('Local API', { exact: true }).waitFor();
-    await expect.poll(() => popup.getByTitle('Active Client').count()).toBe(1);
+    await expect.poll(() => popup.getByTitle('Active Credentials').count()).toBe(1);
     await input.setInputFiles({
       name: 'remote.json',
       mimeType: 'application/json',
@@ -86,7 +86,7 @@ test('imports, selects, exports, and deletes remote clients in the popup', async
     const pythonClient = popup.getByText('Python device @ cdm.test', { exact: true });
     await pythonClient.click();
     await pythonClient.hover();
-    await popup.getByTitle('Client Settings').last().click();
+    await popup.getByTitle('Credentials Settings').last().click();
     await popup.getByText('pyplayready', { exact: true }).waitFor();
     expect(await popup.locator('body').textContent()).not.toContain('test-secret');
     await popup.evaluate(() =>
@@ -104,23 +104,25 @@ test('imports, selects, exports, and deletes remote clients in the popup', async
       device: 'Python device',
       secret: 'test-secret',
     });
-    await mkdir(resolve('output/playwright/remote-client'), { recursive: true });
-    await popup.screenshot({ path: resolve('output/playwright/remote-client/settings.png') });
+    await mkdir(resolve('output/playwright/remote-credentials'), { recursive: true });
+    await popup.screenshot({ path: resolve('output/playwright/remote-credentials/settings.png') });
     await popup.getByText('Delete', { exact: true }).click();
     await popup.getByText('Local API', { exact: true }).waitFor();
     await popup.goto(`chrome-extension://${new URL(worker.url()).hostname}/popup.html`);
-    await popup.getByRole('link', { name: 'Clients', exact: true }).click();
+    await popup.getByRole('link', { name: 'Credentials', exact: true }).click();
     await popup.getByText('Local API', { exact: true }).waitFor();
-    await expect.poll(() => popup.getByTitle('Active Client').count()).toBe(1);
-    await popup.screenshot({ path: resolve('output/playwright/remote-client/clients.png') });
+    await expect.poll(() => popup.getByTitle('Active Credentials').count()).toBe(1);
+    await popup.screenshot({
+      path: resolve('output/playwright/remote-credentials/credentials.png'),
+    });
   } finally {
     await context.close();
     await rm(profile, { recursive: true, force: true });
   }
 });
 
-test('first import on Clients survives a failed write, repeated selection and duplicate labels', async () => {
-  const profile = await mkdtemp(join(tmpdir(), 'okova-client-transaction-'));
+test('first import on Credentials survives a failed write, repeated selection and duplicate labels', async () => {
+  const profile = await mkdtemp(join(tmpdir(), 'okova-credentials-transaction-'));
   const extension = resolve('.output/chrome-mv3');
   const context = await chromium.launchPersistentContext(profile, {
     channel: 'chromium',
@@ -132,7 +134,7 @@ test('first import on Clients survives a failed write, repeated selection and du
     const popup = await context.newPage();
     const popupUrl = `chrome-extension://${new URL(worker.url()).hostname}/popup.html`;
     await popup.goto(popupUrl);
-    await popup.getByRole('link', { name: 'Clients', exact: true }).click();
+    await popup.getByRole('link', { name: 'Credentials', exact: true }).click();
     const input = popup.locator('input[type=file]');
     const file = (device: string) => ({
       name: 'REMOTE.JSON',
@@ -142,7 +144,7 @@ test('first import on Clients survives a failed write, repeated selection and du
           baseUrl: 'https://cdm.test',
           secret: 'test',
           keySystem: 'com.widevine.alpha',
-          client: device,
+          credentials: device,
           label: 'Same label',
         }),
       ),
@@ -158,17 +160,17 @@ test('first import on Clients survives a failed write, repeated selection and du
     await input.setInputFiles(file('one'));
     await expect.poll(() => popup.getByRole('alert').textContent()).toBe('Quota exceeded');
     expect(await popup.getByText('Same label', { exact: true }).count()).toBe(0);
-    expect(await popup.getByTitle('Active Client').count()).toBe(0);
+    expect(await popup.getByTitle('Active Credentials').count()).toBe(0);
     expect(await input.inputValue()).toBe('');
     await input.setInputFiles(file('one'));
     await popup.getByText('Same label', { exact: true }).waitFor();
-    await expect.poll(() => popup.getByTitle('Active Client').count()).toBe(1);
+    await expect.poll(() => popup.getByTitle('Active Credentials').count()).toBe(1);
     const stored = await worker.evaluate(() =>
-      chrome.storage.local.get(['client-registry', 'settings']),
+      chrome.storage.local.get(['credentials-registry', 'settings']),
     );
-    const registry = registrySchema.parse(stored['client-registry']);
-    expect(registry.clients).toHaveLength(1);
-    expect(registry.activeClientId).toBe(registry.clients[0]!.id);
+    const registry = registrySchema.parse(stored['credentials-registry']);
+    expect(registry.credentials).toHaveLength(1);
+    expect(registry.activeCredentialsId).toBe(registry.credentials[0]!.id);
     expect(
       z
         .object({ clientPlayback: z.literal(true) })
@@ -177,27 +179,29 @@ test('first import on Clients survives a failed write, repeated selection and du
     await input.setInputFiles(file('one'));
     await expect
       .poll(() => popup.getByRole('alert').textContent())
-      .toBe('This client is already imported');
+      .toBe('These credentials are already imported');
     await input.setInputFiles(file('two'));
     await expect.poll(() => popup.getByText('Same label', { exact: true }).count()).toBe(2);
     await popup.getByText('Same label', { exact: true }).last().click();
     await expect
       .poll(async () => {
-        const stored = await worker.evaluate(() => chrome.storage.local.get('client-registry'));
-        const registry = registrySchema.parse(stored['client-registry']);
-        return registry.activeClientId === registry.clients[1]!.id;
+        const stored = await worker.evaluate(() =>
+          chrome.storage.local.get('credentials-registry'),
+        );
+        const registry = registrySchema.parse(stored['credentials-registry']);
+        return registry.activeCredentialsId === registry.credentials[1]!.id;
       })
       .toBe(true);
     await popup.getByText('Same label', { exact: true }).last().hover();
-    await popup.getByTitle('Client Settings').last().click();
+    await popup.getByTitle('Credentials Settings').last().click();
     await popup.getByText('two', { exact: true }).waitFor();
     await popup.getByText('Delete', { exact: true }).click();
-    await expect.poll(() => popup.getByTitle('Client Settings').count()).toBe(1);
+    await expect.poll(() => popup.getByTitle('Credentials Settings').count()).toBe(1);
     await expect.poll(() => popup.getByText('Same label', { exact: true }).count()).toBe(1);
     await popup.goto(popupUrl);
-    await popup.getByRole('link', { name: 'Clients', exact: true }).click();
+    await popup.getByRole('link', { name: 'Credentials', exact: true }).click();
     await expect.poll(() => popup.getByText('Same label', { exact: true }).count()).toBe(1);
-    await expect.poll(() => popup.getByTitle('Active Client').count()).toBe(1);
+    await expect.poll(() => popup.getByTitle('Active Credentials').count()).toBe(1);
   } finally {
     await context.close();
     await rm(profile, { recursive: true, force: true });

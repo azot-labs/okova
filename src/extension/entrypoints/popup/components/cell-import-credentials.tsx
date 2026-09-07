@@ -1,19 +1,19 @@
 import { Component, createSignal, Show } from 'solid-js';
 import { z } from 'zod';
 import { Section, SectionFooter } from './section';
-import { TbOutlineShieldPlus as TbShieldPlus } from 'solid-icons/tb';
+import { TbOutlineFilePlus } from 'solid-icons/tb';
 import { Cell } from './cell';
-import { syncClients, useClientImportWarning, useSettings } from '../utils/state';
-import { appStorage, Client } from '@/utils/storage';
-import { parseClientFiles } from '../utils/client-import';
+import { syncCredentials, useCredentialsImportWarning, useSettings } from '../utils/state';
+import { appStorage, Credentials } from '@/utils/storage';
+import { parseCredentialsFiles } from '../utils/credential-import';
 
-export const CellImportClient: Component<{
+export const CellImportCredentials: Component<{
   disabled?: boolean;
-  onChange?: (client: Client) => void;
+  onChange?: (credentials: Credentials) => void;
 }> = (props) => {
   const [, setSettings] = useSettings();
 
-  const [, setImportWarning] = useClientImportWarning();
+  const [, setImportWarning] = useCredentialsImportWarning();
   const [error, setError] = createSignal<string>();
   const [isImporting, setIsImporting] = createSignal(false);
 
@@ -26,12 +26,12 @@ export const CellImportClient: Component<{
     setImportWarning(undefined);
     setIsImporting(true);
     try {
-      const { client, warning } = await parseClientFiles(files);
-      const snapshot = await appStorage.clients.import(client);
-      syncClients(snapshot);
+      const { credentials, warning } = await parseCredentialsFiles(files);
+      const snapshot = await appStorage.credentials.import(credentials);
+      syncCredentials(snapshot);
       if (snapshot.settings) setSettings(snapshot.settings);
       setImportWarning(warning);
-      props.onChange?.(client);
+      props.onChange?.(credentials);
     } catch (error) {
       setImportWarning(undefined);
       setError(
@@ -43,7 +43,7 @@ export const CellImportClient: Component<{
             ? 'Invalid JSON file'
             : error instanceof Error
               ? error.message
-              : 'Unable to import client',
+              : 'Unable to import credentials',
       );
     } finally {
       input.value = '';
@@ -54,12 +54,12 @@ export const CellImportClient: Component<{
   return (
     <>
       <Section>
-        <Cell before={<TbShieldPlus />} variant="warning" component="label">
-          {isImporting() ? 'Importing client…' : 'Import client'}
+        <Cell before={<TbOutlineFilePlus />} variant="warning" component="label">
+          {isImporting() ? 'Importing credentials…' : 'Import credentials'}
           <input
             class="hidden"
             id="file"
-            name="client"
+            name="credentials"
             multiple
             type="file"
             disabled={props.disabled || isImporting()}

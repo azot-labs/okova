@@ -2,10 +2,10 @@ import { describe, expect, test } from 'vitest';
 import { z } from 'zod';
 import { EccKey } from '../src/lib/crypto/ecc-key';
 import { CertificateChain } from '../src/lib/playready/bcert';
-import { PlayReadyDeviceCredentials } from '../src/lib/playready/device-credentials';
+import { PlayReadyClientCredentials } from '../src/lib/playready/client-credentials';
 import { PlayReady } from '../src/lib/playready/engine';
 import { PlayReadySession } from '../src/lib/playready/session';
-import { WidevineDeviceCredentials } from '../src/lib/widevine/device-credentials';
+import { WidevineClientCredentials } from '../src/lib/widevine/client-credentials';
 import { Widevine } from '../src/lib/widevine/engine';
 import { WidevineSession } from '../src/lib/widevine/session';
 import {
@@ -16,7 +16,7 @@ import {
 
 const createWidevine = () =>
   new Widevine({
-    deviceCredentials: new WidevineDeviceCredentials(
+    clientCredentials: new WidevineClientCredentials(
       ClientIdentification.create({
         token: SignedDrmCertificate.encode({
           drmCertificate: DrmCertificate.encode({ systemId: 1 }).finish(),
@@ -27,7 +27,7 @@ const createWidevine = () =>
 
 const createPlayReady = () =>
   new PlayReady({
-    deviceCredentials: new PlayReadyDeviceCredentials({
+    clientCredentials: new PlayReadyClientCredentials({
       encryptionKey: EccKey.generate().dumps(),
       signingKey: EccKey.generate().dumps(),
       // Registry tests only need a serializable device, not a provisioned certificate.

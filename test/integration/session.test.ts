@@ -1,7 +1,7 @@
 import { beforeEach } from 'vitest';
 import { readFile } from 'node:fs/promises';
 import { expect, test } from 'vitest';
-import { fromBase64, toBufferSource, WidevineDeviceCredentials } from '../../src/lib';
+import { fromBase64, toBufferSource, WidevineClientCredentials } from '../../src/lib';
 import { WidevineSession } from '../../src/lib/widevine/session';
 
 test('session', async () => {
@@ -11,12 +11,12 @@ test('session', async () => {
     'AAAAW3Bzc2gAAAAA7e+LqXnWSs6jyCfc1R0h7QAAADsIARIQ62dqu8s0Xpa7z2FmMPGj2hoNd2lkZXZpbmVfdGVzdCIQZmtqM2xqYVNkZmFsa3IzaioCSEQyAA==',
   ).toBuffer();
 
-  // Load device/client
+  // Load device/credentials
   const wvd = await readFile(process.env.VITEST_WVD_PATH!);
-  const client = await WidevineDeviceCredentials.from({ wvd });
+  const credentials = await WidevineClientCredentials.from({ wvd });
 
   // Create session
-  const session = new WidevineSession('temporary', client);
+  const session = new WidevineSession('temporary', credentials);
 
   // Get license challenge
   const challenge = await session.generateRequest(initDataType, initData);

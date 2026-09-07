@@ -10,24 +10,24 @@ Okova is a toolkit (browser extension, command-line tool, and JavaScript library
 
 ## Features
 
-- **Custom CDM client support**: bring your WVD, PRD, raw device files, or remote CDM JSON config and import them into browser extension
-- **Playback of DRM-protected content** using custom client (including browsers that do not support DRM like [Zen](https://zen-browser.app/) or [Helium](https://helium.computer/))
+- **Client credentials support**: bring your WVD, PRD, raw credential files, or remote JSON config and import them into browser extension
+- **Playback of DRM-protected content** using client credentials (including browsers that do not support DRM like [Zen](https://zen-browser.app/) or [Helium](https://helium.computer/))
 - **Logging** details from [EME](https://w3c.github.io/encrypted-media/index.html) events in DevTools console
 - **Network-independent interception** via browser extension, so it doesn't matter if license request has one-time tokens or a custom request/response body format
-- **Remote instance** to manage sessions via REST API
+- **Remote instance** to handle API requests and **TypeScript SDK** for managing sessions on the client
 - **Runtime agnostic** core: works in Node.js, Bun, Deno, browsers and more
 - **Encrypted Media Extensions API** compatibility via `requestMediaKeySystemAccess()` method
 
 ## Browser Extension
 
-With EME interception enabled, the extension inspects ClearKey license responses and saves their key IDs and keys as hex. ClearKey capture works without an imported device or spoofing enabled.
+With EME interception enabled, the extension inspects ClearKey license responses and saves their key IDs and keys as hex. ClearKey capture works without imported client credentials or spoofing enabled.
 
-Import a Widevine or PlayReady client in **Clients**. Okova automatically enables **Spoofing** and **Playback** when you add a client. Select the client you want to use, then reload the video page.
+Import Widevine or PlayReady client credentials or remote credentials in **Credentials**. Okova automatically enables **Spoofing** and **Playback** when you import credentials. Select the credentials you want to use, then reload the video page.
 
-- **Spoofing** uses your active client to retrieve content keys.
+- **Spoofing** uses your active credentials to retrieve content keys.
 - **Playback** lets supported videos keep playing while Okova retrieves their keys, including in browsers without built-in Widevine or PlayReady.
 
-Playback depends on the website, browser, and client. Offline licenses and hardware-protected playback are not supported.
+Playback depends on the website, browser, and selected credentials. Offline licenses and hardware-protected playback are not supported.
 
 Experimental request interception associates Widevine and PlayReady DASH manifests with captured sessions using their `cenc:pssh` boxes. It supports page fetch and XMLHttpRequest responses, including alternate XML prefixes and concatenated initialization data. HLS playlists and requests made inside workers are not inspected.
 
@@ -80,22 +80,24 @@ npm install -g okova
 
 > See help for all possible arguments and options: `okova --help`
 
-Convert DRM client files `./drm-files/device_client_id_blob` and `./drm-files/device_private_key` to single WVD file:
+`okova client` and `okova creds` are aliases for `okova credentials`.
+
+Pack client credential files `./drm-files/device_client_id_blob` and `./drm-files/device_private_key` into a single WVD file:
 
 ```bash
-okova client pack ./drm-files ./unknown_android-sdk-built-for-x86.wvd
+okova credentials pack ./drm-files ./unknown_android-sdk-built-for-x86.wvd
 ```
 
 Output example:
 
 ```text
-Client packed: /Users/.../unknown_android-sdk-built-for-x86.wvd
+Credentials packed: /Users/.../unknown_android-sdk-built-for-x86.wvd
 ```
 
-Show DRM client info:
+Show client credential information:
 
 ```bash
-okova client info ./unknown_android-sdk-built-for-x86.wvd
+okova credentials info ./unknown_android-sdk-built-for-x86.wvd
 ```
 
 Output example:
@@ -131,7 +133,7 @@ Obtain a Widevine license for [Bitmovin's video](https://bitmovin.com/demos/drm/
 
 ```ts
 import { readFile } from 'node:fs/promises';
-import { fromBase64, Widevine, WidevineDeviceCredentials } from 'okova';
+import { fromBase64, Widevine, WidevineClientCredentials } from 'okova';
 
 async function main() {
   // Prepare init data (PSSH)
@@ -139,12 +141,12 @@ async function main() {
     'AAAAW3Bzc2gAAAAA7e+LqXnWSs6jyCfc1R0h7QAAADsIARIQ62dqu8s0Xpa7z2FmMPGj2hoNd2lkZXZpbmVfdGVzdCIQZmtqM2xqYVNkZmFsa3IzaioCSEQyAA==',
   ).toBuffer();
 
-  // Load device credentials
-  const deviceCredentials = await WidevineDeviceCredentials.from({
+  // Load client credentials
+  const clientCredentials = await WidevineClientCredentials.from({
     wvd: await readFile('client.wvd'),
   });
 
-  const widevine = new Widevine({ deviceCredentials });
+  const widevine = new Widevine({ clientCredentials });
   const session = widevine.createSession();
 
   // Handle generated license challenge (or other session messages like individualization request)
@@ -190,7 +192,7 @@ await session.close();
 const resumed = engine.resumeSession(state);
 ```
 
-Resume with the same device credentials. Native Widevine sessions do not support
+Resume with the same client credentials. Native Widevine sessions do not support
 persistent-license storage through `load()`.
 
 ### PlayReady custom challenge data
@@ -198,7 +200,7 @@ persistent-license storage through `load()`.
 Pass application-specific data as a string when creating the engine:
 
 ```ts
-const engine = new PlayReady({ deviceCredentials, customData: applicationData });
+const engine = new PlayReady({ clientCredentials, customData: applicationData });
 const keys = await fetchDecryptionKeys({ cdm: engine, pssh, server: licenseUrl });
 ```
 
@@ -207,10 +209,10 @@ Pass the original text without XML escaping. Remote clients accept the same
 
 ### Remote sessions
 
-Start a local API with your device file and a secret of your choice:
+Start a local API with your client credentials and a secret of your choice:
 
 ```sh
-okova serve --client client.wvd --secret 'replace-with-your-secret'
+okova serve --credentials client.wvd --secret 'replace-with-your-secret'
 ```
 
 The API uses the host and port from `okova.config.json`, defaulting to

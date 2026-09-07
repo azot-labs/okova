@@ -8,7 +8,8 @@ export const help = () => {
   console.log(col(`--port`) + 'server port (default: 4000)');
   console.log(col(`--config`) + 'path to config file (default: okova.config.json)');
   console.log(
-    col(`-c, --client`) + 'path to client (.wvd/.prd file or directory with credential files)',
+    col(`-c, --credentials`) +
+      'path to credentials (.wvd/.prd file or directory with credential files)',
   );
   console.log(col(`-s, --secret`) + 'secret key to access API endpoints');
   console.log(col(`--public`) + 'explicitly allow anonymous API access');

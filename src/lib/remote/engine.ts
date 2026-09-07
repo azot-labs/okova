@@ -186,7 +186,7 @@ export class Remote extends BaseMediaKeysEngine {
     );
     this.connection = JSON.stringify([
       remoteUrlSchema.parse(params.baseUrl),
-      'device' in params ? params.device : (params.client ?? null),
+      'device' in params ? params.device : (params.credentials ?? null),
       fromBuffer(authentication).toHex(),
     ]);
     this.#api =
@@ -223,7 +223,7 @@ export class Remote extends BaseMediaKeysEngine {
       state.connection !== this.connection
     )
       throw new Error(
-        'Remote session belongs to a different server, device, protocol, DRM system, or authentication',
+        'Remote session belongs to a different server, credentials, protocol, DRM system, or authentication',
       );
     if (this.sessions.has(state.sessionId)) throw new Error('Remote session is already attached');
     // Keep a newer engine certificate and preserve per-session overrides separately.

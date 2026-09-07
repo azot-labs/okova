@@ -14,15 +14,15 @@ describe('Widevine Session Resumability', () => {
     const initData = fromBase64(pssh).toBuffer();
     const initDataType = 'cenc';
 
-    const clientPath = process.env.VITEST_WVD_PATH;
-    if (!clientPath) {
-      skip('Set the DRM device path to enable this test');
+    const credentialsPath = process.env.VITEST_WVD_PATH;
+    if (!credentialsPath) {
+      skip('Set the DRM credential path to enable this test');
       return;
     }
 
-    const clientData = await readFile(clientPath);
-    const client = await Widevine.DeviceCredentials.from({ wvd: clientData });
-    const cdm = new Widevine({ deviceCredentials: client });
+    const credentialsData = await readFile(credentialsPath);
+    const credentials = await Widevine.ClientCredentials.from({ wvd: credentialsData });
+    const cdm = new Widevine({ clientCredentials: credentials });
 
     // Create and setup session
     setSupportedEngines([cdm]);
@@ -57,17 +57,17 @@ describe('Widevine Session Resumability', () => {
   });
 
   test('should pause and resume widevine session via Session static methods', async ({ skip }) => {
-    const clientPath = process.env.VITEST_WVD_PATH;
-    if (!clientPath) {
-      skip('Set the DRM device path to enable this test');
+    const credentialsPath = process.env.VITEST_WVD_PATH;
+    if (!credentialsPath) {
+      skip('Set the DRM credential path to enable this test');
       return;
     }
 
-    const clientData = await readFile(clientPath);
-    const client = await Widevine.DeviceCredentials.from({ wvd: clientData });
+    const credentialsData = await readFile(credentialsPath);
+    const credentials = await Widevine.ClientCredentials.from({ wvd: credentialsData });
 
     // Create a session directly
-    const originalSession = new WidevineSession('temporary', client);
+    const originalSession = new WidevineSession('temporary', credentials);
     const originalSessionId = originalSession.sessionId;
 
     // Pause
@@ -76,7 +76,7 @@ describe('Widevine Session Resumability', () => {
     expect(typeof state).toBe('string');
 
     // Resume using static method
-    const restoredSession = WidevineSession.resume(state, client);
+    const restoredSession = WidevineSession.resume(state, credentials);
     expect(restoredSession).toBeDefined();
     expect(restoredSession.sessionId).toBe(originalSessionId);
     expect(restoredSession.sessionType).toBe('temporary');
@@ -88,17 +88,17 @@ describe('Widevine Session Resumability', () => {
     const initData = fromBase64(pssh).toBuffer();
     const initDataType = 'cenc';
 
-    const clientPath = process.env.VITEST_WVD_PATH;
-    if (!clientPath) {
-      skip('Set the DRM device path to enable this test');
+    const credentialsPath = process.env.VITEST_WVD_PATH;
+    if (!credentialsPath) {
+      skip('Set the DRM credential path to enable this test');
       return;
     }
 
-    const clientData = await readFile(clientPath);
-    const client = await Widevine.DeviceCredentials.from({ wvd: clientData });
+    const credentialsData = await readFile(credentialsPath);
+    const credentials = await Widevine.ClientCredentials.from({ wvd: credentialsData });
 
     // Create session and generate request
-    const originalSession = new WidevineSession('temporary', client);
+    const originalSession = new WidevineSession('temporary', credentials);
     await originalSession.generateRequest(initDataType, initData);
 
     const originalSessionId = originalSession.sessionId;
@@ -106,7 +106,7 @@ describe('Widevine Session Resumability', () => {
 
     // Pause and resume
     const state = originalSession.pause();
-    const restoredSession = WidevineSession.resume(state, client);
+    const restoredSession = WidevineSession.resume(state, credentials);
 
     // Verify state preservation
     expect(restoredSession.sessionId).toBe(originalSessionId);
@@ -118,15 +118,15 @@ describe('Widevine Session Resumability', () => {
   });
 
   test('should handle persistent-license session type', async ({ skip }) => {
-    const clientPath = process.env.VITEST_WVD_PATH;
-    if (!clientPath) {
-      skip('Set the DRM device path to enable this test');
+    const credentialsPath = process.env.VITEST_WVD_PATH;
+    if (!credentialsPath) {
+      skip('Set the DRM credential path to enable this test');
       return;
     }
 
-    const clientData = await readFile(clientPath);
-    const client = await Widevine.DeviceCredentials.from({ wvd: clientData });
-    const cdm = new Widevine({ deviceCredentials: client });
+    const credentialsData = await readFile(credentialsPath);
+    const credentials = await Widevine.ClientCredentials.from({ wvd: credentialsData });
+    const cdm = new Widevine({ clientCredentials: credentials });
 
     // Create persistent session
     const session = new Session('persistent-license', cdm);
@@ -146,15 +146,15 @@ describe('Widevine Session Resumability', () => {
 
 describe('PlayReady Session Resumability', () => {
   test('should pause and resume playready session via CDM methods', async ({ skip }) => {
-    const clientPath = process.env.VITEST_PRD_PATH;
-    if (!clientPath) {
-      skip('Set the DRM device path to enable this test');
+    const credentialsPath = process.env.VITEST_PRD_PATH;
+    if (!credentialsPath) {
+      skip('Set the DRM credential path to enable this test');
       return;
     }
 
-    const clientData = await readFile(clientPath);
-    const client = await PlayReady.DeviceCredentials.from({ prd: clientData });
-    const cdm = new PlayReady({ deviceCredentials: client });
+    const credentialsData = await readFile(credentialsPath);
+    const credentials = await PlayReady.ClientCredentials.from({ prd: credentialsData });
+    const cdm = new PlayReady({ clientCredentials: credentials });
 
     // Create session
     setSupportedEngines([cdm]);
@@ -187,17 +187,17 @@ describe('PlayReady Session Resumability', () => {
   });
 
   test('should pause and resume playready session via Session static methods', async ({ skip }) => {
-    const clientPath = process.env.VITEST_PRD_PATH;
-    if (!clientPath) {
-      skip('Set the DRM device path to enable this test');
+    const credentialsPath = process.env.VITEST_PRD_PATH;
+    if (!credentialsPath) {
+      skip('Set the DRM credential path to enable this test');
       return;
     }
 
-    const clientData = await readFile(clientPath);
-    const client = await PlayReady.DeviceCredentials.from({ prd: clientData });
+    const credentialsData = await readFile(credentialsPath);
+    const credentials = await PlayReady.ClientCredentials.from({ prd: credentialsData });
 
     // Create a session directly
-    const originalSession = new PlayReadySession('temporary', client);
+    const originalSession = new PlayReadySession('temporary', credentials);
     const originalSessionId = originalSession.sessionId;
 
     // Pause
@@ -215,28 +215,28 @@ describe('PlayReady Session Resumability', () => {
     expect(parsed.clientVersion).toBeDefined();
 
     // Resume using static method
-    const restoredSession = PlayReadySession.resume(state, client);
+    const restoredSession = PlayReadySession.resume(state, credentials);
     expect(restoredSession).toBeDefined();
     expect(restoredSession.sessionId).toBe(originalSessionId);
     expect(restoredSession.sessionType).toBe('temporary');
   });
 
   test('should preserve session cryptographic state during pause/resume', async ({ skip }) => {
-    const clientPath = process.env.VITEST_PRD_PATH;
-    if (!clientPath) {
-      skip('Set the DRM device path to enable this test');
+    const credentialsPath = process.env.VITEST_PRD_PATH;
+    if (!credentialsPath) {
+      skip('Set the DRM credential path to enable this test');
       return;
     }
 
-    const clientData = await readFile(clientPath);
-    const client = await PlayReady.DeviceCredentials.from({ prd: clientData });
+    const credentialsData = await readFile(credentialsPath);
+    const credentials = await PlayReady.ClientCredentials.from({ prd: credentialsData });
 
     // Create session
-    const originalSession = new PlayReadySession('temporary', client);
+    const originalSession = new PlayReadySession('temporary', credentials);
 
     // Pause and resume
     const state = originalSession.pause();
-    const restoredSession = PlayReadySession.resume(state, client);
+    const restoredSession = PlayReadySession.resume(state, credentials);
 
     // Verify cryptographic properties are preserved
     expect(restoredSession.certificateChain).toBeDefined();
@@ -251,15 +251,15 @@ describe('PlayReady Session Resumability', () => {
   });
 
   test('should handle persistent-license session type for playready', async ({ skip }) => {
-    const clientPath = process.env.VITEST_PRD_PATH;
-    if (!clientPath) {
-      skip('Set the DRM device path to enable this test');
+    const credentialsPath = process.env.VITEST_PRD_PATH;
+    if (!credentialsPath) {
+      skip('Set the DRM credential path to enable this test');
       return;
     }
 
-    const clientData = await readFile(clientPath);
-    const client = await PlayReady.DeviceCredentials.from({ prd: clientData });
-    const cdm = new PlayReady({ deviceCredentials: client });
+    const credentialsData = await readFile(credentialsPath);
+    const credentials = await PlayReady.ClientCredentials.from({ prd: credentialsData });
+    const cdm = new PlayReady({ clientCredentials: credentials });
 
     // Create persistent session
     const session = new Session('persistent-license', cdm);
@@ -291,24 +291,24 @@ describe('Cross-system Resumability', () => {
 
     // Create Widevine session
     const widevineData = await readFile(widevinePath);
-    const widevineClient = await Widevine.DeviceCredentials.from({ wvd: widevineData });
-    const widevineSession = new WidevineSession('temporary', widevineClient);
+    const widevineCredentials = await Widevine.ClientCredentials.from({ wvd: widevineData });
+    const widevineSession = new WidevineSession('temporary', widevineCredentials);
     const widevinePaused = widevineSession.pause();
 
     // Create PlayReady session
     const playreadyData = await readFile(playreadyPath);
-    const playreadyClient = await PlayReady.DeviceCredentials.from({
+    const playreadyCredentials = await PlayReady.ClientCredentials.from({
       prd: playreadyData,
     });
-    const playreadySession = new PlayReadySession('temporary', playreadyClient);
+    const playreadySession = new PlayReadySession('temporary', playreadyCredentials);
     const playreadyPaused = playreadySession.pause();
 
     // Verify they are different
     expect(widevinePaused).not.toBe(playreadyPaused);
 
     // Verify each can only be resumed by its own type
-    const widevineRestored = WidevineSession.resume(widevinePaused, widevineClient);
-    const playreadyRestored = PlayReadySession.resume(playreadyPaused, playreadyClient);
+    const widevineRestored = WidevineSession.resume(widevinePaused, widevineCredentials);
+    const playreadyRestored = PlayReadySession.resume(playreadyPaused, playreadyCredentials);
 
     expect(widevineRestored.sessionId).toBe(widevineSession.sessionId);
     expect(playreadyRestored.sessionId).toBe(playreadySession.sessionId);

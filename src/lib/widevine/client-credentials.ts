@@ -33,7 +33,7 @@ const types = new Map<number, ClientType>([
 const isSecurityLevel = (value: unknown): value is SecurityLevel =>
   value === 1 || value === 2 || value === 3;
 
-export class WidevineDeviceCredentials {
+export class WidevineClientCredentials {
   id: ClientIdentification;
   type: ClientType;
   securityLevel: SecurityLevel;
@@ -47,9 +47,9 @@ export class WidevineDeviceCredentials {
 
   static async from(payload: { wvd: Uint8Array } | { id: Uint8Array; key: Uint8Array }) {
     if ('wvd' in payload) {
-      return await WidevineDeviceCredentials.fromPacked(payload.wvd);
+      return await WidevineClientCredentials.fromPacked(payload.wvd);
     } else {
-      return await WidevineDeviceCredentials.fromUnpacked(payload.id, payload.key);
+      return await WidevineClientCredentials.fromUnpacked(payload.id, payload.key);
     }
   }
 
@@ -66,22 +66,22 @@ export class WidevineDeviceCredentials {
       }
       const securityLevel = parsed.securityLevel;
       const pkcs1 = `-----BEGIN RSA PRIVATE KEY-----\n${fromBuffer(parsed.privateKey).toBase64()}\n-----END RSA PRIVATE KEY-----`;
-      const deviceCredentials = new WidevineDeviceCredentials(parsed.clientId, type, securityLevel);
-      await deviceCredentials.importKey(pkcs1);
-      return deviceCredentials;
+      const clientCredentials = new WidevineClientCredentials(parsed.clientId, type, securityLevel);
+      await clientCredentials.importKey(pkcs1);
+      return clientCredentials;
     } else {
       throw new Error('Unsupported format');
     }
   }
 
   static async fromUnpacked(id: Uint8Array, key: Uint8Array, vmp?: Uint8Array) {
-    const deviceCredentials = new WidevineDeviceCredentials(id);
+    const clientCredentials = new WidevineClientCredentials(id);
     if (vmp) {
-      deviceCredentials.vmp = decodeExactly(vmp, FileHashes, 'Widevine VMP data');
-      deviceCredentials.id.vmpData = vmp;
+      clientCredentials.vmp = decodeExactly(vmp, FileHashes, 'Widevine VMP data');
+      clientCredentials.id.vmpData = vmp;
     }
-    await deviceCredentials.importKey(key);
-    return deviceCredentials;
+    await clientCredentials.importKey(key);
+    return clientCredentials;
   }
 
   get key() {
@@ -266,7 +266,7 @@ export class WidevineDeviceCredentials {
       throw new DOMException('Unsupported media key system', 'NotSupportedError');
     }
     const { Widevine } = await import('./engine');
-    const engine = new Widevine({ deviceCredentials: this });
+    const engine = new Widevine({ clientCredentials: this });
     setSupportedEngines([engine]);
     return requestAccess(keySystem, supportedConfigurations);
   }

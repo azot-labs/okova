@@ -1,4 +1,4 @@
-"""Generate synthetic fixtures, without Okova or device credentials.
+"""Generate synthetic fixtures, without Okova or client credentials.
 
 Requires lxml==6.1.3 and cryptography==50.0.1. Run this file to regenerate.
 Keys are generated afresh; signatures and public keys change on regeneration.

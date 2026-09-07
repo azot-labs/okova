@@ -1,8 +1,8 @@
 import { popupHistory } from './history';
 import {
   appStorage,
-  StoredClient,
-  ClientSnapshot,
+  StoredCredentials,
+  CredentialsSnapshot,
   defaultSettings,
   KeyInfo,
   RecentKeysByDomain,
@@ -12,19 +12,19 @@ import { getDrmFailureStorage, type DrmFailure } from '@/utils/storage';
 import { createSignal, onCleanup, onMount } from 'solid-js';
 import { createStore } from 'solid-js/store';
 
-const clientImportWarningSignal = createSignal<string>();
-export const useClientImportWarning = () => clientImportWarningSignal;
+const credentialsImportWarningSignal = createSignal<string>();
+export const useCredentialsImportWarning = () => credentialsImportWarningSignal;
 
-const clientsSignal = createSignal<StoredClient[]>([]);
-export const useClients = () => clientsSignal;
+const credentialsSignal = createSignal<StoredCredentials[]>([]);
+export const useCredentials = () => credentialsSignal;
 
-const activeClientSignal = createSignal<StoredClient | null>(null);
-export const useActiveClient = () => activeClientSignal;
+const activeCredentialsSignal = createSignal<StoredCredentials | null>(null);
+export const useActiveCredentials = () => activeCredentialsSignal;
 
-export const syncClients = (snapshot: ClientSnapshot) => {
-  clientsSignal[1](snapshot.clients);
-  activeClientSignal[1](
-    snapshot.clients.find((entry) => entry.id === snapshot.activeClientId) ?? null,
+export const syncCredentials = (snapshot: CredentialsSnapshot) => {
+  credentialsSignal[1](snapshot.credentials);
+  activeCredentialsSignal[1](
+    snapshot.credentials.find((entry) => entry.id === snapshot.activeCredentialsId) ?? null,
   );
 };
 
@@ -67,7 +67,7 @@ export const useSyncStateWithStorage = () => {
       await appStorage.settings.setValue(defaultSettings);
     }
 
-    appStorage.clients.getSnapshot().then(syncClients);
+    appStorage.credentials.getSnapshot().then(syncCredentials);
     browser.tabs.query({ active: true, currentWindow: true }).then(async ([tab]) => {
       if (isDisposed) return;
       setActiveTabUrl(tab?.url ?? null);

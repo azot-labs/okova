@@ -83,7 +83,7 @@ test('rejects a second challenge and allows a retry with its own initialization 
     expect(generateSpy).toHaveBeenCalledOnce();
 
     // Another user can use even the same session ID while this request is pending.
-    config.users['other-user'] = { name: 'other', clients: [] };
+    config.users['other-user'] = { name: 'other', credentials: [] };
     openSession('session', 'other-user');
     expect((await request('generate-request', 'Aw==', 'session', 'other-user')).status).toBe(200);
   } finally {

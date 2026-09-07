@@ -11,12 +11,12 @@ test.skipIf(!process.env.VITEST_PRD_PATH)(
     const prdPath = process.env.VITEST_PRD_PATH;
     if (!prdPath) throw new Error('VITEST_PRD_PATH is required');
     const cwd = await mkdtemp(join(directory, 'prd-'));
-    const info = run(['client', 'info', prdPath], cwd);
+    const info = run(['credentials', 'info', prdPath], cwd);
     expect(info.status, info.stderr).toBe(0);
     expect(info.stdout).toContain('DRM: PlayReady');
     expect(info.stdout).toMatch(/Security level: \d+/);
     expect(info.stdout).toMatch(/PRD version: [23]/);
-    const result = run(['client', 'pack', prdPath, '--format', 'prd'], cwd);
+    const result = run(['credentials', 'pack', prdPath, '--format', 'prd'], cwd);
     expect(result.status, result.stderr).toBe(0);
     const files = await readdir(cwd);
     expect(files).toHaveLength(1);
@@ -25,10 +25,10 @@ test.skipIf(!process.env.VITEST_PRD_PATH)(
     // A directory containing both device types must honor the requested pack format.
     const mixed = join(cwd, 'mixed');
     await mkdir(mixed);
-    await writeFile(join(mixed, 'client.wvd'), wvd);
-    await writeFile(join(mixed, 'client.prd'), await readFile(prdPath));
+    await writeFile(join(mixed, 'credentials.wvd'), wvd);
+    await writeFile(join(mixed, 'credentials.prd'), await readFile(prdPath));
     const output = join(cwd, 'selected.prd');
-    expect(run(['client', 'pack', mixed, output, '-f', 'prd'], cwd).status).toBe(0);
+    expect(run(['credentials', 'pack', mixed, output, '-f', 'prd'], cwd).status).toBe(0);
     expect(await readFile(output)).toEqual(await readFile(prdPath));
   },
 );

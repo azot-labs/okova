@@ -176,8 +176,8 @@ test('document-start bootstrap handles CSP, Trusted Types, frames, and settings 
           requestInterception: false,
           theme: 'auto',
         }),
-        'client-registry': {
-          clients: [
+        'credentials-registry': {
+          credentials: [
             {
               id: 'test',
               info: {
@@ -190,7 +190,7 @@ test('document-start bootstrap handles CSP, Trusted Types, frames, and settings 
               },
             },
           ],
-          activeClientId: 'test',
+          activeCredentialsId: 'test',
         },
       });
     });

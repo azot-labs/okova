@@ -1,6 +1,6 @@
 # PlayReady compatibility investigation
 
-The fixtures in `test/fixtures/playready/` are synthetic. `generate.py` builds certificate bytes with Python `struct`, canonicalizes XML with `lxml`, and signs with `cryptography` using ECDSA P-256/SHA-256. It verifies each new signature before writing it. No Okova code, device credentials, Microsoft signing keys, or captured licenses are used. The checked-in files contain public keys only.
+The fixtures in `test/fixtures/playready/` are synthetic. `generate.py` builds certificate bytes with Python `struct`, canonicalizes XML with `lxml`, and signs with `cryptography` using ECDSA P-256/SHA-256. It verifies each new signature before writing it. No Okova code, client credentials, Microsoft signing keys, or captured licenses are used. The checked-in files contain public keys only.
 
 Regenerate with Python and `lxml==6.1.3`, `cryptography==50.0.1` installed:
 

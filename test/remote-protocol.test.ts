@@ -186,7 +186,7 @@ test('deadline covers a stalled response body and malformed JSON errors omit the
   await expect(engine.createSession()).rejects.toThrow('invalid JSON (HTTP 502)');
 });
 
-test('resumed sessions cannot be attached to another server or device', async () => {
+test('resumed sessions cannot be attached to another server or credential selection', async () => {
   createServer();
   const params = {
     protocol: 'pywidevine',
@@ -199,11 +199,11 @@ test('resumed sessions cannot be attached to another server or device', async ()
   const session = await engine.createSession();
   const state = session.pause();
   expect(() => new Remote({ ...params, device: 'another-device' }).resumeSession(state)).toThrow(
-    'different server, device',
+    'different server, credentials',
   );
   expect(() =>
     new Remote({ ...params, baseUrl: 'https://other.test' }).resumeSession(state),
-  ).toThrow('different server, device');
+  ).toThrow('different server, credentials');
 });
 
 test.each(['before', 'after'])(
@@ -357,13 +357,13 @@ test('structured server errors retain details', async () => {
     'fetch',
     vi.fn(async () =>
       Response.json(
-        { error: { code: 'NO_CLIENT', reason: 'Client unavailable' } },
+        { error: { code: 'NO_CLIENT', reason: 'Credentials unavailable' } },
         { status: 400 },
       ),
     ),
   );
   const engine = new Remote({ keySystem: 'com.widevine.alpha', baseUrl: 'https://cdm.test' });
-  await expect(engine.createSession()).rejects.toThrow('"reason":"Client unavailable"');
+  await expect(engine.createSession()).rejects.toThrow('"reason":"Credentials unavailable"');
 });
 
 test('native DRM mismatch remains visible when cleanup fails', async () => {
@@ -437,7 +437,9 @@ test.each(['okova', 'pywidevine', 'pyplayready'] as const)(
           ? 'com.microsoft.playready.recommendation'
           : 'com.widevine.alpha',
       baseUrl: 'https://cdm.test',
-      ...(protocol === 'okova' ? { protocol, client: 'client' } : { protocol, device: 'device' }),
+      ...(protocol === 'okova'
+        ? { protocol, credentials: 'credentials' }
+        : { protocol, device: 'device' }),
       secret: 'original-secret',
       headers: { Authorization: 'Bearer original-token', 'X-Custom-Auth': 'custom-token' },
     } satisfies RemoteParams;

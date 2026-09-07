@@ -34,7 +34,7 @@ import { EccKey } from '../crypto/ecc-key';
 import { ElGamal } from '../crypto/elgamal';
 import { XmlKey } from './xml-key';
 import { Key } from './key';
-import { PlayReadyDeviceCredentials } from './device-credentials';
+import { PlayReadyClientCredentials } from './client-credentials';
 import { BCertKeyUsage, CertificateChain } from './bcert';
 import { InvalidLicense } from './exceptions';
 import { ServerException } from './exceptions';
@@ -68,7 +68,7 @@ const requireDirectChild = (parent: Element, localName: string) => {
 };
 
 type PlayReadySessionCredentials =
-  | PlayReadyDeviceCredentials
+  | PlayReadyClientCredentials
   | {
       certificateChain: Uint8Array;
       encryptionKey: Uint8Array;
@@ -107,7 +107,7 @@ export class PlayReadySession extends BaseMediaKeysEngineSession {
   expiration: number;
   closed: Promise<MediaKeySessionClosedReason>;
   sessionType: MediaKeySessionType;
-  deviceCredentials: PlayReadySessionCredentials;
+  clientCredentials: PlayReadySessionCredentials;
   initData?: Uint8Array;
   initDataType?: string;
   certificateChain: Uint8Array;
@@ -120,7 +120,7 @@ export class PlayReadySession extends BaseMediaKeysEngineSession {
   parser: DOMParser;
   serializer: XMLSerializer;
 
-  static DeviceCredentials = PlayReadyDeviceCredentials;
+  static ClientCredentials = PlayReadyClientCredentials;
 
   #contentKeys: Key[];
   #dispose: (sessionId: string, session: MediaKeysEngineSession) => void;
@@ -128,7 +128,7 @@ export class PlayReadySession extends BaseMediaKeysEngineSession {
 
   constructor(
     sessionType: MediaKeySessionType = 'temporary',
-    deviceCredentials: PlayReadySessionCredentials,
+    clientCredentials: PlayReadySessionCredentials,
     dispose: (sessionId: string, session: MediaKeysEngineSession) => void = () => {},
     options: PlayReadySessionOptions = {},
     sessionId = fromBuffer(getRandomBytes()).toBase64(),
@@ -139,17 +139,17 @@ export class PlayReadySession extends BaseMediaKeysEngineSession {
       this.addEventListener('closed', () => resolve('closed-by-application'));
     });
     this.sessionType = sessionType;
-    this.deviceCredentials = deviceCredentials;
-    if (deviceCredentials instanceof PlayReadyDeviceCredentials) {
-      this.certificateChain = deviceCredentials.groupCertificate.dumps();
-      this.encryptionKey = deviceCredentials.encryptionKey;
-      this.signingKey = deviceCredentials.signingKey;
+    this.clientCredentials = clientCredentials;
+    if (clientCredentials instanceof PlayReadyClientCredentials) {
+      this.certificateChain = clientCredentials.groupCertificate.dumps();
+      this.encryptionKey = clientCredentials.encryptionKey;
+      this.signingKey = clientCredentials.signingKey;
       this.clientVersion = DEFAULT_CLIENT_VERSION;
     } else {
-      this.certificateChain = deviceCredentials.certificateChain;
-      this.encryptionKey = EccKey.from(deviceCredentials.encryptionKey);
-      this.signingKey = EccKey.from(deviceCredentials.signingKey);
-      this.clientVersion = deviceCredentials.clientVersion ?? DEFAULT_CLIENT_VERSION;
+      this.certificateChain = clientCredentials.certificateChain;
+      this.encryptionKey = EccKey.from(clientCredentials.encryptionKey);
+      this.signingKey = EccKey.from(clientCredentials.signingKey);
+      this.clientVersion = clientCredentials.clientVersion ?? DEFAULT_CLIENT_VERSION;
     }
 
     this.rgbMagicConstantZero = new Uint8Array([
@@ -607,19 +607,19 @@ export class PlayReadySession extends BaseMediaKeysEngineSession {
   }
 
   resume(state: string) {
-    return PlayReadySession.resume(state, this.deviceCredentials, this.#dispose, this.#options);
+    return PlayReadySession.resume(state, this.clientCredentials, this.#dispose, this.#options);
   }
 
   static resume(
     data: string,
-    deviceCredentials: PlayReadySessionCredentials,
+    clientCredentials: PlayReadySessionCredentials,
     dispose?: (sessionId: string, session: MediaKeysEngineSession) => void,
     options: PlayReadySessionOptions = {},
   ) {
     const values = stateSchema.parse(JSON.parse(data));
     const session = new PlayReadySession(
       values.sessionType,
-      deviceCredentials,
+      clientCredentials,
       dispose,
       {
         ...options,

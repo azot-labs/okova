@@ -1,7 +1,7 @@
 import { beforeEach } from 'vitest';
 import { expect, test } from 'vitest';
 import { fromBase64, fromBuffer, parseBufferSource, toBufferSource } from '../../src/lib';
-import { PSSH, LICENSE_URL, createClient } from '../utils';
+import { PSSH, LICENSE_URL, createCredentials } from '../utils';
 
 // https://www.w3.org/TR/encrypted-media-2/#example-8
 
@@ -71,11 +71,11 @@ test('encrypted media extensions', async () => {
     }
   };
 
-  const client = await createClient();
+  const credentials = await createCredentials();
   const initDataType = 'cenc';
   const initData = fromBase64(PSSH).toBuffer();
 
-  const keySystemAccess = await client.requestMediaKeySystemAccess('com.widevine.alpha', [{}]);
+  const keySystemAccess = await credentials.requestMediaKeySystemAccess('com.widevine.alpha', [{}]);
   const mediaKeys = await keySystemAccess.createMediaKeys();
   const keySession = mediaKeys.createSession();
   keySession.addEventListener('message', handleMessage, false);

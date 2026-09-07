@@ -14,26 +14,27 @@ type ServeOptions = {
   host?: string;
   port?: number;
   config?: string;
-  client?: string;
+  credentials?: string;
   secret?: string;
   public?: boolean;
 };
 
 export const serve = async (options: ServeOptions = {}) => {
   await loadConfig(options.config);
-  if (options.client) config.clients.push(options.client);
-  if (!config.clients.length) {
+  if (options.credentials) config.credentials.push(options.credentials);
+  if (!config.credentials.length) {
     const files = await readdir(process.cwd());
-    const clientPath = files.find((file) => file.endsWith('.wvd'));
-    if (clientPath) config.clients.push(clientPath);
+    const credentialsPath = files.find((file) => file.endsWith('.wvd'));
+    if (credentialsPath) config.credentials.push(credentialsPath);
   }
   if (options.secret) {
-    const anonymousUser = { name: 'anonymous', clients: [] };
+    const anonymousUser = { name: 'anonymous', credentials: [] };
     const user = Object.hasOwn(config.users, options.secret)
       ? config.users[options.secret]!
       : anonymousUser;
-    const clientPath = options.client ?? config.clients.at(-1);
-    if (!user.clients.length && clientPath) user.clients.push(resolve(clientPath));
+    const credentialsPath = options.credentials ?? config.credentials.at(-1);
+    if (!user.credentials.length && credentialsPath)
+      user.credentials.push(resolve(credentialsPath));
     config.users = { ...config.users, [options.secret]: user };
   }
 
@@ -46,7 +47,7 @@ export const serve = async (options: ServeOptions = {}) => {
   }
   if (['0.0.0.0', '::'].includes(config.host) && !config.allowedHosts.length) {
     throw new Error(
-      'Wildcard binding requires allowedHosts with the names or IP addresses clients use',
+      'Wildcard binding requires allowedHosts with the names or IP addresses credentials use',
     );
   }
 

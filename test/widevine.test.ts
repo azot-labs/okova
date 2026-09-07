@@ -1,5 +1,5 @@
 import { expect, test } from 'vitest';
-import { fromBase64, WidevineDeviceCredentials } from '../src/lib';
+import { fromBase64, WidevineClientCredentials } from '../src/lib';
 import { Widevine } from '../src/lib/widevine/engine';
 import {
   ClientIdentification,
@@ -18,7 +18,7 @@ test('widevine engine enables privacy mode automatically after setServerCertific
   ).toBuffer();
 
   let encryptIdCalls = 0;
-  const deviceCredentials = {
+  const clientCredentials = {
     id: ClientIdentification.create({}),
     encryptId: async () => {
       encryptIdCalls += 1;
@@ -31,9 +31,9 @@ test('widevine engine enables privacy mode automatically after setServerCertific
       });
     },
     signWithKey: async () => new Uint8Array([0xaa]),
-  } as unknown as WidevineDeviceCredentials;
+  } as unknown as WidevineClientCredentials;
 
-  const engine = new Widevine({ deviceCredentials });
+  const engine = new Widevine({ clientCredentials });
   const session = engine.createSession();
 
   await engine.setServerCertificate(fromBase64(SERVICE_CERTIFICATE).toBuffer());
@@ -51,7 +51,7 @@ test('widevine engine enables privacy mode automatically after setServerCertific
 });
 
 test('device convenience access follows the asynchronous EME contract', async () => {
-  const credentials = new WidevineDeviceCredentials(
+  const credentials = new WidevineClientCredentials(
     ClientIdentification.create({
       token: SignedDrmCertificate.encode(
         SignedDrmCertificate.create({

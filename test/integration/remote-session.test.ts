@@ -21,13 +21,13 @@ test('remote session', async ({ skip }) => {
   }
 
   const secret = process.env.VITEST_REMOTE_SECRET;
-  const client = process.env.VITEST_REMOTE_CLIENT ?? 'pixel6';
+  const credentials = process.env.VITEST_REMOTE_CREDENTIALS ?? 'pixel6';
 
   const cdm = new Remote({
     keySystem: 'com.widevine.alpha',
     baseUrl,
     secret,
-    client,
+    credentials,
   });
 
   const certificateResponse = await fetch(url, {

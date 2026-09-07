@@ -24,6 +24,16 @@ try {
     assert.equal(typeof lib.Widevine, 'function');
     assert.equal(typeof lib.PlayReady, 'function');
     assert.equal(typeof lib.Remote, 'function');
+    assert.equal(typeof lib.WidevineClientCredentials, 'function');
+    assert.equal(typeof lib.PlayReadyClientCredentials, 'function');
+    assert.equal(typeof lib.RemoteCredentials, 'function');
+    assert.equal(lib.Widevine.ClientCredentials, lib.WidevineClientCredentials);
+    assert.equal(lib.PlayReady.ClientCredentials, lib.PlayReadyClientCredentials);
+    const credentials = await lib.RemoteCredentials.from({
+      baseUrl: 'https://cdm.example', keySystem: 'com.widevine.alpha', credentials: 'example.wvd',
+    });
+    const remote = new lib.Remote(credentials.config);
+    assert.equal(remote.keySystem, 'com.widevine.alpha');
     const box = lib.createPsshBox({ systemId: lib.PSSH_SYSTEM_IDS.widevine });
     const [parsed] = lib.parsePsshBoxes(lib.psshBoxToBase64(box));
     assert.equal(parsed.systemId, box.systemId);

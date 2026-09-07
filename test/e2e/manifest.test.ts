@@ -36,8 +36,8 @@ test('built content bridge associates DASH and reads playback configuration thro
             requestInterception: true,
             theme: 'auto',
           }),
-          'client-registry': {
-            clients: [
+          'credentials-registry': {
+            credentials: [
               {
                 id: 'synthetic',
                 info: {
@@ -50,7 +50,7 @@ test('built content bridge associates DASH and reads playback configuration thro
                 },
               },
             ],
-            activeClientId: 'synthetic',
+            activeCredentialsId: 'synthetic',
           },
         });
       });

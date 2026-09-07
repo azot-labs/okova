@@ -233,7 +233,7 @@ test.for(['com.microsoft.playready', 'com.microsoft.playready.recommendation'])(
   },
 );
 
-test('does not advertise a DRM system that differs from the active client', async () => {
+test('does not advertise a DRM system that differs from the active credentials', async () => {
   await expect(
     navigator.requestMediaKeySystemAccess('com.microsoft.playready.recommendation', [
       {
@@ -379,7 +379,7 @@ test.for([
   'com.microsoft.playready.recommendation',
   'com.microsoft.playready.hardware',
   'com.microsoft.playready.recommendation.3000',
-])('uses native %s when the active client has been removed', async (keySystem) => {
+])('uses native %s when the active credentials have been removed', async (keySystem) => {
   vi.mocked(sendDrmMessage).mockResolvedValueOnce(null);
   const configurations = [{ videoCapabilities: [{ contentType }] }];
   const nativeAccess = new NativeAccess(configurations[0]!);

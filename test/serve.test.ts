@@ -5,10 +5,10 @@ import { join } from 'node:path';
 import * as nodeServer from '@hono/node-server';
 import { assert, expect, test, vi } from 'vitest';
 import { serve } from '../src/cli/commands/serve/serve';
-import { clients, config, sessions } from '../src/cli/commands/serve/state';
+import { credentialCache, config, sessions } from '../src/cli/commands/serve/state';
 import { Session } from '../src/lib/api';
 import { Widevine } from '../src/lib/widevine/engine';
-import { WidevineDeviceCredentials } from '../src/lib/widevine/device-credentials';
+import { WidevineClientCredentials } from '../src/lib/widevine/client-credentials';
 import {
   ClientIdentification,
   DrmCertificate,
@@ -35,7 +35,7 @@ test.each([true, false])('binds using CLI overrides when supplied: %s', async (h
     JSON.stringify({
       host: hasOverrides ? '192.0.2.1' : '127.0.0.1',
       port: hasOverrides ? 1 : 0,
-      clients: ['clients/client.wvd'],
+      credentials: ['credentials/credentials.wvd'],
       sessionLimits: { maxSessions: 3 },
       users: {},
       public: true,
@@ -77,13 +77,13 @@ test.each([false, true])(
   async (disconnect) => {
     const directory = await mkdtemp(join(tmpdir(), 'okova-shutdown-'));
     const configPath = join(directory, 'config.json');
-    const clientPath = join(directory, 'client.wvd');
+    const credentialsPath = join(directory, 'credentials.wvd');
     const originalConfig = structuredClone(config);
     const originalListeners = {
       SIGINT: process.listeners('SIGINT'),
       SIGTERM: process.listeners('SIGTERM'),
     };
-    const credentials = new WidevineDeviceCredentials(
+    const credentials = new WidevineClientCredentials(
       ClientIdentification.create({
         token: SignedDrmCertificate.encode(
           SignedDrmCertificate.create({
@@ -99,7 +99,7 @@ test.each([false, true])(
       exited.resolve();
       return undefined as never;
     });
-    vi.spyOn(WidevineDeviceCredentials, 'from').mockImplementation(async () => {
+    vi.spyOn(WidevineClientCredentials, 'from').mockImplementation(async () => {
       parsing.resolve();
       await resumeParsing.promise;
       return credentials;
@@ -111,13 +111,13 @@ test.each([false, true])(
     let pendingResponse: Promise<number | undefined> | undefined;
 
     try {
-      await writeFile(clientPath, 'WVD');
+      await writeFile(credentialsPath, 'WVD');
       await writeFile(
         configPath,
         JSON.stringify({
           host: '127.0.0.1',
           port: 0,
-          clients: [clientPath],
+          credentials: [credentialsPath],
           users: {},
           public: true,
         }),
@@ -129,7 +129,7 @@ test.each([false, true])(
       const address = server.address();
       assert(address && typeof address !== 'string');
 
-      const existing = new Session('temporary', new Widevine({ deviceCredentials: credentials }));
+      const existing = new Session('temporary', new Widevine({ clientCredentials: credentials }));
       sessions.set(`:${existing.sessionId}`, existing);
       const keyWait = expect(existing.waitForKeyStatusesChange()).rejects.toThrow('Session closed');
       createSession.mockClear();
@@ -178,7 +178,7 @@ test.each([false, true])(
         await new Promise<void>((resolve) => server.close(() => resolve()));
       }
       await sessions.clear();
-      clients.clear();
+      credentialCache.clear();
       Object.assign(config, originalConfig);
       for (const signal of ['SIGINT', 'SIGTERM'] as const) {
         for (const listener of process.listeners(signal)) {

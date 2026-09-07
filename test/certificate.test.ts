@@ -3,7 +3,7 @@ import { parseCertificate, verifyCertificate } from '../src/lib/widevine/certifi
 import { parseSpkiFromCertificateKey } from '../src/lib/crypto/common';
 import { fromBase64, fromBuffer } from '../src/lib/utils';
 import { DrmCertificate, SignedDrmCertificate, SignedMessage } from '../src/lib/widevine/proto';
-import type { WidevineDeviceCredentials } from '../src/lib/widevine/device-credentials';
+import type { WidevineClientCredentials } from '../src/lib/widevine/client-credentials';
 import { WidevineSession } from '../src/lib/widevine/session';
 
 import { SERVICE_CERTIFICATE } from './service-certificate';
@@ -82,7 +82,7 @@ test('reject tampered service certificate during session update', async () => {
     }),
   ).finish();
 
-  const session = new WidevineSession('temporary', {} as WidevineDeviceCredentials);
+  const session = new WidevineSession('temporary', {} as WidevineClientCredentials);
 
   await expect(session.update(wrappedCertificate)).rejects.toThrow(
     'Certificate invalid: signature mismatch',

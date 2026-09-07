@@ -4,11 +4,11 @@ import { resolve } from 'node:path';
 import { serve } from '@hono/node-server';
 import { afterEach, assert, beforeEach, expect, test, vi } from 'vitest';
 import sessionApi from '../src/cli/commands/serve/api/session';
-import { clients, config, sessions } from '../src/cli/commands/serve/state';
+import { credentialCache, config, sessions } from '../src/cli/commands/serve/state';
 import { SessionRegistry, sessionLimitsSchema } from '../src/cli/commands/serve/session-registry';
 import { Session } from '../src/lib/api';
 import { Widevine } from '../src/lib/widevine/engine';
-import { WidevineDeviceCredentials } from '../src/lib/widevine/device-credentials';
+import { WidevineClientCredentials } from '../src/lib/widevine/client-credentials';
 import {
   ClientIdentification,
   DrmCertificate,
@@ -16,7 +16,7 @@ import {
 } from '../src/lib/widevine/proto';
 
 const originalConfig = structuredClone(config);
-const credentials = new WidevineDeviceCredentials(
+const credentials = new WidevineClientCredentials(
   ClientIdentification.create({
     token: SignedDrmCertificate.encode(
       SignedDrmCertificate.create({
@@ -27,31 +27,31 @@ const credentials = new WidevineDeviceCredentials(
 );
 
 beforeEach(() => {
-  config.clients = ['test.wvd'];
+  config.credentials = ['test.wvd'];
   config.users = {};
   config.public = true;
   config.forcePrivacyMode = false;
   config.sessionLimits = sessionLimitsSchema.parse({ maxSessions: 2, idleTimeoutMs: 1000 });
-  clients.set(resolve('test.wvd'), credentials);
+  credentialCache.set(resolve('test.wvd'), credentials);
 });
 
 afterEach(async () => {
   await sessions.clear();
-  clients.clear();
+  credentialCache.clear();
   Object.assign(config, structuredClone(originalConfig));
   vi.useRealTimers();
   vi.restoreAllMocks();
 });
 
-const open = (client?: string) =>
+const open = (credentials?: string) =>
   sessionApi.request('/', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ client }),
+    body: JSON.stringify({ credentials }),
   });
 
 const registeredSession = () => {
-  const engine = new Widevine({ deviceCredentials: credentials });
+  const engine = new Widevine({ clientCredentials: credentials });
   const session = new Session('temporary', engine);
   sessions.set(`:${session.sessionId}`, session);
   return { session, engine, path: `/${session.sessionId}` };
@@ -155,7 +155,7 @@ test.each([false, true])(
   },
 );
 
-test('a real client disconnect cancels its key wait', async () => {
+test('a real credentials disconnect cancels its key wait', async () => {
   const { session, path } = registeredSession();
   const listening = Promise.withResolvers<void>();
   const finished = Promise.withResolvers<void>();

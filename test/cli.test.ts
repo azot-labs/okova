@@ -23,10 +23,10 @@ test.each([
   ['--version'],
   ['serve', '--help'],
   ['license', '--help'],
-  ['client', '--help'],
-  ['client', 'pack', '--help'],
-  ['client', 'unpack', '--help'],
-  ['client', 'info', '--help'],
+  ['credentials', '--help'],
+  ['credentials', 'pack', '--help'],
+  ['credentials', 'unpack', '--help'],
+  ['credentials', 'info', '--help'],
   ['pssh', '--help'],
   ['pssh', 'inspect', '--help'],
   ['pssh', 'kids', '--help'],
@@ -205,9 +205,9 @@ test.each([
 });
 
 test.each([
-  ['client', 'pack', '--format'],
-  ['client', 'pack', '--format', 'okova'],
-  ['client', 'info', '--format', 'wvd'],
+  ['credentials', 'pack', '--format'],
+  ['credentials', 'pack', '--format', 'okova'],
+  ['credentials', 'info', '--format', 'wvd'],
   ['license', '--port', '4000'],
   ['serve', '--port', '4000oops'],
   ['--debug'],
@@ -215,10 +215,10 @@ test.each([
   ['pssh'],
   ['test'],
   ['unknown'],
-  ['client', 'unknown'],
-  ['client', 'info', 'a', 'b'],
+  ['credentials', 'unknown'],
+  ['credentials', 'info', 'a', 'b'],
   ['license'],
-  ['client', 'info', 'missing.wvd'],
+  ['credentials', 'info', 'missing.wvd'],
   ['serve', '--config', 'invalid-config.json'],
   ['serve', '--config', 'missing-config.json'],
   ['serve', '--config', 'input.wvd'],
@@ -233,7 +233,7 @@ test.each([[], ['--format', 'wvd'], ['-f', 'wvd']])(
   'packs with the correct default extension %j',
   async (...flags) => {
     const cwd = await mkdtemp(join(directory, 'pack-'));
-    const result = run(['client', 'pack', input, ...flags], cwd);
+    const result = run(['credentials', 'pack', input, ...flags], cwd);
     expect(result.status, result.stderr).toBe(0);
     expect(await readdir(cwd)).toEqual(['test_device.wvd']);
     expect(parseWvd(new Uint8Array(await readFile(join(cwd, 'test_device.wvd'))))).toEqual(
@@ -242,23 +242,26 @@ test.each([[], ['--format', 'wvd'], ['-f', 'wvd']])(
   },
 );
 
-test('packs raw credentials, honors output paths, and refuses overwrites or format mismatches', async () => {
-  const cwd = await mkdtemp(join(directory, 'raw-'));
-  const raw = join(cwd, 'raw');
-  const unpack = run(['client', 'unpack', input, raw], cwd);
-  expect(unpack.status, unpack.stderr).toBe(0);
-  const output = join(cwd, 'nested', 'export.wvd');
-  const pack = run(['client', 'pack', raw, output, '--format', 'wvd'], cwd);
-  expect(pack.status, pack.stderr).toBe(0);
-  expect(parseWvd(new Uint8Array(await readFile(output)))).toEqual(parseWvd(wvd));
-  expect(run(['client', 'pack', raw, output], cwd).status).toBe(1);
-  expect(parseWvd(new Uint8Array(await readFile(output)))).toEqual(parseWvd(wvd));
-  expect(run(['client', 'pack', input, '--format', 'prd'], cwd).status).toBe(1);
-  expect(run(['client', 'pack', input, join(cwd, 'wrong.prd')], cwd).status).toBe(1);
-  const info = run(['client', 'info', input]);
-  expect(info.status, info.stderr).toBe(0);
-  expect(info.stdout).toContain('company_name: Test');
-});
+test.each(['credentials', 'client', 'creds'])(
+  '%s packs raw credentials, honors output paths, and refuses overwrites or format mismatches',
+  async (command) => {
+    const cwd = await mkdtemp(join(directory, 'raw-'));
+    const raw = join(cwd, 'raw');
+    const unpack = run([command, 'unpack', input, raw], cwd);
+    expect(unpack.status, unpack.stderr).toBe(0);
+    const output = join(cwd, 'nested', 'export.wvd');
+    const pack = run([command, 'pack', raw, output, '--format', 'wvd'], cwd);
+    expect(pack.status, pack.stderr).toBe(0);
+    expect(parseWvd(new Uint8Array(await readFile(output)))).toEqual(parseWvd(wvd));
+    expect(run([command, 'pack', raw, output], cwd).status).toBe(1);
+    expect(parseWvd(new Uint8Array(await readFile(output)))).toEqual(parseWvd(wvd));
+    expect(run([command, 'pack', input, '--format', 'prd'], cwd).status).toBe(1);
+    expect(run([command, 'pack', input, join(cwd, 'wrong.prd')], cwd).status).toBe(1);
+    const info = run([command, 'info', input]);
+    expect(info.status, info.stderr).toBe(0);
+    expect(info.stdout).toContain('company_name: Test');
+  },
+);
 
 test.each(['../../escaped', '..\\..\\escaped', '/tmp/escaped', 'C:\\temp\\escaped'])(
   'keeps generated filenames inside the working directory for %s',
@@ -275,7 +278,7 @@ test.each(['../../escaped', '..\\..\\escaped', '/tmp/escaped', 'C:\\temp\\escape
       source,
       buildWvd({ ...parsed, clientId: ClientIdentification.encode(clientId).finish() }),
     );
-    const result = run(['client', 'pack', source], cwd);
+    const result = run(['credentials', 'pack', source], cwd);
     expect(result.status, result.stderr).toBe(0);
     const files = await readdir(cwd);
     expect(files).toHaveLength(1);

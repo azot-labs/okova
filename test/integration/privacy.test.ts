@@ -2,12 +2,12 @@ import { readFile } from 'node:fs/promises';
 import { resolve } from 'node:path';
 import { afterEach, beforeEach, expect, test, vi } from 'vitest';
 import { Hono } from 'hono';
-import { fromBase64, Remote, Session, PlayReady, PlayReadyDeviceCredentials } from '../../src/lib';
+import { fromBase64, Remote, Session, PlayReady, PlayReadyClientCredentials } from '../../src/lib';
 import sessionApi from '../../src/cli/commands/serve/api/session';
-import { clients, config, sessions } from '../../src/cli/commands/serve/state';
+import { credentialCache, config, sessions } from '../../src/cli/commands/serve/state';
 import { license } from '../../src/cli/commands/license/license';
 import { LicenseRequest, SignedMessage } from '../../src/lib/widevine/proto';
-import { loadWidevineDeviceCredentials, PSSH } from '../utils';
+import { loadWidevineClientCredentials, PSSH } from '../utils';
 import { SERVICE_CERTIFICATE } from '../service-certificate';
 
 beforeEach(({ skip }) => {
@@ -21,16 +21,16 @@ const originalConfig = structuredClone(config);
 const app = new Hono().route('/sessions', sessionApi);
 
 beforeEach(async () => {
-  config.clients = ['test.wvd'];
+  config.credentials = ['test.wvd'];
   config.users = {};
   config.public = true;
   config.forcePrivacyMode = true;
-  clients.set(resolve('test.wvd'), await loadWidevineDeviceCredentials());
+  credentialCache.set(resolve('test.wvd'), await loadWidevineClientCredentials());
 });
 
 afterEach(async () => {
   Object.assign(config, originalConfig);
-  clients.clear();
+  credentialCache.clear();
   await sessions.clear();
   vi.unstubAllGlobals();
 });
@@ -79,7 +79,7 @@ test('privacy can be disabled explicitly for plaintext requests', async () => {
   expect(challenge.encryptedClientId).toBeNull();
 });
 
-test('server validates certificates independently of the remote client', async () => {
+test('server validates certificates independently of the remote credentials', async () => {
   const session = await connect().createSession();
   const response = await app.request(`/sessions/${session.sessionId}/generate-request`, {
     method: 'POST',
@@ -114,7 +114,7 @@ test('CLI encrypt fetches a certificate before sending an encrypted challenge', 
     license({
       url: 'http://license.test',
       pssh: PSSH,
-      clientPath: process.env.VITEST_WVD_PATH!,
+      credentialsPath: process.env.VITEST_WVD_PATH!,
       encrypt: true,
     }),
   ).rejects.toThrow('Challenge captured');
@@ -133,7 +133,7 @@ test.each([200, 500])(
       license({
         url: 'http://license.test',
         pssh: PSSH,
-        clientPath: process.env.VITEST_WVD_PATH!,
+        credentialsPath: process.env.VITEST_WVD_PATH!,
         encrypt: true,
       }),
     ).rejects.toThrow();
@@ -151,13 +151,13 @@ test('certificates do not carry over to another remote engine', async () => {
 });
 
 test('PlayReady rejects server certificates, forced privacy, and CLI encrypt', async () => {
-  const clientPath = process.env.VITEST_PRD_PATH!;
-  const deviceCredentials = await PlayReadyDeviceCredentials.from({
-    prd: await readFile(clientPath),
+  const credentialsPath = process.env.VITEST_PRD_PATH!;
+  const clientCredentials = await PlayReadyClientCredentials.from({
+    prd: await readFile(credentialsPath),
   });
-  const engine = new PlayReady({ deviceCredentials });
+  const engine = new PlayReady({ clientCredentials });
   await expect(engine.setServerCertificate()).rejects.toThrow('unsupported');
-  clients.set(resolve('test.wvd'), deviceCredentials);
+  credentialCache.set(resolve('test.wvd'), clientCredentials);
   const session = await connect('com.microsoft.playready').createSession();
   await expect(session.generateRequest(initData)).rejects.toThrow(
     'Forced privacy mode is unsupported',
@@ -165,7 +165,7 @@ test('PlayReady rejects server certificates, forced privacy, and CLI encrypt', a
   const fetch = vi.fn();
   vi.stubGlobal('fetch', fetch);
   await expect(
-    license({ url: 'http://license.test', pssh: PSSH, clientPath, encrypt: true }),
+    license({ url: 'http://license.test', pssh: PSSH, credentialsPath, encrypt: true }),
   ).rejects.toThrow('--encrypt is supported only for Widevine');
   expect(fetch).not.toHaveBeenCalled();
 });

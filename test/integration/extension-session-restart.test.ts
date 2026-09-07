@@ -1,7 +1,7 @@
 import { readFile } from 'node:fs/promises';
 import { expect, test } from 'vitest';
 import { appStorage } from '../../src/extension/utils/storage';
-import { PlayReadyDeviceCredentials } from '../../src/lib/playready/device-credentials';
+import { PlayReadyClientCredentials } from '../../src/lib/playready/client-credentials';
 import {
   setupWorkerTests,
   startWorker,
@@ -11,9 +11,9 @@ import {
 setupWorkerTests();
 const prdPath = process.env.VITEST_PRD_PATH;
 
-test.skipIf(!prdPath)('restores a PlayReady challenge with no selected client', async () => {
-  await appStorage.clients.active.setValue(
-    await PlayReadyDeviceCredentials.from({ prd: await readFile(prdPath!) }),
+test.skipIf(!prdPath)('restores a PlayReady challenge with no selected credentials', async () => {
+  await appStorage.credentials.active.setValue(
+    await PlayReadyClientCredentials.from({ prd: await readFile(prdPath!) }),
   );
   const wrm =
     '<WRMHEADER xmlns="http://schemas.microsoft.com/DRM/2007/03/PlayReadyHeader" version="4.0.0.0"><DATA><PROTECTINFO><KEYLEN>16</KEYLEN><ALGID>AESCTR</ALGID></PROTECTINFO><KID>AAAAAAAAAAAAAAAAAAAAAA==</KID></DATA></WRMHEADER>';
@@ -24,7 +24,7 @@ test.skipIf(!prdPath)('restores a PlayReady challenge with no selected client', 
   });
   const challenge = await send('license-request');
   expect(challenge).toEqual(expect.any(String));
-  await appStorage.clients.active.setValue(null);
+  await appStorage.credentials.active.setValue(null);
   send = startWorker();
   expect(await send('license-request')).toBe(challenge);
   await send('close');

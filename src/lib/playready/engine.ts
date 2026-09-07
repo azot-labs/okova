@@ -1,6 +1,6 @@
 import type { MediaKeysEngineSession } from '../api';
 import { BaseMediaKeysEngine } from '../api';
-import { PlayReadyDeviceCredentials } from './device-credentials';
+import { PlayReadyClientCredentials } from './client-credentials';
 import { TooManySessions } from './exceptions';
 import { RevocationInfoStore } from './revocation-info';
 import { PlayReadySession } from './session';
@@ -10,16 +10,16 @@ export class PlayReady extends BaseMediaKeysEngine {
 
   keySystem = 'com.microsoft.playready.recommendation';
   sessions: Map<string, MediaKeysEngineSession>;
-  deviceCredentials: PlayReadyDeviceCredentials;
+  clientCredentials: PlayReadyClientCredentials;
   revocationInfo: RevocationInfoStore;
   readonly customData?: string;
 
-  static DeviceCredentials = PlayReadyDeviceCredentials;
+  static ClientCredentials = PlayReadyClientCredentials;
 
-  constructor(options: { deviceCredentials: PlayReadyDeviceCredentials; customData?: string }) {
+  constructor(options: { clientCredentials: PlayReadyClientCredentials; customData?: string }) {
     super();
     this.sessions = new Map();
-    this.deviceCredentials = options.deviceCredentials;
+    this.clientCredentials = options.clientCredentials;
     this.customData = options.customData;
     this.revocationInfo = new RevocationInfoStore();
   }
@@ -51,7 +51,7 @@ export class PlayReady extends BaseMediaKeysEngine {
 
     const session = new PlayReadySession(
       sessionType,
-      this.deviceCredentials,
+      this.clientCredentials,
       this.#handleSessionDisposed,
       {
         customData: this.customData,
@@ -70,7 +70,7 @@ export class PlayReady extends BaseMediaKeysEngine {
 
     const session = PlayReadySession.resume(
       state,
-      this.deviceCredentials,
+      this.clientCredentials,
       this.#handleSessionDisposed,
       {
         customData: this.customData,

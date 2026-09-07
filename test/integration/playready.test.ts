@@ -16,14 +16,14 @@ test('playready cdm', async ({ skip }) => {
   const initData = fromBase64(pssh).toBuffer();
   const initDataType = 'cenc';
 
-  const clientPath = process.env.VITEST_PRD_PATH;
-  if (!clientPath) {
-    skip('Set the DRM device path to enable this test');
+  const credentialsPath = process.env.VITEST_PRD_PATH;
+  if (!credentialsPath) {
+    skip('Set the DRM credential path to enable this test');
     return;
   }
-  const clientData = await readFile(clientPath);
-  const client = await PlayReady.DeviceCredentials.from({ prd: clientData });
-  const cdm = new PlayReady({ deviceCredentials: client });
+  const credentialsData = await readFile(credentialsPath);
+  const credentials = await PlayReady.ClientCredentials.from({ prd: credentialsData });
+  const cdm = new PlayReady({ clientCredentials: credentials });
 
   setSupportedEngines([cdm]);
   const keySystemAccess = await requestMediaKeySystemAccess(cdm.keySystem, [{}]);
