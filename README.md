@@ -238,6 +238,22 @@ HTTP 503. Idle sessions expire and must be recreated. Waiting for keys beyond
 
 ### Inspect, edit, and convert PSSH boxes
 
+```sh
+okova pssh inspect "$PSSH" --json
+okova pssh kids "$PSSH"
+okova pssh convert "$PSSH" --target playready --la-url https://example.com/license
+```
+
+Pass base64 directly or use `-` to read base64 text from stdin.
+Inspect and KID extraction process all boxes;
+use `--box <index>` to select one by zero-based index, required for conversion
+of multi-box input. Raw DRM headers and media files are not accepted.
+
+`inspect` prints box metadata and KIDs; `kids` prints one KID per line; `convert`
+writes base64. All support `--json`. Inspection JSON includes a KID status of
+`available`, `unsupported`, or `invalid`, distinguishing empty KIDs from errors.
+Conversion warnings go to stderr and also appear in conversion JSON.
+
 ```ts
 import {
   PSSH_SYSTEM_IDS,

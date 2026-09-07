@@ -67,9 +67,10 @@ export const setupCliTests = () => {
   });
 };
 
-export const run = (args: string[], cwd = directory) =>
+export const run = (args: string[], cwd = directory, stdin?: string) =>
   spawnSync(process.execPath, [executable, ...args], {
     cwd,
     encoding: 'utf8',
+    input: stdin,
     timeout: 10_000,
   });
