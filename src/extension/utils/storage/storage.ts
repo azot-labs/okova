@@ -294,17 +294,61 @@ const clientStorage = {
   },
 };
 
+type PrivateSession = { generation: string; windowIds: number[] };
+const privateSession = storage.defineItem<PrivateSession>('session:incognito:history-session');
+const PRIVATE_HISTORY_LOCK = 'okova:incognito-key-history';
+const PRIVATE_HISTORY_KEYS = [
+  'session:incognito:all-keys',
+  'session:incognito:recent-keys',
+  'session:incognito:recent-keys-by-domain',
+] as const;
+
+// Queue the observation immediately, before awaiting the window snapshot. Window events,
+// capture binding, and writes must observe session transitions in the same lock order.
+const withPrivateSession = <T>(operation: (session: PrivateSession | null) => Promise<T>) => {
+  const observedSession = privateSession.getValue();
+  const windows = browser.windows.getAll();
+  return navigator.locks.request(PRIVATE_HISTORY_LOCK, async () => {
+    const observedGeneration = (await observedSession)?.generation;
+    const previous = await privateSession.getValue();
+    // Another extension context may have advanced the generation before this lock.
+    // Its records cannot be cleared using a window snapshot from the old generation.
+    const snapshot = await windows;
+    const currentWindows =
+      previous?.generation === observedGeneration ? snapshot : await browser.windows.getAll();
+    const windowIds = currentWindows
+      .filter((window) => window.incognito)
+      .flatMap((window) => (window.id === undefined ? [] : [window.id]));
+    const isSameSession = previous?.windowIds.some((id) => windowIds.includes(id));
+    let session = previous;
+    if (!isSameSession) {
+      // Only this generation can own the shared history keys while the lock is held.
+      await storage.removeItems([...PRIVATE_HISTORY_KEYS]);
+      session = windowIds.length ? { generation: crypto.randomUUID(), windowIds } : null;
+    } else if (session) {
+      session = { ...session, windowIds };
+    }
+    if (session) await privateSession.setValue(session);
+    else await privateSession.removeValue();
+    return operation(session);
+  });
+};
+
 // Both contexts share extension storage, so private records need their own session keys.
-const createKeyHistory = (isIncognito: boolean) => {
+const createKeyHistory = (isIncognito: boolean, generation?: string) => {
   const prefix = isIncognito ? 'session:incognito:' : 'local:';
-  const lockName = isIncognito ? 'okova:incognito-key-history' : 'okova:key-history';
-  const mutateKeyHistory = (mutation: () => Promise<void>) =>
-    navigator.locks.request(lockName, async () => {
-      // A capture finishing after the last private window closes must not restore history.
-      if (isIncognito && !(await browser.windows.getAll()).some((window) => window.incognito))
-        return;
+  const lockName = isIncognito ? PRIVATE_HISTORY_LOCK : 'okova:key-history';
+  const mutateKeyHistory = (mutation: () => Promise<void>) => {
+    if (!isIncognito) return navigator.locks.request(lockName, mutation);
+    const expectedGeneration =
+      generation === undefined
+        ? withPrivateSession(async (session) => session?.generation)
+        : Promise.resolve(generation);
+    return withPrivateSession(async (session) => {
+      if (!session || session.generation !== (await expectedGeneration)) return;
       await mutation();
     });
+  };
   const recentKeys = asJson(storage.defineItem<KeyInfo[]>(`${prefix}recent-keys`));
 
   // Read all three stores under the writer lock before showing the confirmation.
@@ -486,21 +530,20 @@ const createKeyHistory = (isIncognito: boolean) => {
 
 export const regularHistory = createKeyHistory(false);
 export const privateHistory = createKeyHistory(true);
-export const getKeyHistory = (isIncognito: boolean) =>
-  isIncognito ? privateHistory : regularHistory;
-
-export const clearClosedPrivateHistory = async () => {
-  // Preserve the closure snapshot before waiting behind history writes. A replacement
-  // private window must not cancel cleanup of the session that just ended.
-  if ((await browser.windows.getAll()).some((window) => window.incognito)) return;
-  await navigator.locks.request('okova:incognito-key-history', async () => {
-    await storage.removeItems([
-      privateHistory.allKeys.raw.key,
-      privateHistory.recentKeys.key,
-      privateHistory.recentKeysByDomain.raw.key,
-    ]);
-  });
+// Bind before asynchronous capture work, so an old request cannot join a replacement session.
+export const getKeyHistory = async (isIncognito: boolean, windowId?: number) => {
+  if (!isIncognito) return regularHistory;
+  return withPrivateSession(async (session) =>
+    createKeyHistory(
+      true,
+      session && (windowId === undefined || session.windowIds.includes(windowId))
+        ? session.generation
+        : crypto.randomUUID(),
+    ),
+  );
 };
+
+export const clearClosedPrivateHistory = () => withPrivateSession(async () => {});
 
 export const { prepareKeyDeletion, deleteKeySnapshot } = regularHistory;
 export const appStorage = {

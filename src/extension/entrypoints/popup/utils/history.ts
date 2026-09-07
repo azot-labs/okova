@@ -5,5 +5,5 @@ export let popupHistory = privateHistory;
 
 export const initializePopupHistory = async () => {
   const window = await browser.windows.getCurrent();
-  popupHistory = getKeyHistory(window.incognito);
+  popupHistory = await getKeyHistory(window.incognito, window.id);
 };

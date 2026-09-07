@@ -77,6 +77,7 @@ export default defineBackground({
         console.warn('[okova] Unable to clear private history', error),
       );
     };
+    browser.windows.onCreated.addListener(clearPrivateHistory);
     browser.windows.onRemoved.addListener(clearPrivateHistory);
     clearPrivateHistory();
 
@@ -289,7 +290,7 @@ export default defineBackground({
       const update = (badgeUpdates.get(tabId) ?? Promise.resolve())
         .catch(() => {})
         .then(async () => {
-          const history = getKeyHistory(tab?.incognito === true);
+          const history = await getKeyHistory(tab?.incognito === true, tab?.windowId);
           const badgeStorage = getBadgeStorage(tabId);
           if (result === null) await badgeStorage.removeValue();
           else if (result) {
@@ -416,7 +417,8 @@ export default defineBackground({
       const run = <T>(operation: T | Promise<T>) =>
         withAbort(Promise.resolve(operation), controller.signal);
       let stage: DrmStage = 'setup';
-      const history = getKeyHistory(sender.tab?.incognito === true);
+      const historyReady = getKeyHistory(sender.tab?.incognito === true, sender.tab?.windowId);
+      void historyReady.catch(() => {});
       const tabId = sender.tab?.id;
       const tabGeneration = tabId === undefined ? 0 : (tabGenerations.get(tabId) ?? 0);
       const system = getBadgeDrmSystem(message.keySystem);
@@ -437,6 +439,7 @@ export default defineBackground({
         }
       };
       const handleMessage = async () => {
+        const history = await run(historyReady);
         if (message.action === 'load-eme') {
           if (tabId === undefined || sender.frameId === undefined)
             throw new Error('Missing injection frame');

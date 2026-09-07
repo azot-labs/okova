@@ -1,10 +1,11 @@
 import { afterEach, beforeEach, expect, test, vi } from 'vitest';
-import { browser } from 'wxt/browser';
+import { browser, type Browser } from 'wxt/browser';
 import { fakeBrowser } from 'wxt/testing/fake-browser';
 import {
   appStorage,
   privateHistory,
   clearClosedPrivateHistory,
+  getKeyHistory,
   type KeyInfo,
 } from '../src/extension/utils/storage';
 import { initializePopupHistory } from '../src/extension/entrypoints/popup/utils/history';
@@ -93,8 +94,91 @@ test.each([true, false])(
       incognito,
     }));
     await initializePopupHistory();
-    expect(popup.popupHistory.allKeys).toBe(
-      incognito ? privateHistory.allKeys : appStorage.allKeys,
+    expect(popup.popupHistory.allKeys.raw.key).toBe(
+      (incognito ? privateHistory : appStorage).allKeys.raw.key,
     );
   },
 );
+
+test('rejects captures bound to a closed generation after a replacement session starts', async () => {
+  const oldHistory = await getKeyHistory(true, privateWindow.id);
+  await capture(oldHistory, key);
+  await capture(appStorage, key);
+  vi.mocked(browser.windows.getAll).mockImplementation(async () => []);
+  await clearClosedPrivateHistory();
+  vi.mocked(browser.windows.getAll).mockImplementation(async () => [{ ...privateWindow, id: 3 }]);
+  const replacementHistory = await getKeyHistory(true, 3);
+  const replacementKey = { ...key, pssh: 'replacement', createdAt: 2 };
+  await capture(replacementHistory, replacementKey);
+
+  await capture(oldHistory, key);
+  await oldHistory.allKeys.clear();
+  const closedWindowHistory = await getKeyHistory(true, privateWindow.id);
+  await capture(closedWindowHistory, key);
+
+  expect(await replacementHistory.allKeys.getValue()).toEqual([replacementKey]);
+  expect(await replacementHistory.recentKeys.getValue()).toEqual([replacementKey]);
+  expect(await replacementHistory.recentKeysByDomain.getValue()).toEqual({
+    'example.com': [replacementKey],
+  });
+  expect(await appStorage.allKeys.getValue()).toEqual([key]);
+});
+
+test('orders a delayed closure snapshot before replacement-session captures', async () => {
+  const oldHistory = await getKeyHistory(true, privateWindow.id);
+  await capture(oldHistory, key);
+  const snapshot = Promise.withResolvers<Browser.windows.Window[]>();
+  vi.mocked(browser.windows.getAll).mockImplementationOnce(() => snapshot.promise);
+  const clearing = clearClosedPrivateHistory();
+  vi.mocked(browser.windows.getAll).mockImplementation(async () => [{ ...privateWindow, id: 3 }]);
+  const replacementKey = { ...key, pssh: 'replacement', createdAt: 2 };
+  const capturing = Promise.resolve(getKeyHistory(true, 3)).then((history) =>
+    capture(history, replacementKey),
+  );
+  snapshot.resolve([]);
+  await Promise.all([clearing, capturing]);
+  expect(await privateHistory.allKeys.getValue()).toEqual([replacementKey]);
+  expect(await privateHistory.recentKeys.getValue()).toEqual([replacementKey]);
+  expect(await privateHistory.recentKeysByDomain.getValue()).toEqual({
+    'example.com': [replacementKey],
+  });
+});
+
+test('keeps a generation while private windows overlap and across history-handle recreation', async () => {
+  const firstHistory = await getKeyHistory(true, privateWindow.id);
+  await capture(firstHistory, key);
+  vi.mocked(browser.windows.getAll).mockImplementation(async () => [
+    privateWindow,
+    { ...privateWindow, id: 3 },
+  ]);
+  await clearClosedPrivateHistory();
+  vi.mocked(browser.windows.getAll).mockImplementation(async () => [{ ...privateWindow, id: 3 }]);
+  await clearClosedPrivateHistory();
+  const restoredHistory = await getKeyHistory(true, 3);
+  expect(await restoredHistory.allKeys.getValue()).toEqual([key]);
+  const laterKey = { ...key, id: 'another-id', createdAt: 2 };
+  await firstHistory.allKeys.add(laterKey);
+  expect(await restoredHistory.allKeys.getValue()).toEqual([key, laterKey]);
+});
+
+test('does not apply an old cleanup snapshot after another context advances the generation', async () => {
+  await capture(await getKeyHistory(true, privateWindow.id), key);
+  const locked = Promise.withResolvers<void>();
+  const release = Promise.withResolvers<void>();
+  const holding = navigator.locks.request('okova:incognito-key-history', async () => {
+    locked.resolve();
+    await release.promise;
+  });
+  await locked.promise;
+  vi.mocked(browser.windows.getAll).mockImplementation(async () => [{ ...privateWindow, id: 3 }]);
+  const replacement = getKeyHistory(true, 3);
+  vi.mocked(browser.windows.getAll).mockImplementationOnce(async () => []);
+  const clearing = clearClosedPrivateHistory();
+  release.resolve();
+  const history = await replacement;
+  await Promise.all([holding, clearing]);
+  const replacementKey = { ...key, pssh: 'replacement', createdAt: 2 };
+  await capture(history, replacementKey);
+  expect(await history.allKeys.getValue()).toEqual([replacementKey]);
+  expect(await history.recentKeys.getValue()).toEqual([replacementKey]);
+});
