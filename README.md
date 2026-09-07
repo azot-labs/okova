@@ -223,7 +223,8 @@ curl http://127.0.0.1:4000/sessions \
   -d '{"keySystem":"com.widevine.alpha"}'
 ```
 
-For anonymous access, replace `--secret ...` with `--public`.
+For anonymous access, replace `--secret ...` with `--public` and remove the
+`x-secret-key` header from the curl command.
 
 See the [remote client example](examples/remote-session) to request licenses and
 keys.
