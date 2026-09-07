@@ -1,11 +1,11 @@
 import { beforeEach } from 'vitest';
 import { test, expect } from 'vitest';
 import { fetchDecryptionKeys, Widevine } from '../../src/lib';
-import { PSSH, LICENSE_URL, loadWidevineDeviceCredentials } from '../utils';
+import { PSSH, LICENSE_URL, loadWidevineClientCredentials } from '../utils';
 
 test('fetch decryption keys', async () => {
   const cdm = new Widevine({
-    deviceCredentials: await loadWidevineDeviceCredentials(),
+    clientCredentials: await loadWidevineClientCredentials(),
   });
   const keys = await fetchDecryptionKeys({
     cdm,
@@ -18,7 +18,7 @@ test('fetch decryption keys', async () => {
 
 test('fetch decryption keys with an extra individualization server configured', async () => {
   const cdm = new Widevine({
-    deviceCredentials: await loadWidevineDeviceCredentials(),
+    clientCredentials: await loadWidevineClientCredentials(),
   });
   const keys = await fetchDecryptionKeys({
     cdm,

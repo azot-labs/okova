@@ -1,11 +1,11 @@
 {
   "host": "127.0.0.1",
   "port": 4000,
-  "clients": ["Pixel_10_Pro_L3.wvd"],
+  "credentials": ["Pixel_10_Pro_L3.wvd"],
   "users": {
     "db44ec40-3e02-47bd-8fc6-373935e30eae": {
       "name": "jane",
-      "clients": ["Pixel_10_Pro_L3"]
+      "credentials": ["Pixel_10_Pro_L3"]
     }
   },
   "forcePrivacyMode": true

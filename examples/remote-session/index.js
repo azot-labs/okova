@@ -2,7 +2,7 @@ import { fromBase64, Remote, Session, toBufferSource } from 'okova';
 
 const BASE_URL = 'http://127.0.0.1:4000'; // Set your API base URL here
 const SECRET_KEY = 'db44ec40-3e02-47bd-8fc6-373935e30eae'; // Set your API secret here
-const CLIENT_NAME = 'Pixel_10_Pro_L3'; // Set client name related with your API key
+const CREDENTIALS_NAME = 'Pixel_10_Pro_L3'; // Select credentials allowed for your API key
 const LICENSE_URL = 'https://cwip-shaka-proxy.appspot.com/no_auth';
 
 const main = async () => {
@@ -14,7 +14,7 @@ const main = async () => {
     keySystem: 'com.widevine.alpha',
     baseUrl: BASE_URL,
     secret: SECRET_KEY,
-    client: CLIENT_NAME,
+    credentials: CREDENTIALS_NAME,
   });
 
   // Obtain and validate the service certificate before generating a challenge.

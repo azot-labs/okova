@@ -4,7 +4,7 @@ import { BCertCertType, Certificate, CertificateChain } from './bcert';
 import { InvalidCertificateChain } from './exceptions';
 import { parsePrd, PRD_MAGIC, PRD2, PRD3 } from './prd';
 
-export class PlayReadyDeviceCredentials {
+export class PlayReadyClientCredentials {
   groupKey: EccKey | null;
   encryptionKey: EccKey;
   signingKey: EccKey;
@@ -42,7 +42,7 @@ export class PlayReadyDeviceCredentials {
       const encryptionKey = parsed.encryption_key;
       const signingKey = parsed.signing_key;
       const groupCertificate = parsed.group_certificate;
-      return new PlayReadyDeviceCredentials({
+      return new PlayReadyClientCredentials({
         groupKey,
         encryptionKey,
         signingKey,
@@ -79,7 +79,7 @@ export class PlayReadyDeviceCredentials {
       });
       certificateChain.prepend(newCertificate);
       await certificateChain.verify({ checkExpiry: true, certType: BCertCertType.DEVICE });
-      return new PlayReadyDeviceCredentials({
+      return new PlayReadyClientCredentials({
         groupKey: groupKey.dumps(),
         encryptionKey: encryptionKey.dumps(),
         signingKey: signingKey.dumps(),

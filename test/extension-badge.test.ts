@@ -29,11 +29,11 @@ test('distinguishes observed IDs, saved keys, fresh keys and failures', () => {
     color: '#16803C',
   });
   expect(
-    getBadgeAppearance([key], [{ kind: 'failure', system: 'P', error: 'No client' }]),
+    getBadgeAppearance([key], [{ kind: 'failure', system: 'P', error: 'No credentials' }]),
   ).toMatchObject({
     text: 'P!',
     color: '#C75300',
-    title: expect.stringContaining('No client'),
+    title: expect.stringContaining('No credentials'),
   });
 });
 

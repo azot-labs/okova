@@ -10,11 +10,11 @@ import { normalizeKeySystem } from '../key-system';
 export type OkovaRemoteParams = RemoteHttpParams & {
   keySystem: string;
   protocol?: 'okova';
-  client?: string;
+  credentials?: string;
   customData?: string;
 };
 
-export const remoteConfigFields = {
+export const remoteCredentialsFields = {
   baseUrl: remoteUrlSchema,
   secret: z.string().optional(),
   headers: z.record(z.string(), z.string()).optional(),
@@ -26,10 +26,10 @@ const keySystem = z
   .transform(normalizeKeySystem);
 
 export const okovaConfigSchema = z.object({
-  ...remoteConfigFields,
+  ...remoteCredentialsFields,
   protocol: z.literal('okova'),
   keySystem,
-  client: z.string().trim().min(1).optional(),
+  credentials: z.string().trim().min(1).optional(),
   customData: z.string().optional(),
 });
 
@@ -62,7 +62,7 @@ export const createOkovaApi = (params: OkovaRemoteParams) => {
         await http.post('/sessions', {
           keySystem: params.keySystem,
           sessionType,
-          client: params.client,
+          credentials: params.credentials,
           customData: params.customData,
         }),
       );

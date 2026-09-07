@@ -1,9 +1,10 @@
+import type { Credentials } from '../../../lib/credentials';
 import { browser, storage } from '#imports';
 import { z } from 'zod';
-import { remoteConfigSchema } from '@okova/lib/remote/config';
-import { RemoteClient } from '../remote-client';
-import { WidevineDeviceCredentials } from '../../../lib/widevine/device-credentials';
-import { PlayReadyDeviceCredentials } from '../../../lib/playready/device-credentials';
+import { remoteCredentialsSchema } from '@okova/lib/remote/credentials';
+import { RemoteCredentials } from '../../../lib/remote/credentials';
+import { WidevineClientCredentials } from '../../../lib/widevine/client-credentials';
+import { PlayReadyClientCredentials } from '../../../lib/playready/client-credentials';
 import { fromBase64, fromBuffer } from '../../../lib';
 import { asJson } from './json';
 import { defaultSettings, settingsStorage, storedSettings, type Settings } from './settings';
@@ -39,7 +40,7 @@ const sameKeyRecord = (left: KeyInfo, right: KeyInfo) =>
 
 export const drmStages = {
   setup: 'Request setup',
-  client: 'Client loading',
+  credentials: 'Credentials loading',
   certificate: 'Server certificate',
   session: 'Session creation',
   challenge: 'Challenge generation',
@@ -120,111 +121,128 @@ export const getRecentKeysForUrl = (
   return legacyDomain === domain ? legacyKeys : [];
 };
 
-export type Client = WidevineDeviceCredentials | PlayReadyDeviceCredentials | RemoteClient;
-export const clientInfoSchema = z.discriminatedUnion('type', [
+export type { Credentials } from '../../../lib/credentials';
+export const credentialsInfoSchema = z.discriminatedUnion('type', [
   z.object({ type: z.literal('wvd'), data: z.string() }),
   z.object({ type: z.literal('prd'), data: z.string() }),
-  z.object({ type: z.literal('remote'), config: remoteConfigSchema }),
+  z.object({ type: z.literal('remote'), config: remoteCredentialsSchema }),
 ]);
-export type ClientInfo = z.infer<typeof clientInfoSchema>;
+export type CredentialsInfo = z.infer<typeof credentialsInfoSchema>;
 
-export const fromInfoToClient = async (info: ClientInfo) => {
-  if (info.type === 'remote') return RemoteClient.from(info.config);
+export const deserializeCredentials = async (info: CredentialsInfo) => {
+  if (info.type === 'remote') return RemoteCredentials.from(info.config);
   const data = fromBase64(info.data).toBuffer();
   if (info.type === 'prd') {
-    return await PlayReadyDeviceCredentials.from({ prd: data });
+    return await PlayReadyClientCredentials.from({ prd: data });
   } else if (info.type === 'wvd') {
-    return await WidevineDeviceCredentials.from({ wvd: data });
+    return await WidevineClientCredentials.from({ wvd: data });
   }
-  throw new Error('Unsupported client type');
+  throw new Error('Unsupported credentials type');
 };
 
-export const fromClientToInfo = async (client: Client): Promise<ClientInfo> => {
-  if (client instanceof RemoteClient) return { type: 'remote', config: client.config };
-  const type = client instanceof PlayReadyDeviceCredentials ? 'prd' : 'wvd';
-  const data = fromBuffer(await client.pack()).toBase64();
+export const serializeCredentials = async (credentials: Credentials): Promise<CredentialsInfo> => {
+  if (credentials instanceof RemoteCredentials)
+    return { type: 'remote', config: credentials.config };
+  const type = credentials instanceof PlayReadyClientCredentials ? 'prd' : 'wvd';
+  const data = fromBuffer(await credentials.pack()).toBase64();
   return { type, data };
 };
 
-const clientRegistrySchema = z.object({
-  clients: z.array(z.object({ id: z.string(), info: clientInfoSchema })),
+const credentialsRegistrySchema = z.object({
+  credentials: z.array(z.object({ id: z.string(), info: credentialsInfoSchema })),
+  activeCredentialsId: z.string().nullable(),
+});
+type CredentialsRegistry = z.infer<typeof credentialsRegistrySchema>;
+export type StoredCredentials = { id: string; credentials: Credentials };
+export type CredentialsSnapshot = {
+  credentials: StoredCredentials[];
+  activeCredentialsId: string | null;
+};
+const credentialsRegistry = storage.defineItem<CredentialsRegistry>('local:credentials-registry');
+const legacyRegistry = storage.defineItem<unknown>('local:client-registry');
+const legacyRegistrySchema = z.object({
+  clients: z.array(z.object({ id: z.string(), info: credentialsInfoSchema })),
   activeClientId: z.string().nullable(),
 });
-type ClientRegistry = z.infer<typeof clientRegistrySchema>;
-export type StoredClient = { id: string; client: Client };
-export type ClientSnapshot = { clients: StoredClient[]; activeClientId: string | null };
-const clientRegistry = storage.defineItem<ClientRegistry>('local:client-registry');
-const legacyClients = asJson(storage.defineItem<(string | ClientInfo)[]>('local:clients'));
-const legacyActiveClient = storage.defineItem<string | ClientInfo>('local:active-client');
-const withClientLock = <T>(operation: () => Promise<T>) =>
-  navigator.locks.request('okova:clients', operation);
-const sameClientInfo = (left: ClientInfo, right: ClientInfo) =>
+const legacyCredentials = asJson(storage.defineItem<(string | CredentialsInfo)[]>('local:clients'));
+const legacyActiveCredentials = storage.defineItem<string | CredentialsInfo>('local:active-client');
+const withCredentialsLock = <T>(operation: () => Promise<T>) =>
+  navigator.locks.request('okova:credentials', operation);
+const sameCredentialsInfo = (left: CredentialsInfo, right: CredentialsInfo) =>
   JSON.stringify(left) === JSON.stringify(right);
 
 // Keep legacy data as a backup. Once written, the registry is the only source of truth.
-const readClientRegistry = async (): Promise<ClientRegistry> => {
-  const stored = await clientRegistry.getValue();
-  if (stored) return clientRegistrySchema.parse(stored);
-  const registry: ClientRegistry = { clients: [], activeClientId: null };
-  const normalizeLegacy = async (value: string | ClientInfo) => {
+const readCredentialsRegistry = async (): Promise<CredentialsRegistry> => {
+  const stored = await credentialsRegistry.getValue();
+  if (stored) return credentialsRegistrySchema.parse(stored);
+  const previous = await legacyRegistry.getValue();
+  if (previous) {
+    const legacy = legacyRegistrySchema.parse(previous);
+    return { credentials: legacy.clients, activeCredentialsId: legacy.activeClientId };
+  }
+  const registry: CredentialsRegistry = { credentials: [], activeCredentialsId: null };
+  const normalizeLegacy = async (value: string | CredentialsInfo) => {
     const info = typeof value === 'string' ? { type: 'wvd' as const, data: value } : value;
-    return fromClientToInfo(await fromInfoToClient(clientInfoSchema.parse(info)));
+    return serializeCredentials(await deserializeCredentials(credentialsInfoSchema.parse(info)));
   };
-  for (const value of (await legacyClients.getValue()) ?? []) {
+  for (const value of (await legacyCredentials.getValue()) ?? []) {
     const info = await normalizeLegacy(value);
-    if (!registry.clients.some((entry) => sameClientInfo(entry.info, info))) {
-      registry.clients.push({ id: crypto.randomUUID(), info });
+    if (!registry.credentials.some((entry) => sameCredentialsInfo(entry.info, info))) {
+      registry.credentials.push({ id: crypto.randomUUID(), info });
     }
   }
-  const active = await legacyActiveClient.getValue();
+  const active = await legacyActiveCredentials.getValue();
   if (active) {
     const info = await normalizeLegacy(active);
-    let entry = registry.clients.find((entry) => sameClientInfo(entry.info, info));
+    let entry = registry.credentials.find((entry) => sameCredentialsInfo(entry.info, info));
     if (!entry) {
       entry = { id: crypto.randomUUID(), info };
-      registry.clients.push(entry);
+      registry.credentials.push(entry);
     }
-    registry.activeClientId = entry.id;
+    registry.activeCredentialsId = entry.id;
   } else {
-    registry.activeClientId = registry.clients[0]?.id ?? null;
+    registry.activeCredentialsId = registry.credentials[0]?.id ?? null;
   }
   return registry;
 };
 
-const decodeClientRegistry = async (registry: ClientRegistry): Promise<ClientSnapshot> => ({
-  clients: await Promise.all(
-    registry.clients.map(async (entry) => ({
+const decodeCredentialsRegistry = async (
+  registry: CredentialsRegistry,
+): Promise<CredentialsSnapshot> => ({
+  credentials: await Promise.all(
+    registry.credentials.map(async (entry) => ({
       id: entry.id,
-      client: await fromInfoToClient(entry.info),
+      credentials: await deserializeCredentials(entry.info),
     })),
   ),
-  activeClientId: registry.activeClientId,
+  activeCredentialsId: registry.activeCredentialsId,
 });
 
-const saveClientRegistry = async (registry: ClientRegistry, settings?: Settings) => {
+const saveCredentialsRegistry = async (registry: CredentialsRegistry, settings?: Settings) => {
   // Parse before committing so a decoding failure cannot leave the popup behind storage.
-  const snapshot = await decodeClientRegistry(registry);
+  const snapshot = await decodeCredentialsRegistry(registry);
   await storage.setItems([
-    { key: clientRegistry.key, value: registry },
+    { key: credentialsRegistry.key, value: registry },
     ...(settings ? [{ key: storedSettings.key, value: JSON.stringify(settings) }] : []),
   ]);
   return snapshot;
 };
 
-const addClient = (client: Client, enablePlayback = false) =>
-  withClientLock(async () => {
-    const registry = await readClientRegistry();
-    const info = await fromClientToInfo(client);
-    if (registry.clients.some((entry) => sameClientInfo(entry.info, info))) {
-      throw new Error('This client is already imported');
+const addCredentials = (credentials: Credentials, enablePlayback = false) =>
+  withCredentialsLock(async () => {
+    const registry = await readCredentialsRegistry();
+    const info = await serializeCredentials(credentials);
+    if (registry.credentials.some((entry) => sameCredentialsInfo(entry.info, info))) {
+      throw new Error('These credentials are already imported');
     }
-    if (registry.clients.length >= 10) throw new Error('You can add a maximum of 10 clients');
-    const isFirstClient = registry.clients.length === 0;
+    if (registry.credentials.length >= 10)
+      throw new Error('You can add a maximum of 10 credentials');
+    const isFirstCredentials = registry.credentials.length === 0;
     const entry = { id: crypto.randomUUID(), info };
-    registry.clients.push(entry);
-    registry.activeClientId ??= entry.id;
+    registry.credentials.push(entry);
+    registry.activeCredentialsId ??= entry.id;
     const settings =
-      enablePlayback && isFirstClient
+      enablePlayback && isFirstCredentials
         ? {
             ...defaultSettings,
             ...(await storedSettings.getValue()),
@@ -233,63 +251,70 @@ const addClient = (client: Client, enablePlayback = false) =>
             clientPlayback: true,
           }
         : undefined;
-    const snapshot = await saveClientRegistry(registry, settings);
+    const snapshot = await saveCredentialsRegistry(registry, settings);
     return { ...snapshot, settings };
   });
 
-const clientStorage = {
+const credentialsStorage = {
   getSnapshot: () =>
-    withClientLock(async () => {
-      const registry = await readClientRegistry();
-      if (!(await clientRegistry.getValue())) return saveClientRegistry(registry);
-      return decodeClientRegistry(registry);
+    withCredentialsLock(async () => {
+      const registry = await readCredentialsRegistry();
+      if (!(await credentialsRegistry.getValue())) return saveCredentialsRegistry(registry);
+      return decodeCredentialsRegistry(registry);
     }),
-  getValue: async () => (await clientStorage.getSnapshot()).clients.map((entry) => entry.client),
-  add: (client: Client) => addClient(client),
-  import: (client: Client) => addClient(client, true),
+  getValue: async () =>
+    (await credentialsStorage.getSnapshot()).credentials.map((entry) => entry.credentials),
+  add: (credentials: Credentials) => addCredentials(credentials),
+  import: (credentials: Credentials) => addCredentials(credentials, true),
   select: (id: string | null) =>
-    withClientLock(async () => {
-      const registry = await readClientRegistry();
-      if (id !== null && !registry.clients.some((entry) => entry.id === id)) {
-        throw new Error('Client is no longer available');
+    withCredentialsLock(async () => {
+      const registry = await readCredentialsRegistry();
+      if (id !== null && !registry.credentials.some((entry) => entry.id === id)) {
+        throw new Error('Credentials are no longer available');
       }
-      return saveClientRegistry({ ...registry, activeClientId: id });
+      return saveCredentialsRegistry({ ...registry, activeCredentialsId: id });
     }),
-  remove: (client: string | Client) =>
-    withClientLock(async () => {
-      const registry = await readClientRegistry();
-      const info = typeof client === 'string' ? null : await fromClientToInfo(client);
+  remove: (credentials: string | Credentials) =>
+    withCredentialsLock(async () => {
+      const registry = await readCredentialsRegistry();
+      const info = typeof credentials === 'string' ? null : await serializeCredentials(credentials);
       const id =
-        typeof client === 'string'
-          ? client
-          : registry.clients.find((entry) => info && sameClientInfo(entry.info, info))?.id;
-      const clients = registry.clients.filter((entry) => entry.id !== id);
-      const activeClientId =
-        registry.activeClientId === id ? (clients[0]?.id ?? null) : registry.activeClientId;
-      return saveClientRegistry({ clients, activeClientId });
+        typeof credentials === 'string'
+          ? credentials
+          : registry.credentials.find((entry) => info && sameCredentialsInfo(entry.info, info))?.id;
+      const remainingCredentials = registry.credentials.filter((entry) => entry.id !== id);
+      const activeCredentialsId =
+        registry.activeCredentialsId === id
+          ? (remainingCredentials[0]?.id ?? null)
+          : registry.activeCredentialsId;
+      return saveCredentialsRegistry({ credentials: remainingCredentials, activeCredentialsId });
     }),
   active: {
     getInfo: () =>
-      withClientLock(async () => {
-        const registry = await readClientRegistry();
-        return registry.clients.find((entry) => entry.id === registry.activeClientId)?.info ?? null;
+      withCredentialsLock(async () => {
+        const registry = await readCredentialsRegistry();
+        return (
+          registry.credentials.find((entry) => entry.id === registry.activeCredentialsId)?.info ??
+          null
+        );
       }),
-    getValue: async (): Promise<Client | null> => {
-      const info = await clientStorage.active.getInfo();
-      return info ? fromInfoToClient(info) : null;
+    getValue: async (): Promise<Credentials | null> => {
+      const info = await credentialsStorage.active.getInfo();
+      return info ? deserializeCredentials(info) : null;
     },
-    // Library-side callers may supply a client before adding it to the popup list.
-    setValue: (client: Client | null) =>
-      withClientLock(async () => {
-        const registry = await readClientRegistry();
-        if (!client) return saveClientRegistry({ ...registry, activeClientId: null });
-        const info = await fromClientToInfo(client);
-        let entry = registry.clients.find((entry) => sameClientInfo(entry.info, info));
+    // Library-side callers may supply credentials before adding it to the popup list.
+    setValue: (credentials: Credentials | null) =>
+      withCredentialsLock(async () => {
+        const registry = await readCredentialsRegistry();
+        if (!credentials)
+          return saveCredentialsRegistry({ ...registry, activeCredentialsId: null });
+        const info = await serializeCredentials(credentials);
+        let entry = registry.credentials.find((entry) => sameCredentialsInfo(entry.info, info));
         if (!entry) {
           entry = { id: crypto.randomUUID(), info };
-          registry.clients.push(entry);
+          registry.credentials.push(entry);
         }
-        return saveClientRegistry({ ...registry, activeClientId: entry.id });
+        return saveCredentialsRegistry({ ...registry, activeCredentialsId: entry.id });
       }),
   },
 };
@@ -549,5 +574,5 @@ export const { prepareKeyDeletion, deleteKeySnapshot } = regularHistory;
 export const appStorage = {
   settings: settingsStorage,
   ...regularHistory,
-  clients: clientStorage,
+  credentials: credentialsStorage,
 };

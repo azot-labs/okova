@@ -6,9 +6,9 @@ import { Hono } from 'hono';
 import { afterEach, beforeEach, expect, test, vi } from 'vitest';
 import sessionApi from '../src/cli/commands/serve/api/session';
 import { requestBoundary } from '../src/cli/commands/serve/request-boundary';
-import { clients, config, sessions } from '../src/cli/commands/serve/state';
+import { credentialCache, config, sessions } from '../src/cli/commands/serve/state';
 import { Widevine } from '../src/lib/widevine/engine';
-import { WidevineDeviceCredentials } from '../src/lib/widevine/device-credentials';
+import { WidevineClientCredentials } from '../src/lib/widevine/client-credentials';
 import {
   ClientIdentification,
   DrmCertificate,
@@ -17,7 +17,7 @@ import {
 
 const originalConfig = structuredClone(config);
 const app = new Hono().use(requestBoundary).route('/sessions', sessionApi);
-const credentials = new WidevineDeviceCredentials(
+const credentials = new WidevineClientCredentials(
   ClientIdentification.create({
     token: SignedDrmCertificate.encode(
       SignedDrmCertificate.create({
@@ -29,13 +29,13 @@ const credentials = new WidevineDeviceCredentials(
 
 beforeEach(() => {
   config.public = true;
-  config.clients = ['test.wvd'];
-  clients.set(resolve('test.wvd'), credentials);
+  config.credentials = ['test.wvd'];
+  credentialCache.set(resolve('test.wvd'), credentials);
 });
 
 afterEach(async () => {
   await sessions.clear();
-  clients.clear();
+  credentialCache.clear();
   Object.assign(config, structuredClone(originalConfig));
   vi.restoreAllMocks();
 });
@@ -60,7 +60,7 @@ test.each(['text/plain', 'application/x-www-form-urlencoded', 'multipart/form-da
 test('public JSON access is explicit and unknown keys never fall back to anonymous', async () => {
   config.public = false;
   expect((await post()).status).toBe(403);
-  config.users = { secret: { name: 'test', clients: ['test.wvd'] } };
+  config.users = { secret: { name: 'test', credentials: ['test.wvd'] } };
   expect((await post({ 'x-secret-key': 'secret' })).status).toBe(200);
   config.public = true;
   expect((await post()).status).toBe(200);
@@ -107,7 +107,7 @@ test.each([
   { isPublic: true, isRestricted: true },
 ])('browser access preserves authentication with %j', async ({ isPublic, isRestricted }) => {
   config.public = isPublic;
-  config.users = { secret: { name: 'test', clients: ['test.wvd'] } };
+  config.users = { secret: { name: 'test', credentials: ['test.wvd'] } };
   if (isRestricted) config.allowedOrigins = ['https://dashboard.example'];
   const origin = 'https://dashboard.example';
   const preflight = await app.request('http://localhost/sessions', {

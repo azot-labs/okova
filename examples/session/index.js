@@ -1,5 +1,5 @@
 import { readFile } from 'node:fs/promises';
-import { fromBase64, Widevine, WidevineDeviceCredentials } from 'okova';
+import { fromBase64, Widevine, WidevineClientCredentials } from 'okova';
 
 async function main() {
   // Prepare init data (PSSH)
@@ -7,12 +7,12 @@ async function main() {
     'AAAAW3Bzc2gAAAAA7e+LqXnWSs6jyCfc1R0h7QAAADsIARIQ62dqu8s0Xpa7z2FmMPGj2hoNd2lkZXZpbmVfdGVzdCIQZmtqM2xqYVNkZmFsa3IzaioCSEQyAA==',
   ).toBuffer();
 
-  // Load device credentials
-  const deviceCredentials = await WidevineDeviceCredentials.from({
-    wvd: await readFile('client.wvd'),
+  // Load client credentials
+  const clientCredentials = await WidevineClientCredentials.from({
+    wvd: await readFile('credentials.wvd'),
   });
 
-  const widevine = new Widevine({ deviceCredentials });
+  const widevine = new Widevine({ clientCredentials });
   const session = widevine.createSession();
 
   // Handle outgoing license messages

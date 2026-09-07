@@ -54,7 +54,7 @@ export const installDrmPlayback = () => {
     mediaKeys.setServerCertificate = async (certificate) => {
       if (!toBytes(certificate).length) throw new TypeError('Empty server certificate');
       if (keySystem !== WIDEVINE) return false;
-      // The background Widevine client validates and uses this certificate.
+      // The background Widevine engine validates and uses this certificate.
       serverCertificate = bytesToBase64(certificate);
       return true;
     };
@@ -92,7 +92,7 @@ export const installDrmPlayback = () => {
           session.dispatchEvent(event);
         }, 0);
       };
-      // Keep ClearKey requests local. The player only receives challenges from the active client.
+      // Keep ClearKey requests local. The player only receives challenges from the active engine.
       nativeListen.call(session, 'message', (event) => {
         if (!forwardedMessages.has(event)) event.stopImmediatePropagation();
       });
@@ -129,7 +129,7 @@ export const installDrmPlayback = () => {
           const challenge = await sendSessionRequest({ action: 'license-request' });
           if (typeof challenge !== 'string' || !challenge.length) {
             throw new DOMException(
-              'The active client could not create a license request. Check Okova for details.',
+              'The active engine could not create a license request. Check Okova for details.',
               'OperationError',
             );
           }
@@ -160,7 +160,7 @@ export const installDrmPlayback = () => {
         const parsed = licenseKeys.safeParse(result);
         if (!parsed.success)
           throw new DOMException(
-            'The active client could not retrieve content keys. Check Okova for details.',
+            'The active engine could not retrieve content keys. Check Okova for details.',
             'OperationError',
           );
         const { keys } = parsed.data;
@@ -207,9 +207,9 @@ export const installDrmPlayback = () => {
     const activeSystem = await sendDrmMessage({ action: 'playback-config' });
     if (activeSystem === null) return requestAccess(keySystem, configurations);
     if (isHardwarePlayReady)
-      throw unsupported('Hardware DRM is unavailable during client playback');
+      throw unsupported('Hardware DRM is unavailable during custom playback');
     if (activeSystem !== (isPlayReady ? PLAYREADY : WIDEVINE)) {
-      throw unsupported('Select a matching DRM client in Okova');
+      throw unsupported('Select matching DRM credentials in Okova');
     }
     const supportsCapability = (capability: MediaKeySystemMediaCapability) =>
       (!capability.encryptionScheme || capability.encryptionScheme === 'cenc') &&
@@ -292,7 +292,7 @@ export const installDrmPlayback = () => {
         if (!(error instanceof DOMException) || error.name !== 'NotSupportedError') throw error;
       }
     }
-    throw unsupported('No compatible ClearKey configuration for client playback');
+    throw unsupported('No compatible ClearKey configuration for custom playback');
   };
   Object.defineProperty(navigator, INSTALLED, { value: true });
 };

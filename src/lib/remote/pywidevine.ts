@@ -1,6 +1,6 @@
 import { z } from 'zod';
 import { createHttpClient, remoteUrlSchema } from './http';
-import { remoteConfigFields, type GenerateParams, type RemoteApi } from './protocol';
+import { remoteCredentialsFields, type GenerateParams, type RemoteApi } from './protocol';
 import { CLIENT_KEY_SYSTEMS } from '../key-system';
 import { fromBase64, fromBuffer } from '../utils';
 import { Pssh } from '../playready/pssh';
@@ -26,7 +26,7 @@ const securityLevel = z.union([
   z.literal(3000),
 ]);
 const deviceFields = {
-  ...remoteConfigFields,
+  ...remoteCredentialsFields,
   device: deviceName,
   systemId: systemId.optional(),
   securityLevel: securityLevel.optional(),

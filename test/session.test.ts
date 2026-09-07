@@ -7,7 +7,7 @@ import {
 } from '../src/lib/crypto/common';
 import { fromBuffer } from '../src/lib/utils';
 import { deriveContext, deriveKeys } from '../src/lib/widevine/context';
-import { WidevineDeviceCredentials } from '../src/lib/widevine/device-credentials';
+import { WidevineClientCredentials } from '../src/lib/widevine/client-credentials';
 import {
   License,
   LicenseRequest,
@@ -33,7 +33,7 @@ test('session stays open after parsing a license', async () => {
       id: ClientIdentification.create({}),
       signWithKey: async () => new Uint8Array([0xaa]),
       decryptWithKey: async () => sessionKey,
-    } as unknown as WidevineDeviceCredentials,
+    } as unknown as WidevineClientCredentials,
     () => {
       disposeCalls += 1;
     },
@@ -90,7 +90,7 @@ test('session update rejects immediately when the license is not a SignedMessage
   const session = new WidevineSession('temporary', {
     id: ClientIdentification.create({}),
     signWithKey: async () => new Uint8Array([0xaa]),
-  } as unknown as WidevineDeviceCredentials);
+  } as unknown as WidevineClientCredentials);
 
   await expect(session.update(new Uint8Array([0xff, 0x00, 0x01]))).rejects.toThrow(
     'Failed to parse message as SignedMessage',
@@ -155,7 +155,7 @@ test.each([
 ])(
   'session update rejects $name before decryption and preserves state',
   async ({ response, error }) => {
-    const credentials = new WidevineDeviceCredentials(
+    const credentials = new WidevineClientCredentials(
       ClientIdentification.create({
         token: SignedDrmCertificate.encode({
           drmCertificate: DrmCertificate.encode({ systemId: 1 }).finish(),
@@ -179,7 +179,7 @@ test('android license requests use an OEMCrypto-like request id and set keyContr
       id: ClientIdentification.create({}),
       type: 'android',
       signWithKey: async () => new Uint8Array([0xaa]),
-    } as unknown as WidevineDeviceCredentials,
+    } as unknown as WidevineClientCredentials,
     undefined,
     undefined,
     5,
@@ -206,7 +206,7 @@ test('chrome license requests use a binary 16-byte request id', async () => {
     id: ClientIdentification.create({}),
     type: 'chrome',
     signWithKey: async () => new Uint8Array([0xaa]),
-  } as unknown as WidevineDeviceCredentials).generateRequest(
+  } as unknown as WidevineClientCredentials).generateRequest(
     'cenc',
     fromBase64(
       'AAAAW3Bzc2gAAAAA7e+LqXnWSs6jyCfc1R0h7QAAADsIARIQ62dqu8s0Xpa7z2FmMPGj2hoNd2lkZXZpbmVfdGVzdCIQZmtqM2xqYVNkZmFsa3IzaioCSEQyAA==',
@@ -220,7 +220,7 @@ test('chrome license requests use a binary 16-byte request id', async () => {
 });
 
 const createContextTestCredentials = (type: 'chrome' | 'android' = 'chrome') => {
-  const credentials = new WidevineDeviceCredentials(
+  const credentials = new WidevineClientCredentials(
     ClientIdentification.create({
       token: SignedDrmCertificate.encode(
         SignedDrmCertificate.create({

@@ -2,14 +2,14 @@ import { readFile } from 'node:fs/promises';
 import { expect, test } from 'vitest';
 import { toPKCS1, toPKCS8 } from '../../src/lib/crypto/common';
 import { fromBase64, fromBuffer } from '../../src/lib/utils';
-import { WidevineDeviceCredentials } from '../../src/lib/widevine/device-credentials';
+import { WidevineClientCredentials } from '../../src/lib/widevine/client-credentials';
 
 const normalizePem = (pem: string) => pem.trim().replace(/\r\n/g, '\n');
 
 const widevineClientIdPath = process.env.VITEST_WIDEVINE_CLIENT_ID_PATH;
 const widevinePrivateKeyPath = process.env.VITEST_WIDEVINE_PRIVATE_KEY_PATH;
 const testWithWidevinePrivateKey = widevinePrivateKeyPath ? test : test.skip;
-const testWithWidevineUnpackedClient =
+const testWithWidevineUnpackedCredentials =
   widevineClientIdPath && widevinePrivateKeyPath ? test : test.skip;
 
 const readEnvFixture = async (path: string | undefined, label: string) => {
@@ -59,12 +59,12 @@ testWithWidevinePrivateKey(
   },
 );
 
-testWithWidevineUnpackedClient(
-  'Widevine device credentials import and export the fixture RSA key unchanged',
+testWithWidevineUnpackedCredentials(
+  'Widevine client credentials import and export the fixture RSA key unchanged',
   async () => {
     const id = await readEnvFixture(widevineClientIdPath, 'Widevine client ID');
     const key = await readEnvFixture(widevinePrivateKeyPath, 'Widevine private key');
-    const credentials = await WidevineDeviceCredentials.from({ id, key });
+    const credentials = await WidevineClientCredentials.from({ id, key });
     const exported = await credentials.exportKey();
 
     expect(normalizePem(fromBuffer(exported).toText())).toBe(

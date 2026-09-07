@@ -15,11 +15,11 @@ import {
   SignedMessage,
 } from '../src/lib/widevine/proto';
 import { Session, setSupportedEngines } from '../src/lib/api';
-import { WidevineDeviceCredentials } from '../src/lib/widevine/device-credentials';
+import { WidevineClientCredentials } from '../src/lib/widevine/client-credentials';
 import { Widevine } from '../src/lib/widevine/engine';
 
-vi.mock('../src/lib/widevine/device-credentials', () => ({
-  WidevineDeviceCredentials: class {
+vi.mock('../src/lib/widevine/client-credentials', () => ({
+  WidevineClientCredentials: class {
     async pack() {
       return new Uint8Array();
     }
@@ -52,8 +52,8 @@ beforeEach(async () => {
     requestInterception: false,
     theme: 'auto',
   });
-  vi.spyOn(appStorage.clients.active, 'getValue').mockResolvedValue(
-    new WidevineDeviceCredentials(new Uint8Array()),
+  vi.spyOn(appStorage.credentials.active, 'getValue').mockResolvedValue(
+    new WidevineClientCredentials(new Uint8Array()),
   );
   vi.spyOn(browser.tabs, 'query').mockImplementation(async () => []);
   vi.spyOn(browser.action, 'setBadgeText').mockResolvedValue();
@@ -113,63 +113,63 @@ const startBackground = () => {
     });
 };
 
-const getSessionClient = (index: number) => {
+const getSessionCredentials = (index: number) => {
   const engine = sessions[index]?.engine;
   if (!(engine instanceof Widevine)) throw new Error('Expected a Widevine session');
-  return engine.deviceCredentials;
+  return engine.clientCredentials;
 };
 
-test('new sessions use the current client while existing sessions retain their credentials', async () => {
-  const firstClient = new WidevineDeviceCredentials(new Uint8Array());
-  const secondClient = new WidevineDeviceCredentials(new Uint8Array());
-  const getClient = vi.mocked(appStorage.clients.active.getValue);
-  getClient.mockResolvedValue(firstClient);
+test('new sessions use the current credentials while existing sessions retain their credentials', async () => {
+  const firstCredentials = new WidevineClientCredentials(new Uint8Array());
+  const secondCredentials = new WidevineClientCredentials(new Uint8Array());
+  const getCredentials = vi.mocked(appStorage.credentials.active.getValue);
+  getCredentials.mockResolvedValue(firstCredentials);
   const send = startBackground();
   await send('generateRequest', 'first');
-  expect(getSessionClient(0)).toBe(firstClient);
+  expect(getSessionCredentials(0)).toBe(firstCredentials);
 
-  getClient.mockResolvedValue(secondClient);
+  getCredentials.mockResolvedValue(secondCredentials);
   await send('generateRequest', 'second');
-  expect(getSessionClient(1)).toBe(secondClient);
+  expect(getSessionCredentials(1)).toBe(secondCredentials);
   await expect(send('license-request', 'first')).resolves.toBe(btoa(sessions[0]!.sessionId));
-  expect(getSessionClient(0)).toBe(firstClient);
+  expect(getSessionCredentials(0)).toBe(firstCredentials);
 
-  getClient.mockResolvedValue(null);
+  getCredentials.mockResolvedValue(null);
   await send('generateRequest', 'unselected');
   expect(sessions).toHaveLength(2);
   await expect(send('license-request', 'unselected')).resolves.toBeUndefined();
 
-  getClient.mockResolvedValue(firstClient);
+  getCredentials.mockResolvedValue(firstCredentials);
   await send('generateRequest', 'reselected');
   expect(sessions).toHaveLength(3);
-  expect(getSessionClient(2)).toBe(firstClient);
+  expect(getSessionCredentials(2)).toBe(firstCredentials);
   await send('close', 'first');
   await send('close', 'second');
   await send('close', 'reselected');
 });
 
-test('a pending client load cannot replace the selection used by later sessions', async () => {
-  const firstClient = new WidevineDeviceCredentials(new Uint8Array());
-  const secondClient = new WidevineDeviceCredentials(new Uint8Array());
-  const pendingClient = Promise.withResolvers<WidevineDeviceCredentials>();
+test('a pending credentials load cannot replace the selection used by later sessions', async () => {
+  const firstCredentials = new WidevineClientCredentials(new Uint8Array());
+  const secondCredentials = new WidevineClientCredentials(new Uint8Array());
+  const pendingCredentials = Promise.withResolvers<WidevineClientCredentials>();
   const loadStarted = Promise.withResolvers<void>();
-  vi.mocked(appStorage.clients.active.getValue)
+  vi.mocked(appStorage.credentials.active.getValue)
     .mockImplementationOnce(() => {
       loadStarted.resolve();
-      return pendingClient.promise;
+      return pendingCredentials.promise;
     })
-    .mockResolvedValue(secondClient);
+    .mockResolvedValue(secondCredentials);
   const send = startBackground();
   const firstRequest = send('generateRequest', 'first');
   await loadStarted.promise;
   await send('generateRequest', 'second');
-  expect(getSessionClient(0)).toBe(secondClient);
+  expect(getSessionCredentials(0)).toBe(secondCredentials);
 
-  pendingClient.resolve(firstClient);
+  pendingCredentials.resolve(firstCredentials);
   await firstRequest;
   await send('generateRequest', 'third');
   expect(sessions).toHaveLength(3);
-  expect(getSessionClient(2)).toBe(secondClient);
+  expect(getSessionCredentials(2)).toBe(secondCredentials);
   await send('close', 'first');
   await send('close', 'second');
   await send('close', 'third');
@@ -314,8 +314,8 @@ test.each([
         encryptedClientId: new Uint8Array([1, 2, 3]),
       }),
     );
-    vi.mocked(appStorage.clients.active.getValue).mockResolvedValue(
-      Object.assign(new WidevineDeviceCredentials(new Uint8Array()), {
+    vi.mocked(appStorage.credentials.active.getValue).mockResolvedValue(
+      Object.assign(new WidevineClientCredentials(new Uint8Array()), {
         id: ClientIdentification.create({}),
         encryptId,
         signWithKey: async () => new Uint8Array([0xaa]),
@@ -490,14 +490,14 @@ test.each([
   },
 );
 
-test('reports missing clients and clears diagnostics on navigation', async () => {
-  vi.mocked(appStorage.clients.active.getValue).mockResolvedValue(null);
+test('reports missing credentials and clears diagnostics on navigation', async () => {
+  vi.mocked(appStorage.credentials.active.getValue).mockResolvedValue(null);
   const updated = vi.spyOn(browser.tabs.onUpdated, 'addListener');
   const send = startBackground();
   await send('generateRequest', 'missing', { tab: tab(1) });
   expect(await getDrmFailureStorage(1).getValue()).toMatchObject({
-    stage: 'client',
-    error: expect.stringContaining('No active DRM client'),
+    stage: 'credentials',
+    error: expect.stringContaining('No active DRM credentials'),
   });
   updated.mock.calls[0]![0](1, { status: 'loading' }, tab(1));
   await vi.waitFor(async () => expect(await getDrmFailureStorage(1).getValue()).toBeNull());
@@ -544,10 +544,10 @@ test('an old document cannot clear a new document failure after navigation', asy
   );
   await started.promise;
   updated.mock.calls[0]![0](1, { status: 'loading' }, tab(1));
-  vi.mocked(appStorage.clients.active.getValue).mockResolvedValue(null);
+  vi.mocked(appStorage.credentials.active.getValue).mockResolvedValue(null);
   await send('generateRequest', 'new', { tab: tab(1), documentId: 'new' }, { initData: 'bmV3' });
   const failure = await getDrmFailureStorage(1).getValue();
-  expect(failure).toMatchObject({ stage: 'client' });
+  expect(failure).toMatchObject({ stage: 'credentials' });
   resumeWrite.resolve();
   await oldRequest;
   expect(await getDrmFailureStorage(1).getValue()).toEqual(failure);
@@ -591,7 +591,7 @@ test('a recovered key-status history write clears the previous failure', async (
 });
 
 test.each([true, false])(
-  'captures ClearKey without a client when spoofing is %s',
+  'captures ClearKey without credentials when spoofing is %s',
   async (spoofing) => {
     await appStorage.settings.setValue({
       spoofing,
@@ -599,7 +599,7 @@ test.each([true, false])(
       requestInterception: false,
       theme: 'auto',
     });
-    vi.mocked(appStorage.clients.active.getValue).mockResolvedValue(null);
+    vi.mocked(appStorage.credentials.active.getValue).mockResolvedValue(null);
     const send = startBackground();
     const context = {
       keySystem: 'org.w3.clearkey',
@@ -628,7 +628,7 @@ test.each([true, false])(
       { id: '000102030405060708090a0b0c0d0e0f' },
     ]);
     expect(await appStorage.recentKeysByDomain.getValue()).toHaveProperty('example.com');
-    expect(appStorage.clients.active.getValue).not.toHaveBeenCalled();
+    expect(appStorage.credentials.active.getValue).not.toHaveBeenCalled();
     expect(Session.prototype.generateRequest).not.toHaveBeenCalled();
     expect(Session.prototype.update).not.toHaveBeenCalled();
   },
@@ -759,13 +759,16 @@ test.each([
   'com.microsoft.playready.recommendation',
   'com.widevine.alpha.extra',
   undefined,
-])('rejects a selected Widevine client for %s before creating a session', async (keySystem) => {
-  const send = startBackground();
-  await send('generateRequest', 'mismatch', { tab: tab(1) }, { keySystem });
-  expect(Session.prototype.generateRequest).not.toHaveBeenCalled();
-  expect(await getDrmFailureStorage(1).getValue()).toMatchObject({ stage: 'client' });
-  expect(vi.getTimerCount()).toBe(0);
-});
+])(
+  'rejects a selected Widevine credentials for %s before creating a session',
+  async (keySystem) => {
+    const send = startBackground();
+    await send('generateRequest', 'mismatch', { tab: tab(1) }, { keySystem });
+    expect(Session.prototype.generateRequest).not.toHaveBeenCalled();
+    expect(await getDrmFailureStorage(1).getValue()).toMatchObject({ stage: 'credentials' });
+    expect(vi.getTimerCount()).toBe(0);
+  },
+);
 
 test('reports an empty license and cleans up without waiting for another status event', async () => {
   vi.mocked(Session.prototype.update).mockImplementation(async function (this: Session) {
@@ -785,17 +788,17 @@ test('reports an empty license and cleans up without waiting for another status 
   expect(vi.getTimerCount()).toBe(0);
 });
 
-test('a timed-out client load cannot create a session when it later resolves', async () => {
-  const loading = Promise.withResolvers<WidevineDeviceCredentials>();
-  vi.mocked(appStorage.clients.active.getValue).mockReturnValue(loading.promise);
+test('a timed-out credentials load cannot create a session when it later resolves', async () => {
+  const loading = Promise.withResolvers<WidevineClientCredentials>();
+  vi.mocked(appStorage.credentials.active.getValue).mockReturnValue(loading.promise);
   const send = startBackground();
   const result = send('generateRequest', 'slow', { tab: tab(1) });
   await vi.advanceTimersByTimeAsync(25_000);
   await result;
-  loading.resolve(new WidevineDeviceCredentials(new Uint8Array()));
+  loading.resolve(new WidevineClientCredentials(new Uint8Array()));
   await vi.advanceTimersByTimeAsync(0);
   expect(Session.prototype.generateRequest).not.toHaveBeenCalled();
-  expect(await getDrmFailureStorage(1).getValue()).toMatchObject({ stage: 'client' });
+  expect(await getDrmFailureStorage(1).getValue()).toMatchObject({ stage: 'credentials' });
   expect(vi.getTimerCount()).toBe(0);
 });
 
@@ -888,7 +891,7 @@ test('badge changes from observed to fresh, saved on navigation, and failed unti
     requestInterception: false,
     theme: 'auto',
   });
-  vi.mocked(appStorage.clients.active.getValue).mockResolvedValue(null);
+  vi.mocked(appStorage.credentials.active.getValue).mockResolvedValue(null);
   await send('generateRequest', 'failure', sender);
   await expectBadge('W!', '#C75300');
   await send('keystatuseschange', 'observed', sender, { keyStatuses: { AAECAw: 'usable' } });
@@ -938,8 +941,8 @@ test('sets the badge text and tooltip when text-color control is unavailable', a
   Reflect.deleteProperty(browser.action, 'setBadgeTextColor');
   try {
     const send = startBackground();
-    vi.mocked(appStorage.clients.active.getValue).mockResolvedValue(null);
-    await send('generateRequest', 'missing-client', { tab: tab(1) });
+    vi.mocked(appStorage.credentials.active.getValue).mockResolvedValue(null);
+    await send('generateRequest', 'missing-credentials', { tab: tab(1) });
     expect(browser.action.setBadgeText).toHaveBeenLastCalledWith({ tabId: 1, text: 'W!' });
     expect(browser.action.setTitle).toHaveBeenLastCalledWith({
       tabId: 1,
@@ -962,14 +965,14 @@ test.each([
         keySystem: 'com.widevine.alpha',
         baseUrl: 'https://cdm.test',
         secret: 'test',
-        client: 'device',
+        credentials: 'device',
       },
     } as const,
     expected: 'com.widevine.alpha',
   },
 ])('answers playback configuration in the background: $expected', async ({ info, expected }) => {
-  vi.spyOn(appStorage.clients.active, 'getInfo').mockResolvedValue(info);
+  vi.spyOn(appStorage.credentials.active, 'getInfo').mockResolvedValue(info);
   const send = startBackground();
   await expect(send('playback-config', '')).resolves.toBe(expected);
-  expect(appStorage.clients.active.getValue).not.toHaveBeenCalled();
+  expect(appStorage.credentials.active.getValue).not.toHaveBeenCalled();
 });

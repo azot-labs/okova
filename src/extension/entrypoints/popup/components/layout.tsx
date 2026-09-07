@@ -1,9 +1,9 @@
 import { Component, JSX, Show } from 'solid-js';
-import { useClientImportWarning } from '../utils/state';
+import { useCredentialsImportWarning } from '../utils/state';
 import { cn } from '../utils/cn';
 
 export const Layout: Component<{ children: JSX.Element; className?: string }> = (props) => {
-  const [importWarning, setImportWarning] = useClientImportWarning();
+  const [importWarning, setImportWarning] = useCredentialsImportWarning();
   return (
     <main
       class={cn(

@@ -1,17 +1,17 @@
 import type { MediaKeysEngineSession } from '../api';
 import { BaseMediaKeysEngine } from '../api';
 import { parseCertificate, verifyCertificate } from './certificate';
-import { WidevineDeviceCredentials } from './device-credentials';
+import { WidevineClientCredentials } from './client-credentials';
 import { SignedDrmCertificate } from './proto';
 import { WidevineSession } from './session';
 
 export class Widevine extends BaseMediaKeysEngine {
   keySystem = 'com.widevine.alpha';
   sessions: Map<string, MediaKeysEngineSession>;
-  deviceCredentials: WidevineDeviceCredentials;
+  clientCredentials: WidevineClientCredentials;
   serverCertificate?: SignedDrmCertificate;
 
-  static DeviceCredentials = WidevineDeviceCredentials;
+  static ClientCredentials = WidevineClientCredentials;
   #sessionNumber = 0;
 
   #handleSessionDisposed = (sessionId: string, session: MediaKeysEngineSession) => {
@@ -27,10 +27,10 @@ export class Widevine extends BaseMediaKeysEngine {
     return session;
   }
 
-  constructor({ deviceCredentials }: { deviceCredentials: WidevineDeviceCredentials }) {
+  constructor({ clientCredentials }: { clientCredentials: WidevineClientCredentials }) {
     super();
     this.sessions = new Map();
-    this.deviceCredentials = deviceCredentials;
+    this.clientCredentials = clientCredentials;
   }
 
   async setServerCertificate(serverCertificate: Uint8Array): Promise<boolean> {
@@ -44,7 +44,7 @@ export class Widevine extends BaseMediaKeysEngine {
   createSession(sessionType?: MediaKeySessionType) {
     const session = new WidevineSession(
       sessionType,
-      this.deviceCredentials,
+      this.clientCredentials,
       this.#handleSessionDisposed,
       () => this.serverCertificate,
       this.#sessionNumber + 1,
@@ -55,7 +55,7 @@ export class Widevine extends BaseMediaKeysEngine {
   resumeSession(state: string) {
     const session = WidevineSession.resume(
       state,
-      this.deviceCredentials,
+      this.clientCredentials,
       this.#handleSessionDisposed,
       () => this.serverCertificate,
     );

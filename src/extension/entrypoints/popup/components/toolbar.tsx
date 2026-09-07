@@ -1,17 +1,13 @@
 import { popupHistory } from '../utils/history';
 import { A } from '@solidjs/router';
-import {
-  TbOutlineKey as TbKey,
-  TbOutlineSettings2 as TbSettings2,
-  TbOutlineShieldCog as TbShieldCog,
-} from 'solid-icons/tb';
+import { TbOutlineKey, TbOutlineDevices, TbOutlineSettings } from 'solid-icons/tb';
 import { CardButton } from './card-button';
 import { Section } from './section';
 import { isCapturedKey } from '@/utils/storage';
-import { useClients } from '../utils/state';
+import { useCredentials } from '../utils/state';
 
 export const Toolbar = () => {
-  const [clients] = useClients();
+  const [credentials] = useCredentials();
   const [capturedKeyCount, setCapturedKeyCount] = createSignal(0);
   let hasUpdate = false;
   let isDisposed = false;
@@ -30,18 +26,18 @@ export const Toolbar = () => {
 
   return (
     <div class="grid grid-cols-3 gap-3">
-      <A href="/clients" aria-label="Clients">
+      <A href="/credentials" aria-label="Credentials">
         <Section>
-          <CardButton badge={clients().length}>
-            <TbShieldCog />
-            Clients
+          <CardButton badge={credentials().length}>
+            <TbOutlineDevices />
+            Credentials
           </CardButton>
         </Section>
       </A>
       <A href="/keys" aria-label="Keys">
         <Section>
           <CardButton badge={capturedKeyCount()}>
-            <TbKey />
+            <TbOutlineKey />
             Keys
           </CardButton>
         </Section>
@@ -49,7 +45,7 @@ export const Toolbar = () => {
       <A href="/settings">
         <Section>
           <CardButton>
-            <TbSettings2 class="w-5 h-5" />
+            <TbOutlineSettings class="w-5 h-5" />
             Settings
           </CardButton>
         </Section>

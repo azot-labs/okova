@@ -6,14 +6,14 @@ import { afterEach, beforeEach, assert, expect, test, vi } from 'vitest';
 import {
   fetchDecryptionKeys,
   PlayReady,
-  PlayReadyDeviceCredentials,
+  PlayReadyClientCredentials,
   Remote,
   Session,
 } from '../../src/lib';
 import { PlayReadySession } from '../../src/lib/playready/session';
 import { createSha256, ecc256Verify } from '../../src/lib/crypto/common';
 import sessionApi from '../../src/cli/commands/serve/api/session';
-import { clients, config, sessions } from '../../src/cli/commands/serve/state';
+import { credentialCache, config, sessions } from '../../src/cli/commands/serve/state';
 
 beforeEach(({ skip }) => {
   if (!process.env.VITEST_PRD_PATH) skip('Set VITEST_PRD_PATH to enable this fixture suite');
@@ -24,17 +24,17 @@ const header =
 const initData = new Uint8Array(Buffer.from(header, 'utf16le'));
 const applicationData = '<app token="a&b">Привет \'world\'</app>';
 const originalConfig = structuredClone(config);
-let deviceCredentials: PlayReadyDeviceCredentials;
+let clientCredentials: PlayReadyClientCredentials;
 
 beforeEach(async () => {
-  deviceCredentials = await PlayReadyDeviceCredentials.from({
+  clientCredentials = await PlayReadyClientCredentials.from({
     prd: await readFile(process.env.VITEST_PRD_PATH!),
   });
 });
 
 afterEach(async () => {
   await sessions.clear();
-  clients.clear();
+  credentialCache.clear();
   Object.assign(config, originalConfig);
   vi.unstubAllGlobals();
 });
@@ -62,7 +62,7 @@ const checkChallenge = async (challenge: string, customData?: string) => {
   );
   expect(
     await ecc256Verify(
-      new Uint8Array([4, ...deviceCredentials.signingKey.publicBytes()]),
+      new Uint8Array([4, ...clientCredentials.signingKey.publicBytes()]),
       new TextEncoder().encode(signedInfo),
       signature,
     ),
@@ -70,7 +70,7 @@ const checkChallenge = async (challenge: string, customData?: string) => {
 };
 
 test.each([undefined, '', applicationData])('signs custom data: %s', async (customData) => {
-  const engine = new PlayReady({ deviceCredentials, customData });
+  const engine = new PlayReady({ clientCredentials, customData });
   const session = engine.createSession();
   assert(session instanceof PlayReadySession);
   await checkChallenge(await session.getLicenseChallenge(header), customData);
@@ -87,7 +87,7 @@ test.each([undefined, '', applicationData])('signs custom data: %s', async (cust
 });
 
 test('helper sends the configured custom data in the license request', async () => {
-  const engine = new PlayReady({ deviceCredentials, customData: applicationData });
+  const engine = new PlayReady({ clientCredentials, customData: applicationData });
   const fetchLicense = vi.fn<typeof fetch>(async (input) => {
     expect(input).toBeInstanceOf(Request);
     if (!(input instanceof Request)) throw new Error('Expected a Request');
@@ -107,11 +107,11 @@ test('helper sends the configured custom data in the license request', async () 
 });
 
 test('remote API keeps custom data separate for sessions sharing credentials', async () => {
-  config.clients = ['custom-data.prd'];
+  config.credentials = ['custom-data.prd'];
   config.users = {};
   config.public = true;
   config.forcePrivacyMode = false;
-  clients.set(resolve('custom-data.prd'), deviceCredentials);
+  credentialCache.set(resolve('custom-data.prd'), clientCredentials);
   const app = new Hono().route('/sessions', sessionApi);
   vi.stubGlobal('fetch', (input: string | URL | Request, init?: RequestInit) =>
     app.request(input, init),
@@ -140,7 +140,7 @@ test.each([
   [applicationData, '&lt;app token="a&amp;b"&gt;Привет \'world\'&lt;/app&gt;'],
   ['line 1\r\nline 2\rline 3\n\t&amp;', 'line 1&#xD;\nline 2&#xD;line 3\n\t&amp;amp;'],
 ])('custom data preserves canonical XML text: %s', async (customData, canonicalText) => {
-  const engine = new PlayReady({ deviceCredentials, customData });
+  const engine = new PlayReady({ clientCredentials, customData });
   const session = engine.createSession();
   assert(session instanceof PlayReadySession);
   try {
@@ -164,11 +164,11 @@ test.each([
 });
 
 test('remote capacity applies across separate PlayReady engines', async () => {
-  config.clients = ['capacity.prd'];
+  config.credentials = ['capacity.prd'];
   config.users = {};
   config.public = true;
   config.sessionLimits = { ...originalConfig.sessionLimits, maxSessions: 16 };
-  clients.set(resolve('capacity.prd'), deviceCredentials);
+  credentialCache.set(resolve('capacity.prd'), clientCredentials);
   const responses = await Promise.all(
     Array.from({ length: 17 }, () =>
       sessionApi.request('/', {

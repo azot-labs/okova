@@ -1,20 +1,20 @@
 import { afterEach, expect, test } from 'vitest';
 import { fakeBrowser } from 'wxt/testing/fake-browser';
 import { usesPywidevineFallback } from '../src/lib/remote/pywidevine';
-import { parseRemoteConfig } from '../src/lib/remote/config';
-import { RemoteClient } from '../src/extension/utils/remote-client';
+import { parseRemoteCredentialsData } from '../src/lib/remote/credentials';
+import { RemoteCredentials } from '../src/lib/remote/credentials';
 import { appStorage } from '../src/extension/utils/storage';
 
 const connection = {
   keySystem: 'com.widevine.alpha',
   baseUrl: 'http://localhost:8787/',
   secret: 'test-secret',
-  client: 'test-device',
+  credentials: 'test-device',
 };
 afterEach(() => fakeBrowser.reset());
 
 test('normalizes Okova SDK options and Proxy2 exports for both DRM systems', () => {
-  expect(parseRemoteConfig(connection)).toMatchObject({
+  expect(parseRemoteCredentialsData(connection)).toMatchObject({
     protocol: 'okova',
     baseUrl: 'http://localhost:8787',
   });
@@ -23,7 +23,7 @@ test('normalizes Okova SDK options and Proxy2 exports for both DRM systems', () 
     [2000, 'pyplayready', 'com.microsoft.playready.recommendation'],
   ]) {
     expect(
-      parseRemoteConfig({
+      parseRemoteCredentialsData({
         host: 'https://cdm.test/api/',
         secret: 'test',
         device_name: 'device',
@@ -32,7 +32,7 @@ test('normalizes Okova SDK options and Proxy2 exports for both DRM systems', () 
     ).toMatchObject({ baseUrl: 'https://cdm.test/api', device: 'device', protocol, keySystem });
   }
   expect(
-    parseRemoteConfig({
+    parseRemoteCredentialsData({
       host: 'https://cdm.test',
       secret: 'test',
       name: 'device',
@@ -50,37 +50,37 @@ test.each([
   { host: 'https://cdm.test', secret: 'test' },
   { ...connection, protocol: 'pyplayready', device: 'test' },
 ])('rejects invalid remote configurations', (value) => {
-  expect(() => parseRemoteConfig(value)).toThrow();
+  expect(() => parseRemoteCredentialsData(value)).toThrow();
 });
 
-test('remote clients survive storage and export/import without exposing secrets in names', async () => {
-  const client = await RemoteClient.from(connection);
-  await appStorage.clients.add(client);
-  await appStorage.clients.active.setValue(client);
-  const restored = await appStorage.clients.active.getValue();
-  expect(restored).toBeInstanceOf(RemoteClient);
-  expect(restored?.filename).toBe(client.filename);
-  expect(client.filename).not.toContain(connection.secret);
-  expect(client.label).not.toContain(connection.secret);
-  const exported = await RemoteClient.from(
-    JSON.parse(new TextDecoder().decode(await client.pack())),
+test('remote credentials survive storage and export/import without exposing secrets in names', async () => {
+  const credentials = await RemoteCredentials.from(connection);
+  await appStorage.credentials.add(credentials);
+  await appStorage.credentials.active.setValue(credentials);
+  const restored = await appStorage.credentials.active.getValue();
+  expect(restored).toBeInstanceOf(RemoteCredentials);
+  expect(restored?.filename).toBe(credentials.filename);
+  expect(credentials.filename).not.toContain(connection.secret);
+  expect(credentials.label).not.toContain(connection.secret);
+  const exported = await RemoteCredentials.from(
+    JSON.parse(new TextDecoder().decode(await credentials.pack())),
   );
-  expect(exported.filename).toBe(client.filename);
-  expect((await appStorage.clients.getValue())[0]?.filename).toBe(client.filename);
-  await appStorage.clients.remove(exported);
-  expect(await appStorage.clients.getValue()).toEqual([]);
+  expect(exported.filename).toBe(credentials.filename);
+  expect((await appStorage.credentials.getValue())[0]?.filename).toBe(credentials.filename);
+  await appStorage.credentials.remove(exported);
+  expect(await appStorage.credentials.getValue()).toEqual([]);
 });
 
 test('ambiguous Proxy2 exports default to Widevine and respect an explicit protocol', () => {
   const config = { host: 'https://cdm.test', secret: 'test', device_name: 'device' };
-  expect(parseRemoteConfig(config)).toMatchObject({
+  expect(parseRemoteCredentialsData(config)).toMatchObject({
     protocol: 'pywidevine',
     keySystem: 'com.widevine.alpha',
   });
-  expect(parseRemoteConfig({ ...config, protocol: 'pywidevine' })).toMatchObject({
+  expect(parseRemoteCredentialsData({ ...config, protocol: 'pywidevine' })).toMatchObject({
     keySystem: 'com.widevine.alpha',
   });
-  expect(parseRemoteConfig({ ...config, protocol: 'pyplayready' })).toMatchObject({
+  expect(parseRemoteCredentialsData({ ...config, protocol: 'pyplayready' })).toMatchObject({
     keySystem: 'com.microsoft.playready.recommendation',
   });
 });
@@ -92,7 +92,7 @@ test('Python JSON aliases retain device expectations without a fallback warning'
     deviceName: 'device',
     securityLevel: 2000,
   };
-  expect(parseRemoteConfig(config)).toMatchObject({
+  expect(parseRemoteCredentialsData(config)).toMatchObject({
     protocol: 'pyplayready',
     device: 'device',
     securityLevel: 2000,
@@ -101,7 +101,7 @@ test('Python JSON aliases retain device expectations without a fallback warning'
   expect(
     usesPywidevineFallback({ host: 'https://cdm.test', secret: 'test', deviceName: 'device' }),
   ).toBe(true);
-  const widevine = parseRemoteConfig({ ...config, securityLevel: 3, systemId: 1234 });
+  const widevine = parseRemoteCredentialsData({ ...config, securityLevel: 3, systemId: 1234 });
   expect(widevine).toMatchObject({ protocol: 'pywidevine', systemId: 1234, securityLevel: 3 });
-  expect(parseRemoteConfig(widevine)).toEqual(widevine);
+  expect(parseRemoteCredentialsData(widevine)).toEqual(widevine);
 });

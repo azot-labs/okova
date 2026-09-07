@@ -12,7 +12,7 @@ import {
 } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { exportFiles } from '../src/cli/commands/client/export-files';
+import { exportFiles } from '../src/cli/commands/credentials/export-files';
 
 vi.mock('node:fs/promises', async (importOriginal) => {
   const fs = await importOriginal<typeof import('node:fs/promises')>();
@@ -38,7 +38,7 @@ afterEach(async () => {
 });
 
 test('creates nested output directories and publishes complete files without staging leftovers', async () => {
-  const directory = join(await temporaryDirectory(), 'nested', 'client');
+  const directory = join(await temporaryDirectory(), 'nested', 'credentials');
   await exportFiles(directory, files);
   expect((await readdir(directory)).sort()).toEqual(Object.keys(files).sort());
   for (const [filename, data] of Object.entries(files)) {

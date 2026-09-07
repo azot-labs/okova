@@ -3,7 +3,7 @@ import { expect, test, onTestFinished } from 'vitest';
 import {
   fromBase64,
   toBufferSource,
-  WidevineDeviceCredentials,
+  WidevineClientCredentials,
   Widevine,
   requestMediaKeySystemAccess,
   setSupportedEngines,
@@ -21,8 +21,8 @@ test('widevine native session', async ({ skip }) => {
     return;
   }
   const credentialsData = await readFile(credentialsPath);
-  const credentials = await WidevineDeviceCredentials.from({ wvd: credentialsData });
-  const widevine = new Widevine({ deviceCredentials: credentials });
+  const credentials = await WidevineClientCredentials.from({ wvd: credentialsData });
+  const widevine = new Widevine({ clientCredentials: credentials });
   const session = widevine.createSession();
   onTestFinished(() => session.close());
 
@@ -49,14 +49,14 @@ test('widevine cdm', async ({ skip }) => {
   const initData = fromBase64(pssh).toBuffer();
   const initDataType = 'cenc';
 
-  const clientPath = process.env.VITEST_WVD_PATH;
-  if (!clientPath) {
-    skip('Set the DRM device path to enable this test');
+  const credentialsPath = process.env.VITEST_WVD_PATH;
+  if (!credentialsPath) {
+    skip('Set the DRM credential path to enable this test');
     return;
   }
-  const clientData = await readFile(clientPath);
-  const client = await Widevine.DeviceCredentials.from({ wvd: clientData });
-  const engine = new Widevine({ deviceCredentials: client });
+  const credentialsData = await readFile(credentialsPath);
+  const credentials = await Widevine.ClientCredentials.from({ wvd: credentialsData });
+  const engine = new Widevine({ clientCredentials: credentials });
 
   setSupportedEngines([engine]);
   const keySystemAccess = await requestMediaKeySystemAccess(engine.keySystem, [{}]);

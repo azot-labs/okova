@@ -2,9 +2,9 @@ import { DeleteKeys } from '../components/delete-keys';
 import { A } from '@solidjs/router';
 import { Cell } from '../components/cell';
 import {
-  useActiveClient,
+  useActiveCredentials,
   useActiveTabUrl,
-  useClients,
+  useCredentials,
   useDrmFailure,
   useRecentKeys,
   useRecentKeysByDomain,
@@ -13,7 +13,7 @@ import {
 import { Toolbar } from '../components/toolbar';
 import { Layout } from '../components/layout';
 import { Header } from '../components/header';
-import { CellImportClient } from '../components/cell-import-client';
+import { CellImportCredentials } from '../components/cell-import-credentials';
 import { NoKeys } from '../components/no-keys';
 import { KeysList } from '../components/keys-list';
 import { getRecentKeysForUrl, getWebsiteDomain, drmStages } from '@/utils/storage';
@@ -21,11 +21,11 @@ import { getRecentKeysForUrl, getWebsiteDomain, drmStages } from '@/utils/storag
 export const Dashboard = () => {
   const [failure] = useDrmFailure();
   const [settings] = useSettings();
-  const [clients] = useClients();
+  const [credentials] = useCredentials();
   const [recentKeys] = useRecentKeys();
   const [recentKeysByDomain] = useRecentKeysByDomain();
   const [activeTabUrl] = useActiveTabUrl();
-  const [activeClient] = useActiveClient();
+  const [activeCredentials] = useActiveCredentials();
   const activeFailure = createMemo(() => failure()?.url === activeTabUrl() && failure());
   const activeDomain = createMemo(() => getWebsiteDomain(activeTabUrl()));
   const activeDomainRecentKeys = createMemo(() => {
@@ -39,12 +39,12 @@ export const Dashboard = () => {
 
   return (
     <Layout>
-      <Header subtitle={activeClient()?.client.label}>Dashboard</Header>
+      <Header subtitle={activeCredentials()?.credentials.label}>Dashboard</Header>
       <div class="flex flex-col gap-3">
         <Toolbar />
 
-        <Show when={!activeClient() && clients().length === 0}>
-          <CellImportClient />
+        <Show when={!activeCredentials() && credentials().length === 0}>
+          <CellImportCredentials />
         </Show>
 
         <Show when={activeFailure()}>

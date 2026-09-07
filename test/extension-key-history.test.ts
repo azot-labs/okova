@@ -10,11 +10,11 @@ import {
 } from '../src/extension/utils/storage';
 import { fromHex, Widevine } from '../src/lib';
 import { Session, setSupportedEngines } from '../src/lib/api';
-import { WidevineDeviceCredentials } from '../src/lib/widevine/device-credentials';
+import { WidevineClientCredentials } from '../src/lib/widevine/client-credentials';
 
-// No device credentials or license server are needed to exercise the background flow.
-vi.mock('../src/lib/widevine/device-credentials', () => ({
-  WidevineDeviceCredentials: class {
+// No client credentials or license server are needed to exercise the background flow.
+vi.mock('../src/lib/widevine/client-credentials', () => ({
+  WidevineClientCredentials: class {
     async pack() {
       return new Uint8Array();
     }
@@ -230,9 +230,9 @@ test('captures keys after logging a status with spoofing disabled', async () => 
     theme: 'auto',
   } as const;
   await appStorage.settings.setValue(settings);
-  const loadClient = vi
-    .spyOn(appStorage.clients.active, 'getValue')
-    .mockResolvedValue(new WidevineDeviceCredentials(new Uint8Array()));
+  const loadCredentials = vi
+    .spyOn(appStorage.credentials.active, 'getValue')
+    .mockResolvedValue(new WidevineClientCredentials(new Uint8Array()));
   const createSession = vi.spyOn(Widevine.prototype, 'createSession');
   const generateRequest = vi.spyOn(Session.prototype, 'generateRequest').mockResolvedValue();
   vi.spyOn(Session.prototype, 'pause').mockReturnValue('{}');
@@ -252,7 +252,7 @@ test('captures keys after logging a status with spoofing disabled', async () => 
   expect(await appStorage.allKeys.getValue()).toEqual([
     { ...key, value: 'usable', createdAt: expect.any(Number) },
   ]);
-  expect(loadClient).not.toHaveBeenCalled();
+  expect(loadCredentials).not.toHaveBeenCalled();
 
   await appStorage.settings.setValue({ ...settings, spoofing: true });
   await sendMessage({ action: 'generateRequest', initDataType: 'cenc' });
@@ -273,7 +273,7 @@ test('captures keys after logging a status with spoofing disabled', async () => 
 
 test('stored captures are not relabeled as current-site results', async () => {
   await appStorage.allKeys.setValue([key]);
-  const loadClient = vi.spyOn(appStorage.clients.active, 'getValue');
+  const loadCredentials = vi.spyOn(appStorage.credentials.active, 'getValue');
   const sendMessage = startBackground();
 
   await sendMessage({
@@ -286,7 +286,7 @@ test('stored captures are not relabeled as current-site results', async () => {
   expect(await appStorage.allKeys.getValue()).toEqual([key]);
   expect((await appStorage.recentKeys.getValue()) ?? []).toEqual([]);
   expect((await appStorage.recentKeysByDomain.getValue()) ?? {}).toEqual({});
-  expect(loadClient).not.toHaveBeenCalled();
+  expect(loadCredentials).not.toHaveBeenCalled();
 });
 
 test('retains different values and content metadata for a reused KID', async () => {

@@ -5,7 +5,7 @@ import { createEffect, createSignal, onCleanup, onMount } from 'solid-js';
 import './styles.css';
 import { initializePopupHistory } from './utils/history';
 import { Dashboard } from './routes/dashboard';
-import { Clients } from './routes/clients';
+import { CredentialsPage } from './routes/credentials';
 import { Keys } from './routes/keys';
 import { Settings } from './routes/settings';
 import { useSettings, useSyncStateWithStorage } from './utils/state';
@@ -36,7 +36,7 @@ const Popup = () => {
   return (
     <Router base="/popup.html">
       <Route path="/" component={Dashboard} />
-      <Route path="/clients" component={Clients} />
+      <Route path="/credentials" component={CredentialsPage} />
       <Route path="/keys" component={Keys} />
       <Route path="/settings" component={Settings} />
     </Router>

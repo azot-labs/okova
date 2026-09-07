@@ -3,7 +3,7 @@ import { generateKeyPairSync } from 'node:crypto';
 import { expect, test, vi } from 'vitest';
 import { browser } from 'wxt/browser';
 import { appStorage } from '../src/extension/utils/storage';
-import { WidevineDeviceCredentials } from '../src/lib/widevine/device-credentials';
+import { WidevineClientCredentials } from '../src/lib/widevine/client-credentials';
 import { fromBase64, fromBuffer, toBufferSource } from '../src/lib/utils';
 import {
   ClientIdentification,
@@ -22,14 +22,14 @@ import {
 
 setupWorkerTests();
 
-const loadWidevineClient = async () => {
-  // A local RSA client keeps the restart regression runnable without device files.
+const createWidevineCredentials = async () => {
+  // Locally generated RSA credentials keep the restart regression runnable without credential files.
   const { privateKey } = generateKeyPairSync('rsa', {
     modulusLength: 2048,
     privateKeyEncoding: { type: 'pkcs1', format: 'pem' },
     publicKeyEncoding: { type: 'spki', format: 'pem' },
   });
-  const client = new WidevineDeviceCredentials(
+  const credentials = new WidevineClientCredentials(
     ClientIdentification.create({
       token: SignedDrmCertificate.encode(
         SignedDrmCertificate.create({
@@ -38,20 +38,33 @@ const loadWidevineClient = async () => {
       ).finish(),
     }),
   );
-  await client.importKey(privateKey);
-  return client;
+  await credentials.importKey(privateKey);
+  return credentials;
 };
 
 test('restores the original Widevine challenge and decrypts a license after worker termination', async () => {
-  const client = await loadWidevineClient();
-  await appStorage.clients.active.setValue(client);
+  const credentials = await createWidevineCredentials();
+  await appStorage.credentials.active.setValue(credentials);
   let send = startWorker();
   await send('generateRequest');
   const challenge = await send('license-request');
   expect(challenge).toEqual(expect.any(String));
   if (typeof challenge !== 'string') throw new Error('Missing challenge');
   // Removing the selection must not remove the credentials of a pending session.
-  await appStorage.clients.active.setValue(null);
+  await appStorage.credentials.active.setValue(null);
+  // An extension upgrade can leave a pending session with the previous field name.
+  const records = await browser.storage.session.get(null);
+  for (const [key, value] of Object.entries(records)) {
+    if (
+      key.startsWith('pending-session:') &&
+      typeof value === 'object' &&
+      value !== null &&
+      'credentials' in value
+    ) {
+      const { credentials: storedCredentials, ...record } = value;
+      await browser.storage.session.set({ [key]: { ...record, client: storedCredentials } });
+    }
+  }
   send = startWorker();
   expect(await send('license-request')).toBe(challenge);
 
@@ -75,7 +88,7 @@ test('restores the original Widevine challenge and decrypts a license after work
       ],
     }),
   ).finish();
-  const { n, e, kty } = await crypto.subtle.exportKey('jwk', client.key.forDecrypt);
+  const { n, e, kty } = await crypto.subtle.exportKey('jwk', credentials.key.forDecrypt);
   const publicKey = await crypto.subtle.importKey(
     'jwk',
     { n, e, kty },
@@ -101,7 +114,7 @@ test('restores the original Widevine challenge and decrypts a license after work
 });
 
 test('does not revive expired or explicitly closed sessions after a restart', async () => {
-  await appStorage.clients.active.setValue(await loadWidevineClient());
+  await appStorage.credentials.active.setValue(await createWidevineCredentials());
   let send = startWorker();
   await send('generateRequest', 'expired');
   await send('generateRequest', 'closed');
@@ -140,7 +153,7 @@ test.each(['rejected read', 'synchronous storage error'])(
       await appStorage.recentKeys.setValue([]);
     }
 
-    await appStorage.clients.active.setValue(await loadWidevineClient());
+    await appStorage.credentials.active.setValue(await createWidevineCredentials());
     await send('generateRequest');
     expect(await send('license-request')).toEqual(expect.any(String));
     await send('close');
@@ -152,15 +165,15 @@ test.each(['rejected read', 'synchronous storage error'])(
 test.each(['okova', 'pywidevine'] as const)(
   'restores a %s remote session without reopening or using the new selection',
   async (protocol) => {
-    const { RemoteClient } = await import('../src/extension/utils/remote-client');
-    const client = await RemoteClient.from({
+    const { RemoteCredentials } = await import('../src/lib/remote/credentials');
+    const credentials = await RemoteCredentials.from({
       protocol,
       keySystem: 'com.widevine.alpha',
       baseUrl: 'https://cdm.test',
       secret: 'test-secret',
       device: 'test-device',
     });
-    await appStorage.clients.active.setValue(client);
+    await appStorage.credentials.active.setValue(credentials);
     const calls: string[] = [];
     vi.stubGlobal(
       'fetch',
@@ -200,7 +213,7 @@ test.each(['okova', 'pywidevine'] as const)(
       await send('generateRequest');
       expect(await send('license-request')).toBe('CAESAA==');
       expect(await pendingRecords()).toHaveLength(1);
-      await appStorage.clients.active.setValue(null);
+      await appStorage.credentials.active.setValue(null);
       send = startWorker();
       expect(await send('license-request')).toBe('CAESAA==');
       expect(await send('update', 'one', { message: [8, 2] })).toMatchObject({
@@ -220,9 +233,9 @@ test.each(['okova', 'pywidevine'] as const)(
 );
 
 test('closes remote sessions that expired while the worker was stopped', async () => {
-  const { RemoteClient } = await import('../src/extension/utils/remote-client');
-  await appStorage.clients.active.setValue(
-    await RemoteClient.from({
+  const { RemoteCredentials } = await import('../src/lib/remote/credentials');
+  await appStorage.credentials.active.setValue(
+    await RemoteCredentials.from({
       protocol: 'okova',
       keySystem: 'com.widevine.alpha',
       baseUrl: 'https://cdm.test',
@@ -254,9 +267,9 @@ test('closes remote sessions that expired while the worker was stopped', async (
 });
 
 test('unreachable expired remote sessions do not delay new local sessions', async () => {
-  const { RemoteClient } = await import('../src/extension/utils/remote-client');
-  await appStorage.clients.active.setValue(
-    await RemoteClient.from({
+  const { RemoteCredentials } = await import('../src/lib/remote/credentials');
+  await appStorage.credentials.active.setValue(
+    await RemoteCredentials.from({
       protocol: 'okova',
       keySystem: 'com.widevine.alpha',
       baseUrl: 'https://cdm.test',
@@ -282,7 +295,7 @@ test('unreachable expired remote sessions do not delay new local sessions', asyn
     for (const token of ['one', 'two', 'three', 'four']) await send('generateRequest', token);
     expect(await pendingRecords()).toHaveLength(4);
     vi.setSystemTime(Date.now() + 6 * 60_000);
-    await appStorage.clients.active.setValue(await loadWidevineClient());
+    await appStorage.credentials.active.setValue(await createWidevineCredentials());
     send = startWorker();
     let isGenerated = false;
     const generated = send('generateRequest', 'local').then(() => {

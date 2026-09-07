@@ -14,7 +14,7 @@ cd examples/remote-session
 pnpm install
 ```
 
-Go to `index.js` and set your API base URL, secret and client name. The example fetches a service certificate from `LICENSE_URL`, sets it on `cdm`, then creates a session and requests keys.
+Go to `index.js` and set your API base URL, secret and credentials name. The example fetches a service certificate from `LICENSE_URL`, sets it on `cdm`, then creates a session and requests keys.
 
 Run script:
 

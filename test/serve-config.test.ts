@@ -28,7 +28,7 @@ test('only a missing implicit configuration uses defaults', async () => {
     expect(config.host).toBe('127.0.0.1');
     expect(config.public).toBe(false);
     expect(config.maxRequestBodyBytes).toBe(1024 * 1024);
-    expect(config.clients).toEqual([]);
+    expect(config.credentials).toEqual([]);
     await writeFile('okova.config.json', '{');
     await expect(loadConfig()).rejects.toThrow('Invalid server config');
   } finally {
@@ -36,7 +36,7 @@ test('only a missing implicit configuration uses defaults', async () => {
   }
 });
 
-test.each(['{', 'null', '[]', '{"port":"4000"}', '{"clients":false}'])(
+test.each(['{', 'null', '[]', '{"port":"4000"}', '{"credentials":false}'])(
   'rejects malformed or invalid config %s without changing current settings',
   async (text) => {
     const path = await setup();
@@ -49,20 +49,23 @@ test.each(['{', 'null', '[]', '{"port":"4000"}', '{"clients":false}'])(
 
 test('loading a new config resets omitted settings to defaults', async () => {
   const path = await setup();
-  await writeFile(path, JSON.stringify({ port: 1234, clients: ['test.wvd'], allowedOrigins: [] }));
+  await writeFile(
+    path,
+    JSON.stringify({ port: 1234, credentials: ['test.wvd'], allowedOrigins: [] }),
+  );
   await loadConfig(path);
   expect(config.port).toBe(1234);
   expect(config.allowedOrigins).toEqual([]);
   await writeFile(path, '{}');
   await loadConfig(path);
   expect(config.port).toBe(4000);
-  expect(config.clients).toEqual([]);
+  expect(config.credentials).toEqual([]);
   expect(config.allowedOrigins).toBeNull();
 });
 
 test.each([
   { porrt: 8080 },
-  { users: { secret: { name: 'test', clients: [], clietns: ['test.wvd'] } } },
+  { users: { secret: { name: 'test', credentials: [], clietns: ['test.wvd'] } } },
   { sessionLimits: { maxSession: 1 } },
 ])('rejects unknown configuration fields in %j', async (data) => {
   const path = await setup();
@@ -83,7 +86,7 @@ test.each([
   { allowedOrigins: ['null'] },
   { allowedOrigins: ['*'] },
   { allowedOrigins: ['https://example.com/'] },
-  { users: { '': { name: 'test', clients: [] } } },
+  { users: { '': { name: 'test', credentials: [] } } },
 ])('rejects invalid security settings %j', async (data) => {
   const path = await setup();
   await writeFile(path, JSON.stringify(data));

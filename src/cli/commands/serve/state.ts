@@ -1,11 +1,14 @@
 import { z } from 'zod';
 import { readFile } from 'node:fs/promises';
 import { basename, extname, resolve } from 'node:path';
-import { WidevineDeviceCredentials } from '../../../lib/widevine/device-credentials';
-import { PlayReadyDeviceCredentials } from '../../../lib/playready/device-credentials';
+import { WidevineClientCredentials } from '../../../lib/widevine/client-credentials';
+import { PlayReadyClientCredentials } from '../../../lib/playready/client-credentials';
 import { SessionRegistry, sessionLimitsSchema } from './session-registry';
 
-export const clients = new Map<string, WidevineDeviceCredentials | PlayReadyDeviceCredentials>();
+export const credentialCache = new Map<
+  string,
+  WidevineClientCredentials | PlayReadyClientCredentials
+>();
 
 const configSchema = z.strictObject({
   host: z.string().min(1).default('127.0.0.1'),
@@ -49,9 +52,12 @@ const configSchema = z.strictObject({
     .optional()
     .transform((origins) => origins ?? null),
   port: z.number().int().min(0).max(65535).default(4000),
-  clients: z.array(z.string().min(1)).default([]),
+  credentials: z.array(z.string().min(1)).default([]),
   users: z
-    .record(z.string().min(1), z.strictObject({ name: z.string(), clients: z.array(z.string()) }))
+    .record(
+      z.string().min(1),
+      z.strictObject({ name: z.string(), credentials: z.array(z.string()) }),
+    )
     .default({}),
   forcePrivacyMode: z.boolean().default(true),
   sessionLimits: sessionLimitsSchema.strict().prefault({}),
@@ -60,10 +66,10 @@ const configSchema = z.strictObject({
 export const config = configSchema.parse({});
 export const sessions = new SessionRegistry(() => config.sessionLimits);
 
-// Aliases must identify exactly one configured device, regardless of list order.
-export const resolveClient = (identifier: string) => {
+// Aliases must identify exactly one configured credential file, regardless of list order.
+export const resolveCredentials = (identifier: string) => {
   const paths = new Set(
-    config.clients
+    config.credentials
       .filter(
         (path) =>
           identifier === path ||

@@ -6,7 +6,7 @@ import { EccKey } from '../src/lib/crypto/ecc-key';
 import { Key } from '../src/lib/playready/key';
 import { fromBase64, fromHex } from '../src/lib/utils';
 import { PlayReadySession } from '../src/lib/playready/session';
-import { WidevineDeviceCredentials } from '../src/lib/widevine/device-credentials';
+import { WidevineClientCredentials } from '../src/lib/widevine/client-credentials';
 import { Widevine } from '../src/lib/widevine/engine';
 import {
   ClientIdentification,
@@ -19,7 +19,7 @@ const originalConfig = structuredClone(config);
 
 const KEY_ID = '00112233445566778899aabbccddeeff';
 const KEY = 'ffeeddccbbaa99887766554433221100';
-const credentials = new WidevineDeviceCredentials(
+const credentials = new WidevineClientCredentials(
   ClientIdentification.create({
     token: SignedDrmCertificate.encode(
       SignedDrmCertificate.create({
@@ -30,7 +30,7 @@ const credentials = new WidevineDeviceCredentials(
 );
 
 const createSession = (kind: string) => {
-  const engine = new Widevine({ deviceCredentials: credentials });
+  const engine = new Widevine({ clientCredentials: credentials });
   const native =
     kind === 'widevine'
       ? engine.resumeSession(
@@ -79,7 +79,7 @@ for (const kind of ['widevine', 'playready']) {
     '%s releases a ' + kind + ' session and rejects subsequent HTTP operations',
     async (operation) => {
       const { session, native, engine } = createSession(kind);
-      config.users = { owner: { name: 'owner', clients: [] } };
+      config.users = { owner: { name: 'owner', credentials: [] } };
       const sessionKey = `owner:${session.sessionId}`;
       sessions.set(sessionKey, session);
       const headers = { 'x-secret-key': 'owner', 'content-type': 'application/json' };
