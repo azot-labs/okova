@@ -153,37 +153,43 @@ test('limits declared and actual body bytes before session creation', async () =
   expect(sessions.size).toBe(1);
 });
 
-test('bounds chunked requests through the Node HTTP adapter', async () => {
-  config.maxRequestBodyBytes = 2;
-  const server = serve({ fetch: app.fetch, hostname: '127.0.0.1', port: 0 });
-  try {
-    if (!server.listening) await once(server, 'listening');
-    const address = server.address();
-    if (!address || typeof address === 'string') throw new Error('Missing TCP address');
-    const status = await new Promise<number | undefined>((resolve, reject) => {
-      const req = request(
-        {
-          hostname: '127.0.0.1',
-          port: address.port,
-          path: '/sessions',
-          method: 'POST',
-          headers: { 'content-type': 'application/json' },
-        },
-        (res) => {
-          res.resume();
-          res.on('end', () => resolve(res.statusCode));
-        },
-      );
-      req.on('error', reject);
-      req.write('{}');
-      req.end(' ');
-    });
-    expect(status).toBe(413);
-    expect(sessions.size).toBe(0);
-  } finally {
-    await new Promise<void>((resolve) => server.close(() => resolve()));
-  }
-});
+test.each([
+  { suffix: '', status: 200 },
+  { suffix: ' ', status: 413 },
+])(
+  'handles chunked bodies through the Node HTTP adapter: %j',
+  async ({ suffix, status: expectedStatus }) => {
+    config.maxRequestBodyBytes = 2;
+    const server = serve({ fetch: app.fetch, hostname: '127.0.0.1', port: 0 });
+    try {
+      if (!server.listening) await once(server, 'listening');
+      const address = server.address();
+      if (!address || typeof address === 'string') throw new Error('Missing TCP address');
+      const status = await new Promise<number | undefined>((resolve, reject) => {
+        const req = request(
+          {
+            hostname: '127.0.0.1',
+            port: address.port,
+            path: '/sessions',
+            method: 'POST',
+            headers: { 'content-type': 'application/json' },
+          },
+          (res) => {
+            res.resume();
+            res.on('end', () => resolve(res.statusCode));
+          },
+        );
+        req.on('error', reject);
+        req.write('{}');
+        req.end(suffix);
+      });
+      expect(status).toBe(expectedStatus);
+      expect(sessions.size).toBe(expectedStatus === 200 ? 1 : 0);
+    } finally {
+      await new Promise<void>((resolve) => server.close(() => resolve()));
+    }
+  },
+);
 
 test.each(['', '!', 'AQ', 'AQ=', 'AR==', 'AQ==\n', 'AQ==garbage', 'AA-_', 'AA==='])(
   'rejects invalid base64 %j before device operations',
@@ -241,6 +247,85 @@ test('explicit hosts replace defaults and forwarded headers cannot bypass the bo
           'x-forwarded-host': 'api.example:4000',
           forwarded: 'host=api.example:4000',
         },
+        body: '{}',
+      })
+    ).status,
+  ).toBe(403);
+});
+
+test.each(['::2', 'fe80::1', '2001:DB8:0:0:0:0:0:1', '::ffff:192.0.2.1'])(
+  'accepts the configured IPv6 bind address %s',
+  async (host) => {
+    config.host = host;
+    const url = new URL(`http://[${host}]:4000/sessions`);
+    expect(
+      (
+        await app.request(url.href, {
+          method: 'POST',
+          headers: { host: url.host, 'content-type': 'application/json' },
+          body: '{}',
+        })
+      ).status,
+    ).toBe(200);
+  },
+);
+
+test.each(['close', 'delete'])(
+  '%s completes without waiting for an unused body and releases its request slot',
+  async (operation) => {
+    const opened = await post();
+    const { id } = await opened.json();
+    config.sessionLimits.maxConcurrentRequests = 1;
+    const server = serve({ fetch: app.fetch, hostname: '127.0.0.1', port: 0 });
+    let upload: ReturnType<typeof request> | undefined;
+    try {
+      if (!server.listening) await once(server, 'listening');
+      const address = server.address();
+      if (!address || typeof address === 'string') throw new Error('Missing TCP address');
+      const status = await new Promise<number | undefined>((resolve, reject) => {
+        upload = request(
+          {
+            hostname: '127.0.0.1',
+            port: address.port,
+            path: `/sessions/${id}${operation === 'close' ? '/close' : ''}`,
+            method: operation === 'close' ? 'POST' : 'DELETE',
+            headers: { 'content-type': 'application/json', 'transfer-encoding': 'chunked' },
+          },
+          (response) => {
+            response.resume();
+            response.on('end', () => resolve(response.statusCode));
+          },
+        );
+        upload.on('error', reject);
+        upload.setTimeout(1000, () => upload?.destroy(new Error('Handler waited for unused body')));
+        upload.write('{');
+      });
+      expect(status).toBe(200);
+      expect(sessions.size).toBe(0);
+      expect((await post()).status).toBe(200);
+    } finally {
+      upload?.destroy();
+      await new Promise<void>((resolve) => server.close(() => resolve()));
+    }
+  },
+);
+
+test.each([
+  { configured: 'CDM.Example.COM', hostname: 'cdm.example.com' },
+  { configured: 'LOCALHOST', hostname: '127.0.0.1' },
+])('normalizes the configured DNS host $configured', async ({ configured, hostname }) => {
+  config.host = configured;
+  const response = await app.request(`http://${hostname}:4000/sessions`, {
+    method: 'POST',
+    headers: { host: `${hostname}:4000`, 'content-type': 'application/json' },
+    body: '{}',
+  });
+  expect(response.status).toBe(200);
+  expect(
+    (
+      await app.request('http://untrusted.example:4000/sessions', {
+        method: 'POST',
+        headers: { host: 'untrusted.example:4000', 'content-type': 'application/json' },
         body: '{}',
       })
     ).status,

@@ -213,7 +213,8 @@ Start a local API with your device file and a secret of your choice:
 okova serve --client client.wvd --secret 'replace-with-your-secret'
 ```
 
-The API is available at `http://127.0.0.1:4000`. Create a session:
+The API uses the host and port from `okova.config.json`, defaulting to
+`http://127.0.0.1:4000`. Create a session using your server address:
 
 ```sh
 curl http://127.0.0.1:4000/sessions \

@@ -1,3 +1,4 @@
+import { isIP } from 'node:net';
 import { createMiddleware } from 'hono/factory';
 import { cors } from 'hono/cors';
 import { config } from './state';
@@ -5,7 +6,10 @@ import { config } from './state';
 // Validate the authority before comparing Origin, so rebinding cannot supply both.
 export const requestBoundary = createMiddleware(async (c, next) => {
   const url = new URL(c.req.url);
-  const hostname = config.host === '::1' ? '[::1]' : config.host;
+  const hostname =
+    isIP(config.host) === 6
+      ? new URL(`http://[${config.host}]`).hostname
+      : config.host.toLowerCase();
   const hosts = config.allowedHosts.length
     ? config.allowedHosts
     : ['127.0.0.1', '[::1]', 'localhost'].includes(hostname)
@@ -31,10 +35,10 @@ export const requestBoundary = createMiddleware(async (c, next) => {
   })(c, next);
 });
 
+// Attach only to JSON routes; close and delete must not wait for unused uploads.
 // Count actual bytes, including chunked bodies, before JSON parsing or device work.
 export const requestBody = createMiddleware(async (c, next) => {
-  const needsJson = c.req.method === 'POST' && !c.req.path.endsWith('/close');
-  if (needsJson && !/^application\/json(?:\s*;|$)/i.test(c.req.header('content-type') ?? '')) {
+  if (!/^application\/json(?:\s*;|$)/i.test(c.req.header('content-type') ?? '')) {
     return c.json({ error: 'Content-Type must be application/json' }, 415);
   }
   const contentEncoding = c.req.header('content-encoding');

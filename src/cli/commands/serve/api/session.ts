@@ -40,8 +40,6 @@ app.use(async (c, next) => {
   }
 });
 
-app.use(requestBody);
-
 const reserveSession = createMiddleware(async (c, next) => {
   const release = sessions.reserve();
   if (!release) return c.json({ error: 'Session capacity reached' }, 503);
@@ -80,6 +78,7 @@ const exclusiveSessionMutation = createMiddleware(async (c, next) => {
 
 app.post(
   '/',
+  requestBody,
   reserveSession,
   zValidator(
     'json',
@@ -173,6 +172,7 @@ app.post(
 
 app.post(
   '/:id/generate-request',
+  requestBody,
   exclusiveSessionMutation,
   zValidator('param', z.object({ id: z.string() })),
   zValidator(
@@ -266,6 +266,7 @@ app.post(
 
 app.post(
   '/:id/update',
+  requestBody,
   exclusiveSessionMutation,
   zValidator('param', z.object({ id: z.string() })),
   zValidator('json', z.object({ response: base64 })),
