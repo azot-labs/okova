@@ -1,3 +1,4 @@
+import { popupHistory } from './history';
 import {
   appStorage,
   StoredClient,
@@ -81,12 +82,14 @@ export const useSyncStateWithStorage = () => {
       const failure = await failureStorage.getValue();
       if (!isDisposed && !hasUpdate) setDrmFailure(failure);
     });
-    appStorage.recentKeys.getValue().then((recentKeys) => recentKeys && setRecentKeys(recentKeys));
-    appStorage.recentKeys.watch((newKeys) => setRecentKeys(newKeys || []));
-    appStorage.recentKeysByDomain
+    popupHistory.recentKeys
+      .getValue()
+      .then((recentKeys) => recentKeys && setRecentKeys(recentKeys));
+    popupHistory.recentKeys.watch((newKeys) => setRecentKeys(newKeys || []));
+    popupHistory.recentKeysByDomain
       .getValue()
       .then((recentKeysByDomain) => setRecentKeysByDomain(recentKeysByDomain || {}));
-    appStorage.recentKeysByDomain.watch((newKeysByDomain) =>
+    popupHistory.recentKeysByDomain.watch((newKeysByDomain) =>
       setRecentKeysByDomain(newKeysByDomain || {}),
     );
   });

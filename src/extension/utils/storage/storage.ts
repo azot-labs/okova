@@ -1,4 +1,4 @@
-import { storage } from '#imports';
+import { browser, storage } from '#imports';
 import { z } from 'zod';
 import { remoteConfigSchema } from '@okova/lib/remote/config';
 import { RemoteClient } from '../remote-client';
@@ -36,61 +36,6 @@ const sameKeyRecord = (left: KeyInfo, right: KeyInfo) =>
   left.url === right.url &&
   left.pssh === right.pssh &&
   ((!isCapturedKey(left) && !isCapturedKey(right)) || left.value === right.value);
-
-// Read all three stores under the writer lock before showing the confirmation.
-export const prepareKeyDeletion = (scope: KeyDeletionScope) =>
-  navigator.locks.request('okova:key-history', async () => {
-    const [history, recent, domains] = await Promise.all([
-      appStorage.allKeys.getValue(),
-      appStorage.recentKeys.getValue(),
-      appStorage.recentKeysByDomain.getValue(),
-    ]);
-    const records = [
-      ...(history ?? []),
-      ...(recent ?? []),
-      ...Object.values(domains ?? {}).flat(),
-    ].filter((key) => {
-      switch (scope.kind) {
-        case 'all':
-          return true;
-        case 'site':
-          return getWebsiteDomain(key.url) === scope.domain;
-        case 'selected':
-          return scope.records.some((record) => sameKeyRecord(key, record));
-      }
-    });
-    const unique: KeyInfo[] = [];
-    for (const record of records) {
-      if (!unique.some((key) => sameKeyRecord(key, record))) unique.push(record);
-    }
-    return { count: unique.length, tokens: [...new Set(records.map(keyRecordToken))] };
-  });
-
-export const deleteKeySnapshot = (tokens: string[]) =>
-  mutateKeyHistory(async () => {
-    const targets = new Set(tokens);
-    const keep = (key: KeyInfo) => !targets.has(keyRecordToken(key));
-    const [history, recent, domains] = await Promise.all([
-      appStorage.allKeys.getValue(),
-      appStorage.recentKeys.getValue(),
-      appStorage.recentKeysByDomain.getValue(),
-    ]);
-    await storage.setItems([
-      { key: appStorage.allKeys.raw.key, value: JSON.stringify((history ?? []).filter(keep)) },
-      { key: appStorage.recentKeys.key, value: JSON.stringify((recent ?? []).filter(keep)) },
-      {
-        key: appStorage.recentKeysByDomain.raw.key,
-        value: JSON.stringify(
-          Object.fromEntries(
-            Object.entries(domains ?? {}).map(([domain, records]) => [
-              domain,
-              records.filter(keep),
-            ]),
-          ),
-        ),
-      },
-    ]);
-  });
 
 export const drmStages = {
   setup: 'Request setup',
@@ -200,13 +145,6 @@ export const fromClientToInfo = async (client: Client): Promise<ClientInfo> => {
   const data = fromBuffer(await client.pack()).toBase64();
   return { type, data };
 };
-
-// A shared browser lock serializes background and popup writes, including clears.
-// Call raw setters inside the lock to avoid acquiring the same lock recursively.
-const mutateKeyHistory = (mutation: () => Promise<void>) =>
-  navigator.locks.request('okova:key-history', mutation);
-
-const recentKeys = asJson(storage.defineItem<KeyInfo[]>('local:recent-keys'));
 
 const clientRegistrySchema = z.object({
   clients: z.array(z.object({ id: z.string(), info: clientInfoSchema })),
@@ -356,117 +294,260 @@ const clientStorage = {
   },
 };
 
+type PrivateSession = { generation: string; windowIds: number[] };
+const privateSession = storage.defineItem<PrivateSession>('session:incognito:history-session');
+const PRIVATE_HISTORY_LOCK = 'okova:incognito-key-history';
+const PRIVATE_HISTORY_KEYS = [
+  'session:incognito:all-keys',
+  'session:incognito:recent-keys',
+  'session:incognito:recent-keys-by-domain',
+] as const;
+
+// Queue the observation immediately, before awaiting the window snapshot. Window events,
+// capture binding, and writes must observe session transitions in the same lock order.
+const withPrivateSession = <T>(operation: (session: PrivateSession | null) => Promise<T>) => {
+  const observedSession = privateSession.getValue();
+  const windows = browser.windows.getAll();
+  return navigator.locks.request(PRIVATE_HISTORY_LOCK, async () => {
+    const observedGeneration = (await observedSession)?.generation;
+    const previous = await privateSession.getValue();
+    // Another extension context may have advanced the generation before this lock.
+    // Its records cannot be cleared using a window snapshot from the old generation.
+    const snapshot = await windows;
+    const currentWindows =
+      previous?.generation === observedGeneration ? snapshot : await browser.windows.getAll();
+    const windowIds = currentWindows
+      .filter((window) => window.incognito)
+      .flatMap((window) => (window.id === undefined ? [] : [window.id]));
+    const isSameSession = previous?.windowIds.some((id) => windowIds.includes(id));
+    let session = previous;
+    if (!isSameSession) {
+      // Only this generation can own the shared history keys while the lock is held.
+      await storage.removeItems([...PRIVATE_HISTORY_KEYS]);
+      session = windowIds.length ? { generation: crypto.randomUUID(), windowIds } : null;
+    } else if (session) {
+      session = { ...session, windowIds };
+    }
+    if (session) await privateSession.setValue(session);
+    else await privateSession.removeValue();
+    return operation(session);
+  });
+};
+
+// Both contexts share extension storage, so private records need their own session keys.
+const createKeyHistory = (isIncognito: boolean, generation?: string) => {
+  const prefix = isIncognito ? 'session:incognito:' : 'local:';
+  const lockName = isIncognito ? PRIVATE_HISTORY_LOCK : 'okova:key-history';
+  const mutateKeyHistory = (mutation: () => Promise<void>) => {
+    if (!isIncognito) return navigator.locks.request(lockName, mutation);
+    const expectedGeneration =
+      generation === undefined
+        ? withPrivateSession(async (session) => session?.generation)
+        : Promise.resolve(generation);
+    return withPrivateSession(async (session) => {
+      if (!session || session.generation !== (await expectedGeneration)) return;
+      await mutation();
+    });
+  };
+  const recentKeys = asJson(storage.defineItem<KeyInfo[]>(`${prefix}recent-keys`));
+
+  // Read all three stores under the writer lock before showing the confirmation.
+  const prepareKeyDeletion = (scope: KeyDeletionScope) =>
+    navigator.locks.request(lockName, async () => {
+      const [history, recent, domains] = await Promise.all([
+        keyHistory.allKeys.getValue(),
+        keyHistory.recentKeys.getValue(),
+        keyHistory.recentKeysByDomain.getValue(),
+      ]);
+      const records = [
+        ...(history ?? []),
+        ...(recent ?? []),
+        ...Object.values(domains ?? {}).flat(),
+      ].filter((key) => {
+        switch (scope.kind) {
+          case 'all':
+            return true;
+          case 'site':
+            return getWebsiteDomain(key.url) === scope.domain;
+          case 'selected':
+            return scope.records.some((record) => sameKeyRecord(key, record));
+        }
+      });
+      const unique: KeyInfo[] = [];
+      for (const record of records) {
+        if (!unique.some((key) => sameKeyRecord(key, record))) unique.push(record);
+      }
+      return { count: unique.length, tokens: [...new Set(records.map(keyRecordToken))] };
+    });
+
+  const deleteKeySnapshot = (tokens: string[]) =>
+    mutateKeyHistory(async () => {
+      const targets = new Set(tokens);
+      const keep = (key: KeyInfo) => !targets.has(keyRecordToken(key));
+      const [history, recent, domains] = await Promise.all([
+        keyHistory.allKeys.getValue(),
+        keyHistory.recentKeys.getValue(),
+        keyHistory.recentKeysByDomain.getValue(),
+      ]);
+      await storage.setItems([
+        { key: keyHistory.allKeys.raw.key, value: JSON.stringify((history ?? []).filter(keep)) },
+        { key: keyHistory.recentKeys.key, value: JSON.stringify((recent ?? []).filter(keep)) },
+        {
+          key: keyHistory.recentKeysByDomain.raw.key,
+          value: JSON.stringify(
+            Object.fromEntries(
+              Object.entries(domains ?? {}).map(([domain, records]) => [
+                domain,
+                records.filter(keep),
+              ]),
+            ),
+          ),
+        },
+      ]);
+    });
+
+  const keyHistory = {
+    prepareKeyDeletion,
+    deleteKeySnapshot,
+
+    recentKeys: {
+      ...recentKeys,
+      setValue: (keys: KeyInfo[]) => mutateKeyHistory(() => recentKeys.setValue(retainKeys(keys))),
+      setForUrl: (url: string | undefined, keys: KeyInfo[]) =>
+        mutateKeyHistory(async () => {
+          const domain = getWebsiteDomain(url);
+          const items = [{ key: recentKeys.key, value: JSON.stringify(retainKeys(keys)) }];
+          if (domain) {
+            const domains = (await keyHistory.recentKeysByDomain.getValue()) ?? {};
+            items.push({
+              key: keyHistory.recentKeysByDomain.raw.key,
+              value: JSON.stringify(retainDomains({ ...domains, [domain]: keys })),
+            });
+          }
+          await storage.setItems(items);
+        }),
+    },
+    recentKeysByDomain: {
+      raw: asJson(storage.defineItem<RecentKeysByDomain>(`${prefix}recent-keys-by-domain`)),
+      setValue: (keys: RecentKeysByDomain) =>
+        mutateKeyHistory(() => keyHistory.recentKeysByDomain.raw.setValue(retainDomains(keys))),
+      getValue: async () => {
+        return keyHistory.recentKeysByDomain.raw.getValue();
+      },
+      watch: (
+        callback: (
+          newValue: RecentKeysByDomain | null,
+          oldValue: RecentKeysByDomain | null,
+        ) => void,
+      ) => {
+        return keyHistory.recentKeysByDomain.raw.watch(callback);
+      },
+      clear: () => mutateKeyHistory(() => keyHistory.recentKeysByDomain.raw.setValue({})),
+      setForUrl: async (url: string | undefined, keys: KeyInfo[]) => {
+        const domain = getWebsiteDomain(url);
+        if (!domain) return;
+
+        await mutateKeyHistory(async () => {
+          const keysByDomain = (await keyHistory.recentKeysByDomain.getValue()) || {};
+          await keyHistory.recentKeysByDomain.raw.setValue(
+            retainDomains({ ...keysByDomain, [domain]: keys }),
+          );
+        });
+      },
+    },
+    allKeys: {
+      raw: asJson(storage.defineItem<KeyInfo[]>(`${prefix}all-keys`)),
+      setValue: (keys: KeyInfo[]) =>
+        mutateKeyHistory(() => keyHistory.allKeys.raw.setValue(retainKeys(keys))),
+      getValue: async () => {
+        return keyHistory.allKeys.raw.getValue();
+      },
+      clear: () =>
+        mutateKeyHistory(async () => {
+          await keyHistory.allKeys.raw.setValue([]);
+          await recentKeys.setValue([]);
+          await keyHistory.recentKeysByDomain.raw.setValue({});
+        }),
+      add: (...newKeys: KeyInfo[]) =>
+        mutateKeyHistory(async () => {
+          const keys = (await keyHistory.allKeys.getValue()) || [];
+          for (const newKey of newKeys) {
+            const index = keys.findIndex(
+              (key) =>
+                key.id === newKey.id &&
+                (!isCapturedKey(key) ||
+                  !isCapturedKey(newKey) ||
+                  (key.value === newKey.value &&
+                    key.pssh === newKey.pssh &&
+                    key.url === newKey.url)),
+            );
+            if (index === -1) {
+              keys.push(newKey);
+            } else if (!isCapturedKey(keys[index]!) && isCapturedKey(newKey)) {
+              keys[index] = newKey;
+            }
+          }
+          await keyHistory.allKeys.raw.setValue(retainKeys(keys));
+        }),
+      remove: (key: KeyInfo) =>
+        mutateKeyHistory(async () => {
+          // Status values can change in recent caches while history retains the original.
+          // Captured keys still require an exact value match; timestamps may differ.
+          const keepRecord = (storedKey: KeyInfo) =>
+            storedKey.id !== key.id ||
+            ((isCapturedKey(storedKey) || isCapturedKey(key)) && storedKey.value !== key.value) ||
+            storedKey.pssh !== key.pssh ||
+            storedKey.url !== key.url;
+          const [keys, recent, domains] = await Promise.all([
+            keyHistory.allKeys.getValue(),
+            recentKeys.getValue(),
+            keyHistory.recentKeysByDomain.getValue(),
+          ]);
+          await storage.setItems([
+            {
+              key: keyHistory.allKeys.raw.key,
+              value: JSON.stringify((keys ?? []).filter(keepRecord)),
+            },
+            { key: recentKeys.key, value: JSON.stringify((recent ?? []).filter(keepRecord)) },
+            {
+              key: keyHistory.recentKeysByDomain.raw.key,
+              value: JSON.stringify(
+                Object.fromEntries(
+                  Object.entries(domains ?? {}).map(([domain, records]) => [
+                    domain,
+                    records.filter(keepRecord),
+                  ]),
+                ),
+              ),
+            },
+          ]);
+        }),
+    },
+  };
+
+  return keyHistory;
+};
+
+export const regularHistory = createKeyHistory(false);
+export const privateHistory = createKeyHistory(true);
+// Bind before asynchronous capture work, so an old request cannot join a replacement session.
+export const getKeyHistory = async (isIncognito: boolean, windowId?: number) => {
+  if (!isIncognito) return regularHistory;
+  return withPrivateSession(async (session) =>
+    createKeyHistory(
+      true,
+      session && (windowId === undefined || session.windowIds.includes(windowId))
+        ? session.generation
+        : crypto.randomUUID(),
+    ),
+  );
+};
+
+export const clearClosedPrivateHistory = () => withPrivateSession(async () => {});
+
+export const { prepareKeyDeletion, deleteKeySnapshot } = regularHistory;
 export const appStorage = {
   settings: settingsStorage,
-
-  recentKeys: {
-    ...recentKeys,
-    setValue: (keys: KeyInfo[]) => mutateKeyHistory(() => recentKeys.setValue(retainKeys(keys))),
-    setForUrl: (url: string | undefined, keys: KeyInfo[]) =>
-      mutateKeyHistory(async () => {
-        const domain = getWebsiteDomain(url);
-        const items = [{ key: recentKeys.key, value: JSON.stringify(retainKeys(keys)) }];
-        if (domain) {
-          const domains = (await appStorage.recentKeysByDomain.getValue()) ?? {};
-          items.push({
-            key: appStorage.recentKeysByDomain.raw.key,
-            value: JSON.stringify(retainDomains({ ...domains, [domain]: keys })),
-          });
-        }
-        await storage.setItems(items);
-      }),
-  },
-  recentKeysByDomain: {
-    raw: asJson(storage.defineItem<RecentKeysByDomain>('local:recent-keys-by-domain')),
-    setValue: (keys: RecentKeysByDomain) =>
-      mutateKeyHistory(() => appStorage.recentKeysByDomain.raw.setValue(retainDomains(keys))),
-    getValue: async () => {
-      return appStorage.recentKeysByDomain.raw.getValue();
-    },
-    watch: (
-      callback: (newValue: RecentKeysByDomain | null, oldValue: RecentKeysByDomain | null) => void,
-    ) => {
-      return appStorage.recentKeysByDomain.raw.watch(callback);
-    },
-    clear: () => mutateKeyHistory(() => appStorage.recentKeysByDomain.raw.setValue({})),
-    setForUrl: async (url: string | undefined, keys: KeyInfo[]) => {
-      const domain = getWebsiteDomain(url);
-      if (!domain) return;
-
-      await mutateKeyHistory(async () => {
-        const keysByDomain = (await appStorage.recentKeysByDomain.getValue()) || {};
-        await appStorage.recentKeysByDomain.raw.setValue(
-          retainDomains({ ...keysByDomain, [domain]: keys }),
-        );
-      });
-    },
-  },
-  allKeys: {
-    raw: asJson(storage.defineItem<KeyInfo[]>('local:all-keys')),
-    setValue: (keys: KeyInfo[]) =>
-      mutateKeyHistory(() => appStorage.allKeys.raw.setValue(retainKeys(keys))),
-    getValue: async () => {
-      return appStorage.allKeys.raw.getValue();
-    },
-    clear: () =>
-      mutateKeyHistory(async () => {
-        await appStorage.allKeys.raw.setValue([]);
-        await recentKeys.setValue([]);
-        await appStorage.recentKeysByDomain.raw.setValue({});
-      }),
-    add: (...newKeys: KeyInfo[]) =>
-      mutateKeyHistory(async () => {
-        const keys = (await appStorage.allKeys.getValue()) || [];
-        for (const newKey of newKeys) {
-          const index = keys.findIndex(
-            (key) =>
-              key.id === newKey.id &&
-              (!isCapturedKey(key) ||
-                !isCapturedKey(newKey) ||
-                (key.value === newKey.value && key.pssh === newKey.pssh && key.url === newKey.url)),
-          );
-          if (index === -1) {
-            keys.push(newKey);
-          } else if (!isCapturedKey(keys[index]!) && isCapturedKey(newKey)) {
-            keys[index] = newKey;
-          }
-        }
-        await appStorage.allKeys.raw.setValue(retainKeys(keys));
-      }),
-    remove: (key: KeyInfo) =>
-      mutateKeyHistory(async () => {
-        // Status values can change in recent caches while history retains the original.
-        // Captured keys still require an exact value match; timestamps may differ.
-        const keepRecord = (storedKey: KeyInfo) =>
-          storedKey.id !== key.id ||
-          ((isCapturedKey(storedKey) || isCapturedKey(key)) && storedKey.value !== key.value) ||
-          storedKey.pssh !== key.pssh ||
-          storedKey.url !== key.url;
-        const [keys, recent, domains] = await Promise.all([
-          appStorage.allKeys.getValue(),
-          recentKeys.getValue(),
-          appStorage.recentKeysByDomain.getValue(),
-        ]);
-        await storage.setItems([
-          {
-            key: appStorage.allKeys.raw.key,
-            value: JSON.stringify((keys ?? []).filter(keepRecord)),
-          },
-          { key: recentKeys.key, value: JSON.stringify((recent ?? []).filter(keepRecord)) },
-          {
-            key: appStorage.recentKeysByDomain.raw.key,
-            value: JSON.stringify(
-              Object.fromEntries(
-                Object.entries(domains ?? {}).map(([domain, records]) => [
-                  domain,
-                  records.filter(keepRecord),
-                ]),
-              ),
-            ),
-          },
-        ]);
-      }),
-  },
-
+  ...regularHistory,
   clients: clientStorage,
 };

@@ -1,10 +1,13 @@
+import { popupHistory } from '../utils/history';
 import { createSignal, onMount, Show } from 'solid-js';
 import { TbOutlineTrash } from 'solid-icons/tb';
-import { deleteKeySnapshot, prepareKeyDeletion, type KeyDeletionScope } from '@/utils/storage';
+import { type KeyDeletionScope } from '@/utils/storage';
 import { Portal } from 'solid-js/web';
 import { Cell } from './cell';
 
-type Deletion = Awaited<ReturnType<typeof prepareKeyDeletion>> & { description: string };
+type Deletion = Awaited<ReturnType<typeof popupHistory.prepareKeyDeletion>> & {
+  description: string;
+};
 
 export const DeleteKeys = (props: {
   scope: KeyDeletionScope;
@@ -23,7 +26,7 @@ export const DeleteKeys = (props: {
     setError(undefined);
     const scope = props.scope;
     try {
-      const snapshot = await prepareKeyDeletion(scope);
+      const snapshot = await popupHistory.prepareKeyDeletion(scope);
       const description =
         scope.kind === 'site'
           ? `All records for ${scope.domain}, including www.${scope.domain}. Other subdomains are excluded.`
@@ -44,7 +47,7 @@ export const DeleteKeys = (props: {
     setIsBusy(true);
     setError(undefined);
     try {
-      await deleteKeySnapshot(snapshot.tokens);
+      await popupHistory.deleteKeySnapshot(snapshot.tokens);
       setPending(null);
       props.onDeleted?.();
     } catch {

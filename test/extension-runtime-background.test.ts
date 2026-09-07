@@ -2,7 +2,12 @@ import { afterEach, beforeEach, expect, test, vi } from 'vitest';
 import { browser, type Browser } from 'wxt/browser';
 import { fakeBrowser } from 'wxt/testing/fake-browser';
 import { getCaptureUrl } from '../src/extension/utils/capture-url';
-import { appStorage, defaultSettings, getRecentKeysForUrl } from '../src/extension/utils/storage';
+import {
+  appStorage,
+  defaultSettings,
+  getRecentKeysForUrl,
+  privateHistory,
+} from '../src/extension/utils/storage';
 import background from '../src/extension/entrypoints/background';
 import { createPsshBox, psshBoxToBase64, PSSH_SYSTEM_IDS } from '../src/lib/pssh';
 
@@ -160,4 +165,128 @@ test.each([
   expect(
     getRecentKeysForUrl(expectedUrl, await appStorage.recentKeysByDomain.getValue(), []),
   ).toEqual(history);
+});
+
+test.each(['keystatuseschange', 'update'])(
+  'routes private %s captures using sender metadata',
+  async (action) => {
+    vi.spyOn(browser.windows, 'getAll').mockImplementation(async () => [
+      {
+        id: 1,
+        incognito: true,
+        focused: true,
+        alwaysOnTop: false,
+      },
+    ]);
+    await appStorage.settings.setValue(defaultSettings);
+    const localBefore = await browser.storage.local.get(null);
+    const send = start();
+    const license = new TextEncoder().encode(
+      JSON.stringify({
+        keys: [{ kty: 'oct', kid: 'AAAAAAAAAAAAAAAAAAAAAA', k: 'AQEBAQEBAQEBAQEBAQEBAQ' }],
+      }),
+    );
+    const message = {
+      action,
+      keySystem: 'org.w3.clearkey',
+      initData: '',
+      message: Object.fromEntries(license.entries()),
+      keyStatuses: { AAAAAAAAAAAAAAAAAAAAAA: 'usable' },
+      incognito: false,
+    };
+    await send(message, {
+      tab: { ...tab, incognito: true, url: 'https://example.com/private' },
+      url: 'https://example.com/private',
+      frameId: 0,
+    });
+    expect(await privateHistory.allKeys.getValue()).toEqual([
+      expect.objectContaining({ url: 'https://example.com/private' }),
+    ]);
+    expect(await privateHistory.recentKeys.getValue()).toEqual(
+      await privateHistory.allKeys.getValue(),
+    );
+    expect(await browser.storage.local.get(null)).toEqual(localBefore);
+    expect(await appStorage.allKeys.getValue()).toBeNull();
+  },
+);
+
+test('clears private history on the last window removal', async () => {
+  const windows = vi
+    .spyOn(browser.windows, 'getAll')
+    .mockImplementation(async () => [
+      { id: 1, incognito: true, focused: true, alwaysOnTop: false },
+    ]);
+  const onRemoved = vi.spyOn(browser.windows.onRemoved, 'addListener');
+  start();
+  await privateHistory.allKeys.add({
+    id: widevineId,
+    value: 'usable',
+    url: 'https://example.com/private',
+    pssh: '',
+    createdAt: 1,
+  });
+  windows.mockImplementation(async () => []);
+  onRemoved.mock.calls[0]![0](1);
+  await expect.poll(() => privateHistory.allKeys.getValue()).toBeNull();
+});
+
+test('clears the closed private session when a replacement window opens during a history write', async () => {
+  const privateWindow = { id: 1, incognito: true, focused: true, alwaysOnTop: false };
+  const windows = vi
+    .spyOn(browser.windows, 'getAll')
+    .mockImplementation(async () => [privateWindow]);
+  const onRemoved = vi.spyOn(browser.windows.onRemoved, 'addListener');
+  start();
+  const key = {
+    id: widevineId,
+    value: 'usable',
+    url: 'https://example.com/private',
+    pssh: '',
+    createdAt: 1,
+  };
+  await appStorage.allKeys.add(key);
+  await privateHistory.recentKeys.setForUrl(key.url, [key]);
+  const writeStarted = Promise.withResolvers<void>();
+  const releaseWrite = Promise.withResolvers<void>();
+  const setValue = privateHistory.allKeys.raw.setValue;
+  vi.spyOn(privateHistory.allKeys.raw, 'setValue').mockImplementationOnce(async (records) => {
+    writeStarted.resolve();
+    await releaseWrite.promise;
+    await setValue(records);
+  });
+  const writing = privateHistory.allKeys.add(key);
+  await writeStarted.promise;
+  try {
+    windows.mockImplementation(async () => []);
+    onRemoved.mock.calls[0]![0](privateWindow.id);
+    windows.mockImplementation(async () => [{ ...privateWindow, id: 2 }]);
+  } finally {
+    releaseWrite.resolve();
+  }
+  await writing;
+  await expect.poll(() => privateHistory.allKeys.getValue()).toBeNull();
+  expect(await privateHistory.recentKeys.getValue()).toBeNull();
+  expect(await privateHistory.recentKeysByDomain.getValue()).toBeNull();
+  expect(await appStorage.allKeys.getValue()).toEqual([key]);
+
+  await privateHistory.allKeys.add({ ...key, createdAt: 2 });
+  expect(await privateHistory.allKeys.getValue()).toEqual([{ ...key, createdAt: 2 }]);
+});
+
+test('does not show ordinary same-site keys on a private tab badge', async () => {
+  await appStorage.recentKeys.setForUrl('https://example.com/public', [
+    {
+      id: widevineId,
+      value: '1'.repeat(32),
+      url: 'https://example.com/public',
+      pssh: '',
+      createdAt: 1,
+    },
+  ]);
+  vi.mocked(browser.tabs.query).mockImplementation(async () => [
+    { ...tab, incognito: true, url: 'https://example.com/private' },
+  ]);
+  const setBadgeText = vi.spyOn(browser.action, 'setBadgeText');
+  start();
+  await expect.poll(() => setBadgeText.mock.calls).toContainEqual([{ tabId: tab.id, text: '' }]);
 });

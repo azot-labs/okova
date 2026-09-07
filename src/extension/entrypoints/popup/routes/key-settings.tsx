@@ -1,6 +1,7 @@
+import { popupHistory } from '../utils/history';
 import { Component } from 'solid-js';
 import { TbOutlineClipboardText, TbOutlineTrash } from 'solid-icons/tb';
-import { appStorage, getWebsiteDomain, KeyInfo } from '@/utils/storage';
+import { getWebsiteDomain, KeyInfo } from '@/utils/storage';
 import { DeleteKeys } from '../components/delete-keys';
 import { Header } from '../components/header';
 import { Layout } from '../components/layout';
@@ -33,7 +34,7 @@ export const KeySettings: Component<KeySettingsProps> = (props) => {
     setIsDeleting(true);
     setDeleteError(undefined);
     try {
-      await appStorage.allKeys.remove(props.key);
+      await popupHistory.allKeys.remove(props.key);
       props.onClose();
     } catch {
       setDeleteError('Deletion failed. Please try again.');
