@@ -9,7 +9,8 @@ type Deletion = Awaited<ReturnType<typeof prepareKeyDeletion>> & { description: 
 export const DeleteKeys = (props: {
   scope: KeyDeletionScope;
   label: string;
-  compact?: boolean;
+  class?: string;
+  size?: 'xs' | 'sm' | 'md';
   disabled?: boolean;
   onDeleted?: () => void;
 }) => {
@@ -55,9 +56,10 @@ export const DeleteKeys = (props: {
   return (
     <Cell
       component="button"
-      before={props.compact ? undefined : <TbOutlineTrash />}
+      class={props.class}
+      before={props.size === 'xs' || props.size === 'sm' ? undefined : <TbOutlineTrash />}
       variant="danger"
-      size={props.compact ? 'sm' : 'md'}
+      size={props.size ?? 'md'}
       disabled={props.disabled || isBusy()}
       onClick={prepare}
       subtitle={

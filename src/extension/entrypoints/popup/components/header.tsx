@@ -15,7 +15,7 @@ export const Header: Component<HeaderProps> = (props) => {
   return (
     <div
       class={cn(
-        'text-base font-bold flex gap-3 items-center select-none min-h-11',
+        'text-base font-bold flex gap-3 items-center min-h-11',
         '-mt-4 py-1 mb-3',
         'px-4',
         'rounded-b-lg',

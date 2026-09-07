@@ -6,7 +6,7 @@ interface CellProps {
   title?: string;
   subtitle?: JSX.Element;
   children: JSX.Element;
-  size?: 'sm' | 'md' | 'lg';
+  size?: 'xs' | 'sm' | 'md' | 'lg';
   variant?: 'default' | 'primary' | 'danger' | 'warning';
   before?: JSX.Element;
   after?: JSX.Element;
@@ -37,6 +37,8 @@ export const Cell: Component<CellProps> = (props) => {
         props.disabled && 'cursor-default pointer-events-none opacity-70',
         props.size === 'sm' &&
           'text-[13px] font-medium hover:bg-transparent dark:hover:bg-transparent hover:opacity-80 min-h-4 py-1',
+        props.size === 'xs' &&
+          'text-[10px] font-medium bg-transparent dark:bg-transparent hover:bg-neutral-100 hover:dark:bg-neutral-800 min-h-4 py-0 px-1.5',
         props.class,
       )}
       title={props.title}

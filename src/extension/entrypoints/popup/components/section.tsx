@@ -10,6 +10,7 @@ export const SectionFooter: Component<{ children: JSX.Element }> = (props) => {
 
 type SectionProps = {
   header?: JSX.Element;
+  headerControls?: JSX.Element;
   footer?: JSX.Element;
   children?: JSX.Element;
 };
@@ -19,8 +20,9 @@ export const Section: Component<SectionProps> = (props) => {
   return (
     <section>
       <Show when={props.header}>
-        <header class="px-2 pt-2 pb-1 text-[10px] cursor-default uppercase text-neutral-500 dark:text-neutral-400">
+        <header class="pl-2 pr-1 pt-2 pb-1 text-[10px] cursor-default uppercase text-neutral-500 dark:text-neutral-400 flex items-center gap-0.5">
           {props.header}
+          <div class="ml-auto flex items-center gap-0.5">{props.headerControls}</div>
         </header>
       </Show>
       <div class="shadow-xs dark:outline-1 dark:outline-neutral-700/80 rounded-[9px]">

@@ -8,13 +8,14 @@ import { Section } from './section';
 import { KeySettings } from '../routes/key-settings';
 import { formatRelativeTime } from '../utils/date';
 import { captureHistoryScroll, reconcileHistoryRows, type HistoryRow } from '../utils/history-rows';
-import { TbOutlineSearch, TbOutlineTrash } from 'solid-icons/tb';
+import { TbOutlineSearch } from 'solid-icons/tb';
 
 type KeysListProps = {
   keys: Accessor<KeyInfo[]>;
   allKeys?: Accessor<KeyInfo[]>;
   selectable?: boolean;
   search?: { value: string; onChange: (value: string) => void };
+  controls?: JSX.Element;
   header?: JSX.Element;
   footer?: JSX.Element;
 };
@@ -38,7 +39,9 @@ export const KeysList: Component<KeysListProps> = (props) => {
 
   createComputed(() => {
     const visible = props.keys();
-    const records = props.allKeys?.() ?? visible;
+    const records = props.allKeys
+      ? [...visible, ...props.allKeys().filter((key) => !visible.includes(key))]
+      : visible;
     untrack(() => {
       const restoreScroll = captureHistoryScroll(list);
       const next = reconcileHistoryRows(rows, records, visible, () => nextIdentity++);
@@ -93,36 +96,33 @@ export const KeysList: Component<KeysListProps> = (props) => {
                     : props.keys().map(keyRecordToken),
                 )
               }
-              // after={
-              //   <Show when={selectedRecords().length > 0}>
-              //     <button
-              //       type="button"
-              //       class="-my-2 min-h-11 cursor-pointer px-2 text-[13px] text-blue-600 dark:text-blue-400"
-              //       onClick={(event) => {
-              //         event.stopPropagation();
-              //         setSelected([]);
-              //       }}
-              //     >
-              //       Clear
-              //     </button>
-              //   </Show>
-              // }
             >
               Select All Results
             </Cell>
-            <DeleteKeys
-              label="Delete Selected"
-              scope={{ kind: 'selected', records: selectedRecords() }}
-              disabled={!selectedRecords().length}
-              onDeleted={() => setSelected([])}
-            />
           </Show>
         </Section>
       </Show>
       <div ref={list}>
         <Show when={props.keys().length > 0}>
           <List>
-            <Section header={props.header} footer={props.footer}>
+            <Section
+              header={props.header}
+              headerControls={
+                <>
+                  <Show when={selectedRecords().length}>
+                    <DeleteKeys
+                      label="Delete Selected"
+                      scope={{ kind: 'selected', records: selectedRecords() }}
+                      size="xs"
+                      disabled={!selectedRecords().length}
+                      onDeleted={() => setSelected([])}
+                    />
+                  </Show>
+                  {props.controls}
+                </>
+              }
+              footer={props.footer}
+            >
               <For each={rows.filter((row) => row.visible)}>
                 {(row) => (
                   <div data-history-row={row.identity} class="[&>div]:rounded-[inherit]">

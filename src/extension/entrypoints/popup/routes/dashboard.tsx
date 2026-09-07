@@ -17,7 +17,6 @@ import { CellImportClient } from '../components/cell-import-client';
 import { NoKeys } from '../components/no-keys';
 import { KeysList } from '../components/keys-list';
 import { getRecentKeysForUrl, getWebsiteDomain, drmStages } from '@/utils/storage';
-import { Section } from '../components/section';
 
 export const Dashboard = () => {
   const [failure] = useDrmFailure();
@@ -40,22 +39,7 @@ export const Dashboard = () => {
 
   return (
     <Layout>
-      <Header
-        subtitle={activeClient()?.client.label}
-        actions={
-          <Show when={activeDomain()}>
-            {(domain) => (
-              <DeleteKeys
-                label="Delete Site Keys"
-                scope={{ kind: 'site', domain: domain() }}
-                compact
-              />
-            )}
-          </Show>
-        }
-      >
-        Dashboard
-      </Header>
+      <Header subtitle={activeClient()?.client.label}>Dashboard</Header>
       <div class="flex flex-col gap-3">
         <Toolbar />
 
@@ -79,9 +63,21 @@ export const Dashboard = () => {
         <KeysList
           keys={activeDomainRecentKeys}
           header={
-            <span class="block truncate" title={recentKeysHeader()}>
+            <div class="block truncate" title={recentKeysHeader()}>
               {recentKeysHeader()}
-            </span>
+            </div>
+          }
+          controls={
+            <Show when={activeDomain()}>
+              {(domain) => (
+                <DeleteKeys
+                  class="w-fit ml-auto"
+                  label="Delete Site Keys"
+                  scope={{ kind: 'site', domain: domain() }}
+                  size="xs"
+                />
+              )}
+            </Show>
           }
           footer={
             <Show when={!settings.spoofing}>
