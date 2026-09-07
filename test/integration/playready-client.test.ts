@@ -11,7 +11,7 @@ import {
   BCertObjType,
   Certificate,
   CertificateChain,
-  ExtDataRecordSet,
+  ExtDataHwidRecord,
 } from '../../src/lib/playready/bcert';
 import { PlayReadyDeviceCredentials } from '../../src/lib/playready/device-credentials';
 import { InvalidCertificate, InvalidCertificateChain } from '../../src/lib/playready/exceptions';
@@ -136,16 +136,21 @@ test('verifies certificate extdata signatures when EXTDATA is present', async ()
     parent: issuerChain,
   });
 
-  const basicInfo = leafCertificate.getAttribute(BCertObjType.BASIC)! as any;
+  const basicInfo = leafCertificate.getAttribute(BCertObjType.BASIC);
+  assert(basicInfo && 'flags' in basicInfo.attribute);
   basicInfo.attribute.flags |= BCertFlag.EXTDATA_PRESENT;
 
   const extDataSigningKey = EccKey.generate();
   const extDataRecord = {
-    record_count: 1,
-    records: [{ data_size: 4, data: new Uint8Array([1, 2, 3, 4]) }],
+    flags: BCertObjFlag.MUST_UNDERSTAND,
+    tag: BCertObjType.EXTDATA_HWID,
+    length: 16,
+    record_length: 3,
+    record_data: new Uint8Array([1, 2, 3]),
+    padding: new Uint8Array(1),
   };
   const extDataSignature = (
-    await common.ecc256Sign(extDataSigningKey.privateKey, ExtDataRecordSet.build(extDataRecord))
+    await common.ecc256Sign(extDataSigningKey.privateKey, ExtDataHwidRecord.build(extDataRecord))
   ).toCompactRawBytes();
 
   const extDataSignKeyAttribute = {
@@ -162,10 +167,13 @@ test('verifies certificate extdata signatures when EXTDATA is present', async ()
   const extDataContainerAttribute = {
     flags: BCertObjFlag.MUST_UNDERSTAND,
     tag: BCertObjType.EXTDATACONTAINER,
-    length: 88,
+    length: 100,
     attribute: {
       record: extDataRecord,
       signature: {
+        flags: BCertObjFlag.MUST_UNDERSTAND,
+        tag: BCertObjType.EXTDATASIGNATURE,
+        length: 76,
         signature_type: 0x0001,
         signature_size: extDataSignature.length,
         signature: extDataSignature,
@@ -173,21 +181,22 @@ test('verifies certificate extdata signatures when EXTDATA is present', async ()
     },
   };
 
-  const signatureAttribute = leafCertificate.getAttribute(BCertObjType.SIGNATURE)! as any;
+  const signatureAttribute = leafCertificate.getAttribute(BCertObjType.SIGNATURE);
+  assert(signatureAttribute && 'signature_type' in signatureAttribute.attribute);
   const unsignedAttributes = leafCertificate.parsed.attributes.filter(
     (attribute) => attribute.tag !== BCertObjType.SIGNATURE,
   );
   leafCertificate.parsed.attributes = [
     ...unsignedAttributes,
-    extDataSignKeyAttribute as any,
-    extDataContainerAttribute as any,
+    extDataSignKeyAttribute,
+    extDataContainerAttribute,
   ];
 
-  const payloadLength = BCertBody.build(leafCertificate.parsed as any).length;
+  const payloadLength = BCertBody.build(leafCertificate.parsed).length;
   leafCertificate.parsed.certificate_length = payloadLength;
   leafCertificate.parsed.total_length = payloadLength + signatureAttribute.length;
 
-  const signPayload = BCert.build(leafCertificate.parsed as any).subarray(0, payloadLength);
+  const signPayload = BCert.build(leafCertificate.parsed).subarray(0, payloadLength);
   signatureAttribute.attribute.signature = (
     await common.ecc256Sign(original.groupKey.privateKey, signPayload)
   ).toCompactRawBytes();
@@ -196,19 +205,21 @@ test('verifies certificate extdata signatures when EXTDATA is present', async ()
   await expect(leafCertificate.verify(original.groupKey.publicBytes(), 0)).resolves.toBeUndefined();
 
   const tampered = Certificate.loads(leafCertificate.dumps());
-  const tamperedContainer = tampered.getAttribute(BCertObjType.EXTDATACONTAINER)! as any;
+  const tamperedContainer = tampered.getAttribute(BCertObjType.EXTDATACONTAINER);
+  assert(tamperedContainer && 'record' in tamperedContainer.attribute);
   tamperedContainer.attribute.signature.signature[0] ^= 0xff;
-  const tamperedSignatureAttribute = tampered.getAttribute(BCertObjType.SIGNATURE)! as any;
+  const tamperedSignatureAttribute = tampered.getAttribute(BCertObjType.SIGNATURE);
+  assert(tamperedSignatureAttribute && 'signature_type' in tamperedSignatureAttribute.attribute);
   tampered.parsed.attributes = tampered.parsed.attributes.filter(
     (attribute) => attribute.tag !== BCertObjType.SIGNATURE,
   );
-  tampered.parsed.certificate_length = BCertBody.build(tampered.parsed as any).length;
+  tampered.parsed.certificate_length = BCertBody.build(tampered.parsed).length;
   tampered.parsed.total_length =
     tampered.parsed.certificate_length + tamperedSignatureAttribute.length;
   tamperedSignatureAttribute.attribute.signature = (
     await common.ecc256Sign(
       original.groupKey.privateKey,
-      BCert.build(tampered.parsed as any).subarray(0, tampered.parsed.certificate_length),
+      BCert.build(tampered.parsed).subarray(0, tampered.parsed.certificate_length),
     )
   ).toCompactRawBytes();
   tampered.parsed.attributes.push(tamperedSignatureAttribute);

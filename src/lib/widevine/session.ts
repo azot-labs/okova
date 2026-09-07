@@ -259,6 +259,12 @@ export class WidevineSession extends BaseMediaKeysEngineSession {
       await this.generateRequest(this.initData, this.initDataType);
       return;
     }
+    if (type !== SignedMessage.MessageType.LICENSE) {
+      const name = SignedMessage.MessageType[type] ?? type;
+      throw new Error(
+        `Unexpected Widevine response message type: ${name}; expected LICENSE or SERVICE_CERTIFICATE`,
+      );
+    }
 
     let signedLicense = null;
     try {
@@ -269,8 +275,19 @@ export class WidevineSession extends BaseMediaKeysEngineSession {
       throw new Error('Unable to parse license - check protobufs', { cause: error });
     }
 
-    const license = License.decode(signedLicense.msg);
-    const requestId = fromBuffer(license.id!.requestId!).toHex();
+    let license: License;
+    try {
+      license = License.decode(signedLicense.msg);
+    } catch (error) {
+      throw new Error('Failed to parse Widevine license payload', { cause: error });
+    }
+    if (!license.id) {
+      throw new Error('Invalid Widevine license ID: missing id');
+    }
+    if (!license.id.requestId?.length) {
+      throw new Error('Invalid Widevine license ID: missing or empty requestId');
+    }
+    const requestId = fromBuffer(license.id.requestId).toHex();
     const context = this.contexts.get(requestId);
     if (!context) {
       throw new Error(`Failed to find context to decrypt keys, requestId: ${requestId}`);
