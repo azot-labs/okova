@@ -1,7 +1,7 @@
-import { mkdtemp, readFile, readdir } from 'node:fs/promises';
+import { mkdtemp, readFile, readdir, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { expect, test } from 'vitest';
-import { parseWvd } from '../src/lib/widevine/wvd';
+import { buildWvd, parseWvd } from '../src/lib/widevine/wvd';
 import { setupCliTests, directory, input, run, wvd } from './helpers/cli';
 import {
   PSSH_SYSTEM_IDS,
@@ -12,7 +12,7 @@ import {
   parsePsshBoxes,
   getPsshKeyIds,
 } from '../src/lib/pssh';
-import { WidevinePsshData } from '../src/lib/widevine/proto';
+import { ClientIdentification, WidevinePsshData } from '../src/lib/widevine/proto';
 import { Pssh } from '../src/lib/playready/pssh';
 import { WrmHeader } from '../src/lib/playready/wrmheader';
 
@@ -259,3 +259,29 @@ test('packs raw credentials, honors output paths, and refuses overwrites or form
   expect(info.status, info.stderr).toBe(0);
   expect(info.stdout).toContain('company_name: Test');
 });
+
+test.each(['../../escaped', '..\\..\\escaped', '/tmp/escaped', 'C:\\temp\\escaped'])(
+  'keeps generated filenames inside the working directory for %s',
+  async (name) => {
+    const cwd = await mkdtemp(join(directory, 'filename-'));
+    const parsed = parseWvd(wvd);
+    const clientId = ClientIdentification.decode(parsed.clientId);
+    clientId.clientInfo = [
+      { name: 'company_name', value: name },
+      { name: 'model_name', value: 'Device' },
+    ];
+    const source = join(directory, 'hostile.wvd');
+    await writeFile(
+      source,
+      buildWvd({ ...parsed, clientId: ClientIdentification.encode(clientId).finish() }),
+    );
+    const result = run(['client', 'pack', source], cwd);
+    expect(result.status, result.stderr).toBe(0);
+    const files = await readdir(cwd);
+    expect(files).toHaveLength(1);
+    expect(files[0]).toMatch(/^[a-z0-9_-]+\.wvd$/);
+    expect(parseWvd(new Uint8Array(await readFile(join(cwd, files[0])))).clientId).toEqual(
+      ClientIdentification.encode(clientId).finish(),
+    );
+  },
+);
