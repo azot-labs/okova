@@ -3,6 +3,7 @@ import { Route, Router } from '@solidjs/router';
 import { createEffect, createSignal, onCleanup, onMount } from 'solid-js';
 
 import './styles.css';
+import { initializePopupHistory } from './utils/history';
 import { Dashboard } from './routes/dashboard';
 import { Clients } from './routes/clients';
 import { Keys } from './routes/keys';
@@ -42,4 +43,10 @@ const Popup = () => {
   );
 };
 
-render(() => <Popup />, document.getElementById('root')!);
+initializePopupHistory()
+  .then(() => render(() => <Popup />, document.getElementById('root')!))
+  .catch((error: unknown) => {
+    console.error('[okova] Unable to initialize popup history', error);
+    document.getElementById('root')!.textContent =
+      'Unable to open history. Please reopen the popup.';
+  });

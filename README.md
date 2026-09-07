@@ -44,6 +44,8 @@ Reloading or navigating clears the current result; saved keys then appear blue. 
 
 In **Keys**, use the large checkboxes to select individual records or **Select All Results** to select the current search results. **Delete Selected** shows the affected count before deleting. Records hidden by a search are deselected.
 
+Private windows use separate history and recent captures held in session storage. Private history is cleared when the last private window closes or the browser restarts. History views, exports, deletion, and badges use the current window’s browsing mode. Settings and imported clients remain shared. Previously saved records have no browsing-mode metadata and are not retroactively separated.
+
 **Delete Site Keys** is available on the dashboard and in record details. It removes that site's records from history and recent captures. A site includes its `www.` hostname, but excludes other subdomains. **Delete All** covers every site, regardless of search or selection.
 
 Bulk and site confirmations freeze their target records when opened. Captures arriving afterward are kept. Cancel or press Escape to return without deleting.

@@ -1,3 +1,4 @@
+import { popupHistory } from '../utils/history';
 import { A } from '@solidjs/router';
 import {
   TbOutlineKey as TbKey,
@@ -6,7 +7,7 @@ import {
 } from 'solid-icons/tb';
 import { CardButton } from './card-button';
 import { Section } from './section';
-import { appStorage, isCapturedKey } from '@/utils/storage';
+import { isCapturedKey } from '@/utils/storage';
 import { useClients } from '../utils/state';
 
 export const Toolbar = () => {
@@ -14,7 +15,7 @@ export const Toolbar = () => {
   const [capturedKeyCount, setCapturedKeyCount] = createSignal(0);
   let hasUpdate = false;
   let isDisposed = false;
-  const unwatch = appStorage.allKeys.raw.watch((keys) => {
+  const unwatch = popupHistory.allKeys.raw.watch((keys) => {
     hasUpdate = true;
     setCapturedKeyCount(keys?.filter(isCapturedKey).length ?? 0);
   });
@@ -23,7 +24,7 @@ export const Toolbar = () => {
     unwatch();
   });
   onMount(async () => {
-    const keys = await appStorage.allKeys.getValue();
+    const keys = await popupHistory.allKeys.getValue();
     if (!isDisposed && !hasUpdate) setCapturedKeyCount(keys?.filter(isCapturedKey).length ?? 0);
   });
 

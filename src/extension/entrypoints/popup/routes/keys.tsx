@@ -1,9 +1,10 @@
+import { popupHistory } from '../utils/history';
 import { TbOutlineDownload } from 'solid-icons/tb';
 import { DeleteKeys } from '../components/delete-keys';
 import { Layout } from '../components/layout';
 import { Header } from '../components/header';
 import { Cell } from '../components/cell';
-import { appStorage, KeyInfo } from '@/utils/storage';
+import { KeyInfo } from '@/utils/storage';
 import { KeysList } from '../components/keys-list';
 import { NoKeys } from '../components/no-keys';
 import { Section } from '../components/section';
@@ -46,7 +47,7 @@ export const Keys = () => {
 
   let isDisposed = false;
   let hasUpdate = false;
-  const unwatch = appStorage.allKeys.raw.watch((records) => {
+  const unwatch = popupHistory.allKeys.raw.watch((records) => {
     hasUpdate = true;
     setKeys(records ?? []);
   });
@@ -55,7 +56,7 @@ export const Keys = () => {
     unwatch();
   });
   onMount(async () => {
-    const records = await appStorage.allKeys.getValue();
+    const records = await popupHistory.allKeys.getValue();
     // A storage event may arrive before the initial read resolves.
     if (!isDisposed && !hasUpdate) setKeys(records ?? []);
   });

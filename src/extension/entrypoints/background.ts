@@ -7,6 +7,9 @@ import {
 } from '@/utils/badge';
 import {
   appStorage,
+  getKeyHistory,
+  privateHistory,
+  clearClosedPrivateHistory,
   defaultSettings,
   clientInfoSchema,
   fromClientToInfo,
@@ -69,6 +72,14 @@ type SessionEntry = {
 export default defineBackground({
   type: 'module',
   main: () => {
+    const clearPrivateHistory = () => {
+      void clearClosedPrivateHistory().catch((error: unknown) =>
+        console.warn('[okova] Unable to clear private history', error),
+      );
+    };
+    browser.windows.onRemoved.addListener(clearPrivateHistory);
+    clearPrivateHistory();
+
     let scriptUpdates = Promise.resolve();
     const updateInterceptionScripts = () => {
       scriptUpdates = scriptUpdates
@@ -278,6 +289,7 @@ export default defineBackground({
       const update = (badgeUpdates.get(tabId) ?? Promise.resolve())
         .catch(() => {})
         .then(async () => {
+          const history = getKeyHistory(tab?.incognito === true);
           const badgeStorage = getBadgeStorage(tabId);
           if (result === null) await badgeStorage.removeValue();
           else if (result) {
@@ -288,8 +300,8 @@ export default defineBackground({
             ]);
           }
           const [recentKeys, recentKeysByDomain, storedResult] = await Promise.all([
-            appStorage.recentKeys.getValue(),
-            appStorage.recentKeysByDomain.getValue(),
+            history.recentKeys.getValue(),
+            history.recentKeysByDomain.getValue(),
             badgeStorage.getValue(),
           ]);
           const keys = getRecentKeysForUrl(tab?.url, recentKeysByDomain, recentKeys);
@@ -339,6 +351,9 @@ export default defineBackground({
     };
 
     updateActiveTabBadgesInBackground();
+
+    privateHistory.recentKeys.watch(updateActiveTabBadgesInBackground);
+    privateHistory.recentKeysByDomain.watch(updateActiveTabBadgesInBackground);
 
     appStorage.recentKeys.watch(() => {
       updateActiveTabBadgesInBackground();
@@ -401,6 +416,7 @@ export default defineBackground({
       const run = <T>(operation: T | Promise<T>) =>
         withAbort(Promise.resolve(operation), controller.signal);
       let stage: DrmStage = 'setup';
+      const history = getKeyHistory(sender.tab?.incognito === true);
       const tabId = sender.tab?.id;
       const tabGeneration = tabId === undefined ? 0 : (tabGenerations.get(tabId) ?? 0);
       const system = getBadgeDrmSystem(message.keySystem);
@@ -508,7 +524,7 @@ export default defineBackground({
         stage = 'setup';
         const settings = await run(appStorage.settings.getValue());
         const setRecentKeys = async (keys: KeyInfo[]) => {
-          await run(appStorage.recentKeys.setForUrl(message.url, keys));
+          await run(history.recentKeys.setForUrl(message.url, keys));
           updateBadgeForTabInBackground(sender.tab);
         };
 
@@ -531,7 +547,7 @@ export default defineBackground({
             }));
             stage = 'history';
             await setRecentKeys(results);
-            await run(appStorage.allKeys.add(...results));
+            await run(history.allKeys.add(...results));
             await run(clearFailure());
             await recordBadgeResult({ kind: 'success', system, keys: results.map(getBadgeKey) });
             stage = 'close';
@@ -557,8 +573,8 @@ export default defineBackground({
           stage = 'history';
           const recentKeys = getRecentKeysForUrl(
             message.url,
-            await run(appStorage.recentKeysByDomain.getValue()),
-            await run(appStorage.recentKeys.getValue()),
+            await run(history.recentKeysByDomain.getValue()),
+            await run(history.recentKeys.getValue()),
           );
           // Status events must not replace extracted keys or borrow another capture's metadata.
           const capturedKeys = recentKeys.filter(
@@ -566,7 +582,7 @@ export default defineBackground({
           );
           const capturedIds = new Set(capturedKeys.map((key) => key.id));
           await setRecentKeys([...capturedKeys, ...keys.filter((key) => !capturedIds.has(key.id))]);
-          await run(appStorage.allKeys.add(...keys));
+          await run(history.allKeys.add(...keys));
           await run(clearFailure());
           respond();
           return;
@@ -709,7 +725,7 @@ export default defineBackground({
           }));
           stage = 'history';
           await setRecentKeys(results);
-          await run(appStorage.allKeys.add(...results));
+          await run(history.allKeys.add(...results));
           await run(clearFailure());
           await recordBadgeResult({ kind: 'success', system, keys: results.map(getBadgeKey) });
           stage = 'close';
