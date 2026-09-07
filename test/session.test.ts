@@ -13,6 +13,8 @@ import {
   LicenseRequest,
   SignedMessage,
   ClientIdentification,
+  DrmCertificate,
+  SignedDrmCertificate,
 } from '../src/lib/widevine/proto';
 import { WidevineSession } from '../src/lib/widevine/session';
 
@@ -94,6 +96,81 @@ test('session update rejects immediately when the license is not a SignedMessage
     'Failed to parse message as SignedMessage',
   );
 });
+
+test.each([
+  ...Object.values(SignedMessage.MessageType)
+    .filter((type) => typeof type === 'number')
+    .filter(
+      (type) =>
+        type !== SignedMessage.MessageType.LICENSE &&
+        type !== SignedMessage.MessageType.SERVICE_CERTIFICATE,
+    )
+    .map((type) => ({
+      name: `message type ${SignedMessage.MessageType[type]}`,
+      response: SignedMessage.encode({ type }).finish(),
+      error: 'Unexpected Widevine response message type',
+    })),
+  {
+    name: 'unknown message type',
+    response: new Uint8Array([0x08, 0x7f]),
+    error: 'Unexpected Widevine response message type: 127',
+  },
+  {
+    name: 'missing message type',
+    response: SignedMessage.encode({}).finish(),
+    error: 'Unexpected Widevine response message type',
+  },
+  ...[
+    { name: 'missing license ID', license: {}, error: 'missing id' },
+    { name: 'missing request ID', license: { id: {} }, error: 'missing or empty requestId' },
+    {
+      name: 'empty request ID',
+      license: { id: { requestId: new Uint8Array() } },
+      error: 'missing or empty requestId',
+    },
+  ].map(({ name, license, error }) => ({
+    name,
+    response: SignedMessage.encode({
+      type: SignedMessage.MessageType.LICENSE,
+      msg: License.encode(license).finish(),
+    }).finish(),
+    error: `Invalid Widevine license ID: ${error}`,
+  })),
+  {
+    name: 'malformed license payload',
+    response: SignedMessage.encode({
+      type: SignedMessage.MessageType.LICENSE,
+      msg: new Uint8Array([0x0a, 0x02, 0xff]),
+    }).finish(),
+    error: 'Failed to parse Widevine license payload',
+  },
+  {
+    name: 'unknown request ID',
+    response: SignedMessage.encode({
+      type: SignedMessage.MessageType.LICENSE,
+      msg: License.encode({ id: { requestId: new Uint8Array([1]) } }).finish(),
+    }).finish(),
+    error: 'Failed to find context to decrypt keys',
+  },
+])(
+  'session update rejects $name before decryption and preserves state',
+  async ({ response, error }) => {
+    const credentials = new WidevineDeviceCredentials(
+      ClientIdentification.create({
+        token: SignedDrmCertificate.encode({
+          drmCertificate: DrmCertificate.encode({ systemId: 1 }).finish(),
+        }).finish(),
+      }),
+    );
+    const session = new WidevineSession('temporary', credentials);
+    session.contexts.set('pending', { enc: new Uint8Array(16), auth: new Uint8Array(16) });
+    const state = session.pause();
+
+    await expect(session.update(response)).rejects.toThrow(error);
+
+    expect(session.pause()).toBe(state);
+  },
+);
 
 test('android license requests use an OEMCrypto-like request id and set keyControlNonce', async () => {
   const challenge = await new WidevineSession(
