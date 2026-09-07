@@ -83,6 +83,7 @@ const stateSchema = sessionStateSchema.extend({
     .max(Number.MAX_SAFE_INTEGER - 1)
     .default(1),
   serviceCertificate: z.base64().optional(),
+  contextKeyEncoding: z.literal('hex').optional(),
   contexts: z.record(z.string(), z.object({ enc: z.base64(), auth: z.base64() })),
   keys: z.record(
     hexBytesSchema,
@@ -162,7 +163,7 @@ export class WidevineSession extends BaseMediaKeysEngineSession {
     this.initData = initData;
     this.initDataType = resolvedInitDataType;
     this.contexts.set(
-      fromBuffer(licenseRequest.requestId).toText(),
+      fromBuffer(licenseRequest.requestId).toHex(),
       deriveContext(licenseRequest.bytes),
     );
     this.emitMessage({
@@ -286,7 +287,7 @@ export class WidevineSession extends BaseMediaKeysEngineSession {
     if (!license.id.requestId?.length) {
       throw new Error('Invalid Widevine license ID: missing or empty requestId');
     }
-    const requestId = fromBuffer(license.id.requestId).toText();
+    const requestId = fromBuffer(license.id.requestId).toHex();
     const context = this.contexts.get(requestId);
     if (!context) {
       throw new Error(`Failed to find context to decrypt keys, requestId: ${requestId}`);
@@ -397,6 +398,7 @@ export class WidevineSession extends BaseMediaKeysEngineSession {
           },
         ]),
       ),
+      contextKeyEncoding: 'hex',
       keys: Object.fromEntries(
         Array.from(this.#contentKeys.entries(), ([keyId, key]) => [
           keyId,
@@ -445,13 +447,18 @@ export class WidevineSession extends BaseMediaKeysEngineSession {
       ? SignedDrmCertificate.decode(fromBase64(values.serviceCertificate).toBuffer())
       : undefined;
     session.contexts = new Map(
-      Object.entries(values.contexts).map(([key, value]) => [
-        key,
-        {
-          enc: fromBase64(value.enc).toBuffer(),
-          auth: fromBase64(value.auth).toBuffer(),
-        },
-      ]),
+      Object.entries(values.contexts).map(([key, value]) => {
+        const enc = fromBase64(value.enc).toBuffer();
+        const auth = fromBase64(value.auth).toBuffer();
+        if (values.contextKeyEncoding === 'hex') return [key, { enc, auth }];
+
+        // Legacy UTF-8 keys lost binary bytes. Recover the ID from the embedded request.
+        // Encryption contexts contain "ENCRYPTION\0", the request, and a 4-byte key size.
+        const request = LicenseRequest.decode(enc.subarray(11, -4));
+        const requestId = request.contentId?.widevinePsshData?.requestId;
+        if (!requestId?.length) throw new Error('Saved Widevine context has no request ID');
+        return [fromBuffer(requestId).toHex(), { enc, auth }];
+      }),
     );
     session.#contentKeys = new Map(
       Object.entries(values.keys).map(([keyId, key]) => [

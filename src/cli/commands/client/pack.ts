@@ -14,7 +14,11 @@ export const pack = async (input = process.cwd(), format?: 'wvd' | 'prd', output
     throw new Error(`Output extension must match credential format: .${ext}`);
   }
   const data = await client.pack();
-  const filename = `${client.getName()}`.replaceAll(' ', '-').toLowerCase();
+  const filename =
+    client
+      .getName()
+      .toLowerCase()
+      .replace(/[^a-z0-9_-]+/g, '-') || 'client';
   const outputPath = output || join(process.cwd(), `${filename}.${ext}`);
   await exportFiles(dirname(outputPath), { [basename(outputPath)]: data });
   console.log(`Client packed: ${outputPath}`);
