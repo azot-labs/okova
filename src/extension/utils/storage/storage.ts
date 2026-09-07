@@ -489,15 +489,18 @@ export const privateHistory = createKeyHistory(true);
 export const getKeyHistory = (isIncognito: boolean) =>
   isIncognito ? privateHistory : regularHistory;
 
-export const clearClosedPrivateHistory = () =>
-  navigator.locks.request('okova:incognito-key-history', async () => {
-    if ((await browser.windows.getAll()).some((window) => window.incognito)) return;
+export const clearClosedPrivateHistory = async () => {
+  // Preserve the closure snapshot before waiting behind history writes. A replacement
+  // private window must not cancel cleanup of the session that just ended.
+  if ((await browser.windows.getAll()).some((window) => window.incognito)) return;
+  await navigator.locks.request('okova:incognito-key-history', async () => {
     await storage.removeItems([
       privateHistory.allKeys.raw.key,
       privateHistory.recentKeys.key,
       privateHistory.recentKeysByDomain.raw.key,
     ]);
   });
+};
 
 export const { prepareKeyDeletion, deleteKeySnapshot } = regularHistory;
 export const appStorage = {

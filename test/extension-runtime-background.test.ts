@@ -230,6 +230,49 @@ test('clears private history on the last window removal', async () => {
   await expect.poll(() => privateHistory.allKeys.getValue()).toBeNull();
 });
 
+test('clears the closed private session when a replacement window opens during a history write', async () => {
+  const privateWindow = { id: 1, incognito: true, focused: true, alwaysOnTop: false };
+  const windows = vi
+    .spyOn(browser.windows, 'getAll')
+    .mockImplementation(async () => [privateWindow]);
+  const onRemoved = vi.spyOn(browser.windows.onRemoved, 'addListener');
+  start();
+  const key = {
+    id: widevineId,
+    value: 'usable',
+    url: 'https://example.com/private',
+    pssh: '',
+    createdAt: 1,
+  };
+  await appStorage.allKeys.add(key);
+  await privateHistory.recentKeys.setForUrl(key.url, [key]);
+  const writeStarted = Promise.withResolvers<void>();
+  const releaseWrite = Promise.withResolvers<void>();
+  const setValue = privateHistory.allKeys.raw.setValue;
+  vi.spyOn(privateHistory.allKeys.raw, 'setValue').mockImplementationOnce(async (records) => {
+    writeStarted.resolve();
+    await releaseWrite.promise;
+    await setValue(records);
+  });
+  const writing = privateHistory.allKeys.add(key);
+  await writeStarted.promise;
+  try {
+    windows.mockImplementation(async () => []);
+    onRemoved.mock.calls[0]![0](privateWindow.id);
+    windows.mockImplementation(async () => [{ ...privateWindow, id: 2 }]);
+  } finally {
+    releaseWrite.resolve();
+  }
+  await writing;
+  await expect.poll(() => privateHistory.allKeys.getValue()).toBeNull();
+  expect(await privateHistory.recentKeys.getValue()).toBeNull();
+  expect(await privateHistory.recentKeysByDomain.getValue()).toBeNull();
+  expect(await appStorage.allKeys.getValue()).toEqual([key]);
+
+  await privateHistory.allKeys.add({ ...key, createdAt: 2 });
+  expect(await privateHistory.allKeys.getValue()).toEqual([{ ...key, createdAt: 2 }]);
+});
+
 test('does not show ordinary same-site keys on a private tab badge', async () => {
   await appStorage.recentKeys.setForUrl('https://example.com/public', [
     {
