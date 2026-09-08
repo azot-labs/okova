@@ -133,6 +133,20 @@ test('first import on Credentials survives a failed write, repeated selection an
     const worker = context.serviceWorkers()[0] ?? (await context.waitForEvent('serviceworker'));
     const popup = await context.newPage();
     const popupUrl = `chrome-extension://${new URL(worker.url()).hostname}/popup.html`;
+    // Keep popup startup pending until the write-failure injection is installed.
+    await worker.evaluate(async () => {
+      await chrome.storage.local.remove('credentials-registry');
+      await new Promise<void>((locked) => {
+        void navigator.locks.request(
+          'okova:credentials',
+          () =>
+            new Promise<void>((release) => {
+              globalThis.addEventListener('release-test-lock', () => release(), { once: true });
+              locked();
+            }),
+        );
+      });
+    });
     await popup.goto(popupUrl);
     await popup.getByRole('link', { name: 'Credentials', exact: true }).click();
     const input = popup.locator('input[type=file]');
@@ -149,14 +163,16 @@ test('first import on Credentials survives a failed write, repeated selection an
         }),
       ),
     });
-    // Fail the actual popup write once, without changing another extension context.
+    // Fail the first-import transaction, not startup's separate settings or empty-registry writes.
     await popup.evaluate(() => {
       const set = chrome.storage.local.set.bind(chrome.storage.local);
-      chrome.storage.local.set = async () => {
+      chrome.storage.local.set = async (items) => {
+        if (!('credentials-registry' in items) || !('settings' in items)) return set(items);
         chrome.storage.local.set = set;
         throw new Error('Quota exceeded');
       };
     });
+    await worker.evaluate(() => globalThis.dispatchEvent(new Event('release-test-lock')));
     await input.setInputFiles(file('one'));
     await expect.poll(() => popup.getByRole('alert').textContent()).toBe('Quota exceeded');
     expect(await popup.getByText('Same label', { exact: true }).count()).toBe(0);

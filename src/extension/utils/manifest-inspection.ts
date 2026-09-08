@@ -140,11 +140,15 @@ export const installManifestInspection = () => {
   try {
     if (!(window.MANIFEST_LIST instanceof Map)) window.MANIFEST_LIST = new Map();
   } catch {
-    Object.defineProperty(window, 'MANIFEST_LIST', {
-      value: new Map(),
-      writable: true,
-      configurable: true,
-    });
+    try {
+      Object.defineProperty(window, 'MANIFEST_LIST', {
+        value: new Map(),
+        writable: true,
+        configurable: true,
+      });
+    } catch {
+      // A non-configurable page property must not prevent listener registration.
+    }
   }
 
   window.addEventListener('message', (event: MessageEvent<unknown>) => {

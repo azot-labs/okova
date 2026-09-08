@@ -113,6 +113,20 @@ test('recovers manifest inspection from a throwing page-owned cache getter', () 
   });
 });
 
+test('registers the manifest listener when a page-owned cache cannot be replaced', () => {
+  Object.defineProperty(window, 'MANIFEST_LIST', {
+    configurable: false,
+    get() {
+      throw new Error('Page-owned getter');
+    },
+  });
+  const addEventListener = vi.spyOn(window, 'addEventListener');
+
+  expect(() => installManifestInspection()).not.toThrow();
+  expect(addEventListener).toHaveBeenCalledWith('message', expect.any(Function));
+  expect(() => post(mpd(widevine))).not.toThrow();
+});
+
 test.each([
   { pssh: widevine, scheme: PSSH_SYSTEM_IDS.widevine },
   { pssh: playready, scheme: PSSH_SYSTEM_IDS.playready },
