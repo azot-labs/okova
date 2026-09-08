@@ -303,25 +303,37 @@ export class WidevineSession extends BaseMediaKeysEngineSession {
       );
     }
 
-    const sessionKey = await this.clientCredentials.decryptWithKey(signedLicense.sessionKey);
-    const derivedKeys = await deriveKeys(context.enc, context.auth, sessionKey);
+    try {
+      const sessionKey = await this.clientCredentials.decryptWithKey(signedLicense.sessionKey);
+      if (![16, 24, 32].includes(sessionKey.length)) {
+        throw new SessionInputError('Invalid Widevine session key length');
+      }
+      const derivedKeys = await deriveKeys(context.enc, context.auth, sessionKey);
 
-    const { success, signature } = await this.#verifyMessage(
-      signedLicense,
-      derivedKeys.macKeyServer,
-    );
-    if (!success) {
-      this.log.debug(`Calculated signature: ${signature.calculated}`);
-      this.log.debug(`Actual signature: ${signature.actual}`);
-      throw new SessionInputError('Signature mismatch on license message, rejecting license');
-    }
+      const { success, signature } = await this.#verifyMessage(
+        signedLicense,
+        derivedKeys.macKeyServer,
+      );
+      if (!success) {
+        this.log.debug(`Calculated signature: ${signature.calculated}`);
+        this.log.debug(`Actual signature: ${signature.actual}`);
+        throw new SessionInputError('Signature mismatch on license message, rejecting license');
+      }
 
-    for (const keyContainer of license.key) {
-      if (!keyContainer.key || !keyContainer.iv) continue;
-      const key = await Key.fromContainer(keyContainer, derivedKeys.encKey);
-      if (!key.id || key.type !== 'CONTENT') continue;
-      this.assertOpen();
-      this.#addKey(key);
+      for (const keyContainer of license.key) {
+        if (!keyContainer.key || !keyContainer.iv) continue;
+        const key = await Key.fromContainer(keyContainer, derivedKeys.encKey);
+        if (!key.id || key.type !== 'CONTENT') continue;
+        this.assertOpen();
+        this.#addKey(key);
+      }
+    } catch (error) {
+      // Web Crypto rejects malformed response ciphertext, IVs, and decrypted AES keys.
+      // Keep credential/state failures and unexpected engine errors as server failures.
+      if (error instanceof DOMException && ['OperationError', 'DataError'].includes(error.name)) {
+        throw new SessionInputError('Invalid Widevine license encryption fields', { cause: error });
+      }
+      throw error;
     }
 
     this.assertOpen();

@@ -1,4 +1,4 @@
-import { mkdtemp, readFile, readdir, writeFile } from 'node:fs/promises';
+import { mkdtemp, readFile, readdir, symlink, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { expect, test } from 'vitest';
 import { buildWvd, parseWvd } from '../src/lib/widevine/wvd';
@@ -305,4 +305,23 @@ test('rejects packed/raw and duplicate raw credential candidates', async () => {
   const rawKey = (await readdir(cwd)).find((file) => file.includes('private_key'))!;
   await writeFile(join(cwd, 'other_private_key'), await readFile(join(cwd, rawKey)));
   expect(run(['credentials', 'pack', cwd, '--format', 'wvd']).stderr).toContain('Ambiguous raw');
+});
+
+test('imports symlinked packed and raw credentials while ignoring non-file links', async () => {
+  const packed = await mkdtemp(join(directory, 'linked-packed-'));
+  await symlink(input, join(packed, 'linked.wvd'));
+  await symlink(join(directory, 'missing.wvd'), join(packed, 'broken.wvd'));
+  await symlink(directory, join(packed, 'directory.wvd'));
+  const info = run(['credentials', 'info', packed]);
+  expect(info.status, info.stderr).toBe(0);
+  expect(info.stdout).toContain('company_name: Test');
+
+  const source = await mkdtemp(join(directory, 'raw-source-'));
+  expect(run(['credentials', 'unpack', input, source]).status).toBe(0);
+  const raw = await mkdtemp(join(directory, 'linked-raw-'));
+  for (const file of await readdir(source)) await symlink(join(source, file), join(raw, file));
+  const output = join(directory, 'linked-raw.wvd');
+  const result = run(['credentials', 'pack', raw, output]);
+  expect(result.status, result.stderr).toBe(0);
+  expect(parseWvd(new Uint8Array(await readFile(output)))).toEqual(parseWvd(wvd));
 });

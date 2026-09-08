@@ -1,4 +1,3 @@
-import { readdir } from 'node:fs/promises';
 import { extname, resolve } from 'node:path';
 import { Hono } from 'hono';
 import { logger } from 'hono/logger';
@@ -6,6 +5,7 @@ import { secureHeaders } from 'hono/secure-headers';
 import { showRoutes } from 'hono/dev';
 import { serve as nodeServe } from '@hono/node-server';
 import { help } from './help';
+import { listFiles } from '../../utils';
 import { config, loadConfig, sessions } from './state';
 import session from './api/session';
 import { requestBoundary } from './request-boundary';
@@ -27,13 +27,15 @@ const describeCredentials = (path: string) => {
 
 export const serve = async (options: ServeOptions = {}) => {
   await loadConfig(options.config);
-  if (options.credentials) config.credentials.push(options.credentials);
+  if (options.credentials) {
+    config.credentials = [
+      options.credentials,
+      ...config.credentials.filter((path) => path !== options.credentials),
+    ];
+  }
   if (!config.credentials.length) {
-    const files = await readdir(process.cwd(), { withFileTypes: true });
-    const candidates = files
-      .filter((file) => file.isFile() && /\.(wvd|prd)$/.test(file.name))
-      .map((file) => file.name)
-      .sort();
+    const files = await listFiles(process.cwd());
+    const candidates = files.filter((file) => /\.(wvd|prd)$/.test(file)).sort();
     if (candidates.length > 1) {
       console.warn(
         'Multiple credential files found. Selecting the first filename in sorted order.',

@@ -1,3 +1,10 @@
+import { generateKeyPairSync, publicEncrypt } from 'node:crypto';
+import { deriveContext, deriveKeys } from '../src/lib/widevine/context';
+import {
+  createHmacSha256,
+  encryptWithAesCbc,
+  importAesCbcKeyForEncrypt,
+} from '../src/lib/crypto/common';
 import { once } from 'node:events';
 import { request } from 'node:http';
 import { resolve } from 'node:path';
@@ -10,6 +17,9 @@ import { credentialCache, config, sessions } from '../src/cli/commands/serve/sta
 import { Widevine } from '../src/lib/widevine/engine';
 import { WidevineClientCredentials } from '../src/lib/widevine/client-credentials';
 import {
+  License,
+  LicenseRequest,
+  SignedMessage,
   ClientIdentification,
   DrmCertificate,
   SignedDrmCertificate,
@@ -351,4 +361,86 @@ test('removes a real Widevine session when a malformed PSSH fails generation', a
   );
   expect(result.status).toBe(400);
   expect(sessions.has(`:${id}`)).toBe(false);
+});
+
+test.each([
+  'empty RSA ciphertext',
+  'truncated RSA ciphertext',
+  'invalid AES key',
+  'invalid IV',
+  'truncated key ciphertext',
+  'invalid padding',
+  'engine failure',
+])('classifies Widevine update failures with real cryptography: %s', async (malformed) => {
+  const { privateKey, publicKey } = generateKeyPairSync('rsa', { modulusLength: 2048 });
+  const provision = new WidevineClientCredentials(credentials.id);
+  await provision.importKey(privateKey.export({ type: 'pkcs1', format: 'pem' }));
+  credentialCache.set(resolve('test.wvd'), provision);
+  config.forcePrivacyMode = false;
+  const { id } = await (await post()).json();
+  const generated = await post(
+    {},
+    JSON.stringify({ initData: 'AQ==' }),
+    `/sessions/${id}/generate-request`,
+  );
+  expect(generated.status).toBe(200);
+  const challenge = SignedMessage.decode(Buffer.from((await generated.json()).message, 'base64'));
+  const request = LicenseRequest.decode(challenge.msg);
+  const requestId = request.contentId!.widevinePsshData!.requestId!;
+  const context = deriveContext(challenge.msg);
+  const sessionKey = new Uint8Array(malformed === 'invalid AES key' ? 1 : 16).fill(1);
+  const { encKey, macKeyServer } = await deriveKeys(
+    context.enc,
+    context.auth,
+    new Uint8Array(16).fill(1),
+  );
+  const iv = new Uint8Array(16);
+  const encryptedKey = await encryptWithAesCbc(
+    new Uint8Array(16),
+    await importAesCbcKeyForEncrypt(encKey),
+    iv,
+  );
+  let ciphertext = encryptedKey;
+  if (malformed === 'truncated key ciphertext') ciphertext = encryptedKey.subarray(0, 1);
+  if (malformed === 'invalid padding') ciphertext = encryptedKey.subarray(0, 16);
+  const msg = License.encode(
+    License.create({
+      id: { requestId },
+      key: [
+        {
+          id: new Uint8Array(16),
+          type: License.KeyContainer.KeyType.CONTENT,
+          iv: malformed === 'invalid IV' ? iv.subarray(0, 1) : iv,
+          key: ciphertext,
+        },
+      ],
+    }),
+  ).finish();
+  let encryptedSessionKey = publicEncrypt({ key: publicKey, oaepHash: 'sha1' }, sessionKey);
+  if (malformed === 'empty RSA ciphertext')
+    encryptedSessionKey = encryptedSessionKey.subarray(0, 0);
+  if (malformed === 'truncated RSA ciphertext')
+    encryptedSessionKey = encryptedSessionKey.subarray(0, 1);
+  if (malformed === 'engine failure') {
+    vi.spyOn(console, 'error').mockImplementation(() => {});
+    vi.spyOn(provision, 'decryptWithKey').mockRejectedValueOnce(new Error('engine failure'));
+  }
+  const response = SignedMessage.encode(
+    SignedMessage.create({
+      type: SignedMessage.MessageType.LICENSE,
+      msg,
+      signature: await createHmacSha256(macKeyServer, msg),
+      sessionKey: encryptedSessionKey,
+    }),
+  ).finish();
+  const result = await post(
+    {},
+    JSON.stringify({ response: Buffer.from(response).toString('base64') }),
+    `/sessions/${id}/update`,
+  );
+  expect(result.status).toBe(malformed === 'engine failure' ? 500 : 400);
+  expect(await result.json()).toEqual({
+    error: malformed === 'engine failure' ? 'Internal session error' : 'Invalid session input',
+  });
+  expect(sessions.has(`:${id}`)).toBe(true);
 });

@@ -1,10 +1,11 @@
 import { once } from 'node:events';
-import { mkdtemp, rm, writeFile } from 'node:fs/promises';
+import { mkdtemp, rm, symlink, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import * as nodeServer from '@hono/node-server';
 import { assert, expect, test, vi } from 'vitest';
 import { serve } from '../src/cli/commands/serve/serve';
+import sessionApi from '../src/cli/commands/serve/api/session';
 import { credentialCache, config, sessions } from '../src/cli/commands/serve/state';
 import { Session } from '../src/lib/api';
 import { Widevine } from '../src/lib/widevine/engine';
@@ -211,9 +212,10 @@ test.each([{}, { host: '0.0.0.0', public: true }, { host: '::', public: true }])
   },
 );
 
-test.each(['discovered', 'configured', 'explicit', 'existing grant'])(
+test.each(['discovered', 'configured', 'explicit', 'explicit public', 'existing grant'])(
   'starts with multiple credentials and reports automatic selection: %s',
   async (mode) => {
+    const isExplicit = mode.startsWith('explicit');
     const directory = await mkdtemp(join(tmpdir(), 'okova-selection-'));
     const configPath = join(directory, 'config.json');
     const first = join(directory, 'a.prd');
@@ -229,7 +231,13 @@ test.each(['discovered', 'configured', 'explicit', 'existing grant'])(
     vi.spyOn(process, 'cwd').mockReturnValue(directory);
     try {
       await writeFile(last, 'WVD');
-      await writeFile(first, 'PRD');
+      if (mode === 'discovered') {
+        await symlink(last, first);
+        await symlink(directory, join(directory, '0-directory.wvd'));
+        await symlink(join(directory, 'missing'), join(directory, '0-broken.wvd'));
+      } else {
+        await writeFile(first, 'PRD');
+      }
       await writeFile(
         configPath,
         JSON.stringify({
@@ -243,19 +251,46 @@ test.each(['discovered', 'configured', 'explicit', 'existing grant'])(
       );
       await serve({
         config: configPath,
-        secret: 'private-secret',
-        ...(mode === 'explicit' ? { credentials: first } : {}),
+        ...(mode === 'explicit public' ? { public: true } : { secret: 'private-secret' }),
+        ...(isExplicit ? { credentials: first } : {}),
       });
       const server = startServer.mock.results[0]?.value;
       assert(server);
       if (!server.listening) await once(server, 'listening');
       expect(server.address()).toMatchObject({ address: '127.0.0.1' });
       const selected = mode === 'configured' ? last : first;
-      expect(config.users['private-secret']?.credentials).toEqual([selected]);
+      if (mode !== 'explicit public') {
+        expect(config.users['private-secret']?.credentials).toEqual([selected]);
+      }
       const output = warning.mock.calls.flat().join('\n');
       expect(output).not.toContain('private-secret');
-      if (mode === 'explicit') {
+      if (isExplicit) {
         expect(warning).not.toHaveBeenCalled();
+        expect(config.credentials).toEqual([first, last]);
+        credentialCache.set(
+          first,
+          new WidevineClientCredentials(
+            ClientIdentification.create({
+              token: SignedDrmCertificate.encode(
+                SignedDrmCertificate.create({
+                  drmCertificate: DrmCertificate.encode(
+                    DrmCertificate.create({ systemId: 1 }),
+                  ).finish(),
+                }),
+              ).finish(),
+            }),
+          ),
+        );
+        const response = await sessionApi.request('/', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            ...(mode === 'explicit public' ? {} : { 'x-secret-key': 'private-secret' }),
+          },
+          body: '{}',
+        });
+        expect(response.status).toBe(200);
+        expect(await response.json()).toMatchObject({ credentials: first });
       } else {
         expect(output).toContain(mode === 'discovered' ? first : last);
         expect(output).toContain(mode === 'discovered' ? 'PlayReady' : 'Widevine');
@@ -283,6 +318,8 @@ test.each(['discovered', 'configured', 'explicit', 'existing grant'])(
             process.removeListener(signal, listener);
         }
       }
+      await sessions.clear();
+      credentialCache.clear();
       Object.assign(config, originalConfig);
       vi.restoreAllMocks();
       await rm(directory, { recursive: true, force: true });

@@ -3,14 +3,35 @@ import { join } from 'node:path';
 import { WidevineClientCredentials } from '../lib/widevine/client-credentials';
 import { PlayReadyClientCredentials } from '../lib/playready/client-credentials';
 
+// Follow file symlinks, but ignore dangling links and links to directories.
+export const listFiles = async (directory: string) => {
+  const files: string[] = [];
+  for (const entry of await readdir(directory, { withFileTypes: true })) {
+    if (entry.isFile()) {
+      files.push(entry.name);
+    } else if (entry.isSymbolicLink()) {
+      try {
+        if ((await stat(join(directory, entry.name))).isFile()) files.push(entry.name);
+      } catch (error) {
+        if (
+          error instanceof Error &&
+          'code' in error &&
+          ['ENOENT', 'ENOTDIR', 'ELOOP'].includes(String(error.code))
+        )
+          continue;
+        throw error;
+      }
+    }
+  }
+  return files;
+};
+
 export const importClientCredentials = async (input: string, output?: string) => {
   const inputStat = await stat(input);
   const isDir = inputStat.isDirectory();
 
   if (isDir) {
-    const entries = (await readdir(input, { withFileTypes: true }))
-      .filter((entry) => entry.isFile())
-      .map((entry) => entry.name);
+    const entries = await listFiles(input);
     const candidates: (() => Promise<WidevineClientCredentials | PlayReadyClientCredentials>)[] =
       [];
     const addRaw = (
