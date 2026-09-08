@@ -1,3 +1,4 @@
+import { SessionInputError } from '../session-input-error';
 import { z } from 'zod';
 import type { MediaKeyMessageEventInit, MediaKeysEngineSession } from '../api';
 import { BaseMediaKeysEngineSession } from '../api';
@@ -153,7 +154,15 @@ export class WidevineSession extends BaseMediaKeysEngineSession {
     const resolvedInitDataType =
       typeof first === 'string' ? first : typeof second === 'string' ? second : 'cenc';
 
-    const pssh = createPssh(initData);
+    if (resolvedInitDataType !== 'cenc') {
+      throw new SessionInputError('Widevine supports only cenc init data');
+    }
+    let pssh: PSSH;
+    try {
+      pssh = createPssh(initData);
+    } catch (error) {
+      throw new SessionInputError('Invalid Widevine init data', { cause: error });
+    }
     const licenseRequest = await this.#createLicenseRequest(pssh);
     const message = await this.#signMessage(
       licenseRequest.bytes,
@@ -249,9 +258,10 @@ export class WidevineSession extends BaseMediaKeysEngineSession {
     try {
       type = getMessageType(response);
     } catch (error) {
-      this.log.error('Unable to parse license - check protobufs');
-      this.log.debug(fromBuffer(response).toText());
-      throw error;
+      throw new SessionInputError(
+        error instanceof Error ? error.message : 'Unable to parse Widevine response',
+        { cause: error },
+      );
     }
     if (type === SignedMessage.MessageType.SERVICE_CERTIFICATE) {
       await this.#setServiceCertificate(response);
@@ -261,7 +271,7 @@ export class WidevineSession extends BaseMediaKeysEngineSession {
     }
     if (type !== SignedMessage.MessageType.LICENSE) {
       const name = SignedMessage.MessageType[type] ?? type;
-      throw new Error(
+      throw new SessionInputError(
         `Unexpected Widevine response message type: ${name}; expected LICENSE or SERVICE_CERTIFICATE`,
       );
     }
@@ -270,27 +280,27 @@ export class WidevineSession extends BaseMediaKeysEngineSession {
     try {
       signedLicense = SignedMessage.decode(response);
     } catch (error) {
-      this.log.error('Unable to parse license - check protobufs');
-      this.log.debug(fromBuffer(response).toText());
-      throw new Error('Unable to parse license - check protobufs', { cause: error });
+      throw new SessionInputError('Unable to parse license - check protobufs', { cause: error });
     }
 
     let license: License;
     try {
       license = License.decode(signedLicense.msg);
     } catch (error) {
-      throw new Error('Failed to parse Widevine license payload', { cause: error });
+      throw new SessionInputError('Failed to parse Widevine license payload', { cause: error });
     }
     if (!license.id) {
-      throw new Error('Invalid Widevine license ID: missing id');
+      throw new SessionInputError('Invalid Widevine license ID: missing id');
     }
     if (!license.id.requestId?.length) {
-      throw new Error('Invalid Widevine license ID: missing or empty requestId');
+      throw new SessionInputError('Invalid Widevine license ID: missing or empty requestId');
     }
     const requestId = fromBuffer(license.id.requestId).toHex();
     const context = this.contexts.get(requestId);
     if (!context) {
-      throw new Error(`Failed to find context to decrypt keys, requestId: ${requestId}`);
+      throw new SessionInputError(
+        `Failed to find context to decrypt keys, requestId: ${requestId}`,
+      );
     }
 
     const sessionKey = await this.clientCredentials.decryptWithKey(signedLicense.sessionKey);
@@ -303,7 +313,7 @@ export class WidevineSession extends BaseMediaKeysEngineSession {
     if (!success) {
       this.log.debug(`Calculated signature: ${signature.calculated}`);
       this.log.debug(`Actual signature: ${signature.actual}`);
-      throw new Error('Signature mismatch on license message, rejecting license');
+      throw new SessionInputError('Signature mismatch on license message, rejecting license');
     }
 
     for (const keyContainer of license.key) {

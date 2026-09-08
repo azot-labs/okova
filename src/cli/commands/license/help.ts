@@ -11,7 +11,7 @@ export const help = () => {
   console.log(`Flags:`);
   console.log(
     col(`-H, --header`) +
-      'headers to send with license request, compatible with curl (e.g. -H "Authorization: Bearer ...")',
+      'unique HTTP headers to send with the license request (e.g. -H "Authorization: Bearer ...")',
   );
   console.log(col(`-p, --pssh`) + 'Widevine or PlayReady PSSH data in Base64');
   console.log(
@@ -20,7 +20,7 @@ export const help = () => {
   );
   console.log(
     col(`-e, --encrypt`) +
-      'encrypt Widevine client ID using a service certificate from the license URL',
+      'encrypt Widevine client ID using a service certificate from the license URL; shares the 30-second acquisition deadline',
   );
   console.log(col(`-h, --help`) + 'display this menu and exit');
 };

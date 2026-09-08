@@ -288,3 +288,21 @@ test.each(['../../escaped', '..\\..\\escaped', '/tmp/escaped', 'C:\\temp\\escape
     );
   },
 );
+
+test('rejects ambiguous directory credentials', async () => {
+  const cwd = await mkdtemp(join(directory, 'ambiguous-'));
+  await writeFile(join(cwd, 'first.wvd'), wvd);
+  await writeFile(join(cwd, 'second.wvd'), wvd);
+  expect(run(['credentials', 'info', cwd]).stderr).toContain('Ambiguous');
+  expect(run(['credentials', 'info', join(cwd, 'first.wvd')]).status).toBe(0);
+});
+
+test('rejects packed/raw and duplicate raw credential candidates', async () => {
+  const cwd = await mkdtemp(join(directory, 'raw-ambiguous-'));
+  expect(run(['credentials', 'unpack', input, cwd]).status).toBe(0);
+  await writeFile(join(cwd, 'copy.wvd'), wvd);
+  expect(run(['credentials', 'info', cwd]).stderr).toContain('Ambiguous');
+  const rawKey = (await readdir(cwd)).find((file) => file.includes('private_key'))!;
+  await writeFile(join(cwd, 'other_private_key'), await readFile(join(cwd, rawKey)));
+  expect(run(['credentials', 'pack', cwd, '--format', 'wvd']).stderr).toContain('Ambiguous raw');
+});

@@ -8,49 +8,55 @@ export const importClientCredentials = async (input: string, output?: string) =>
   const isDir = inputStat.isDirectory();
 
   if (isDir) {
-    const entries = isDir ? await readdir(input) : [];
-
-    const find = (query: string) => entries.find((entry) => entry.includes(query));
-    const endsWith = (query: string) => entries.find((entry) => entry.endsWith(query));
-
-    const widevineIdFile = find('client_id');
-    const widevineKeyFile = find('private_key');
-    const wvdFile = endsWith('.wvd');
-
-    const isWidevine =
-      (!!(widevineIdFile && widevineKeyFile) || !!wvdFile) && !output?.endsWith('.prd');
-
-    const playreadyCertificateFile = find('bgroupcert');
-    const playreadyKeyFile = find('zgpriv');
-    const prdFile = endsWith('.prd');
-
-    const isPlayReady =
-      (!!(playreadyCertificateFile && playreadyKeyFile) || !!prdFile) && !output?.endsWith('.wvd');
-
-    if (isWidevine) {
-      if (wvdFile) {
-        const wvd = await readFile(join(input, wvdFile));
-        return await WidevineClientCredentials.from({ wvd });
-      } else {
-        const id = await readFile(join(input, widevineIdFile!));
-        const key = await readFile(join(input, widevineKeyFile!));
-        return WidevineClientCredentials.from({ id, key });
+    const entries = (await readdir(input, { withFileTypes: true }))
+      .filter((entry) => entry.isFile())
+      .map((entry) => entry.name);
+    const candidates: (() => Promise<WidevineClientCredentials | PlayReadyClientCredentials>)[] =
+      [];
+    const addRaw = (
+      firstQuery: string,
+      secondQuery: string,
+      load: (
+        first: Buffer,
+        second: Buffer,
+      ) => Promise<WidevineClientCredentials | PlayReadyClientCredentials>,
+    ) => {
+      const first = entries.filter((entry) => entry.includes(firstQuery));
+      const second = entries.filter((entry) => entry.includes(secondQuery));
+      if (!first.length || !second.length) return;
+      if (first.length > 1 || second.length > 1 || first[0] === second[0]) {
+        throw new Error(`Ambiguous raw credential files in ${input}`);
       }
-    } else if (isPlayReady) {
-      if (prdFile) {
-        const prd = await readFile(join(input, prdFile));
-        return await PlayReadyClientCredentials.from({ prd });
-      } else {
-        const certificate = await readFile(join(input, playreadyCertificateFile!));
-        const key = await readFile(join(input, playreadyKeyFile!));
-        return PlayReadyClientCredentials.from({
-          groupCertificate: certificate,
-          groupKey: key,
-        });
+      candidates.push(async () =>
+        load(await readFile(join(input, first[0]!)), await readFile(join(input, second[0]!))),
+      );
+    };
+    if (!output?.endsWith('.prd')) {
+      for (const file of entries.filter((entry) => entry.endsWith('.wvd'))) {
+        candidates.push(async () =>
+          WidevineClientCredentials.from({ wvd: await readFile(join(input, file)) }),
+        );
       }
-    } else {
-      throw new Error(`Unable to find credential files in ${input}`);
+      addRaw('client_id', 'private_key', (id, key) => WidevineClientCredentials.from({ id, key }));
     }
+    if (!output?.endsWith('.wvd')) {
+      for (const file of entries.filter((entry) => entry.endsWith('.prd'))) {
+        candidates.push(async () =>
+          PlayReadyClientCredentials.from({ prd: await readFile(join(input, file)) }),
+        );
+      }
+      addRaw('bgroupcert', 'zgpriv', (groupCertificate, groupKey) =>
+        PlayReadyClientCredentials.from({ groupCertificate, groupKey }),
+      );
+    }
+    if (candidates.length > 1) {
+      throw new Error(
+        `Ambiguous credential files in ${input}. Specify a packed file or a directory containing one credential set.`,
+      );
+    }
+    const load = candidates[0];
+    if (!load) throw new Error(`Unable to find credential files in ${input}`);
+    return load();
   } else if (input.endsWith('.wvd')) {
     const wvd = await readFile(input);
     return await WidevineClientCredentials.from({ wvd });

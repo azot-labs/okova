@@ -331,3 +331,24 @@ test.each([
     ).status,
   ).toBe(403);
 });
+
+test('maps malformed Widevine license bytes to 400 and keeps the session available', async () => {
+  const { id } = await (await post()).json();
+  const result = await post({}, JSON.stringify({ response: 'AQ==' }), `/sessions/${id}/update`);
+  expect(result.status).toBe(400);
+  expect(await result.json()).toEqual({ error: 'Invalid session input' });
+  expect(sessions.has(`:${id}`)).toBe(true);
+});
+
+test('removes a real Widevine session when a malformed PSSH fails generation', async () => {
+  config.forcePrivacyMode = false;
+  const { id } = await (await post()).json();
+  const malformedBox = Buffer.from('000000207073736800000000', 'hex').toString('base64');
+  const result = await post(
+    {},
+    JSON.stringify({ initData: malformedBox }),
+    `/sessions/${id}/generate-request`,
+  );
+  expect(result.status).toBe(400);
+  expect(sessions.has(`:${id}`)).toBe(false);
+});

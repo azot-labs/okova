@@ -210,3 +210,82 @@ test.each([{}, { host: '0.0.0.0', public: true }, { host: '::', public: true }])
     }
   },
 );
+
+test.each(['discovered', 'configured', 'explicit', 'existing grant'])(
+  'starts with multiple credentials and reports automatic selection: %s',
+  async (mode) => {
+    const directory = await mkdtemp(join(tmpdir(), 'okova-selection-'));
+    const configPath = join(directory, 'config.json');
+    const first = join(directory, 'a.prd');
+    const last = join(directory, 'z.wvd');
+    const originalConfig = structuredClone(config);
+    const originalListeners = {
+      SIGINT: process.listeners('SIGINT'),
+      SIGTERM: process.listeners('SIGTERM'),
+    };
+    const startServer = vi.mocked(nodeServer.serve);
+    startServer.mockClear();
+    const warning = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    vi.spyOn(process, 'cwd').mockReturnValue(directory);
+    try {
+      await writeFile(last, 'WVD');
+      await writeFile(first, 'PRD');
+      await writeFile(
+        configPath,
+        JSON.stringify({
+          port: 0,
+          credentials: mode === 'discovered' ? [] : [last, first],
+          users:
+            mode === 'existing grant'
+              ? { 'private-secret': { name: 'test', credentials: [first] } }
+              : {},
+        }),
+      );
+      await serve({
+        config: configPath,
+        secret: 'private-secret',
+        ...(mode === 'explicit' ? { credentials: first } : {}),
+      });
+      const server = startServer.mock.results[0]?.value;
+      assert(server);
+      if (!server.listening) await once(server, 'listening');
+      expect(server.address()).toMatchObject({ address: '127.0.0.1' });
+      const selected = mode === 'configured' ? last : first;
+      expect(config.users['private-secret']?.credentials).toEqual([selected]);
+      const output = warning.mock.calls.flat().join('\n');
+      expect(output).not.toContain('private-secret');
+      if (mode === 'explicit') {
+        expect(warning).not.toHaveBeenCalled();
+      } else {
+        expect(output).toContain(mode === 'discovered' ? first : last);
+        expect(output).toContain(mode === 'discovered' ? 'PlayReady' : 'Widevine');
+        expect(output).toContain('--credentials');
+        if (mode === 'existing grant') {
+          expect(output).not.toContain('Granted');
+        } else {
+          expect(output).toContain(`Granted --secret access to ${selected}`);
+        }
+      }
+      if (mode === 'discovered') {
+        expect(config.credentials).toEqual(['a.prd']);
+        expect(output).toContain('Multiple credential files');
+      }
+    } finally {
+      const server = startServer.mock.results[0]?.value;
+      if (server?.listening) {
+        await new Promise<void>((resolve, reject) => {
+          server.close((error?: Error) => (error ? reject(error) : resolve()));
+        });
+      }
+      for (const signal of ['SIGINT', 'SIGTERM'] as const) {
+        for (const listener of process.listeners(signal)) {
+          if (!originalListeners[signal].includes(listener))
+            process.removeListener(signal, listener);
+        }
+      }
+      Object.assign(config, originalConfig);
+      vi.restoreAllMocks();
+      await rm(directory, { recursive: true, force: true });
+    }
+  },
+);

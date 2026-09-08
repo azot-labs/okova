@@ -1,3 +1,4 @@
+import { SessionInputError } from '../session-input-error';
 import { DOMParser, XMLSerializer, type Document, type Element } from '@xmldom/xmldom';
 import { z } from 'zod';
 import * as utils from '@noble/curves/utils.js';
@@ -317,6 +318,9 @@ export class PlayReadySession extends BaseMediaKeysEngineSession {
 
   async generateRequest(initData: Uint8Array, initDataType: string = 'cenc') {
     this.assertOpen();
+    if (initDataType !== 'cenc') {
+      throw new SessionInputError('PlayReady supports only cenc init data');
+    }
     this.initData = initData;
     this.initDataType = initDataType;
     const pssh = new Pssh(initData);
