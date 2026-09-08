@@ -556,3 +556,29 @@ test('selected deletion freezes status variants and all deletion includes recent
   expect(await appStorage.recentKeys.getValue()).toEqual([]);
   expect(await appStorage.recentKeysByDomain.getValue()).toEqual({ 'example.com': [] });
 });
+
+test('persists validated manifest choices across history and recent caches', async () => {
+  const manifest = {
+    url: 'https://example.com/video.m3u8',
+    kind: 'hls-media',
+    matched: true,
+  } as const;
+  const capture = { ...key, mpd: manifest.url, manifests: [manifest] };
+  await appStorage.allKeys.add(capture);
+  await appStorage.recentKeys.setForUrl(key.url, [capture]);
+  expect(await appStorage.allKeys.getValue()).toEqual([capture]);
+  expect(await appStorage.recentKeys.getValue()).toEqual([capture]);
+  expect(await appStorage.recentKeysByDomain.getValue()).toEqual({ 'example.com': [capture] });
+
+  const unsafe = {
+    ...capture,
+    mpd: 'javascript:alert(1)',
+    manifests: [{ ...manifest, url: 'data:text/plain,test' }],
+  };
+  await appStorage.allKeys.setValue([unsafe]);
+  await appStorage.recentKeys.setForUrl(key.url, [unsafe]);
+  const sanitized = { ...key, mpd: undefined };
+  expect(await appStorage.allKeys.getValue()).toEqual([sanitized]);
+  expect(await appStorage.recentKeys.getValue()).toEqual([sanitized]);
+  expect(await appStorage.recentKeysByDomain.getValue()).toEqual({ 'example.com': [sanitized] });
+});

@@ -51,6 +51,24 @@ test('saved keys filter immediately by KID, page URL, and manifest URL', async (
       const count = popup.getByRole('status');
       await expect.poll(() => count.textContent()).toBe('(2)');
       await expect.poll(() => popup.locator('[data-history-row]').count()).toBe(2);
+      const manifestLink = popup
+        .locator('[data-history-row]')
+        .filter({ hasText: keys[0]!.id })
+        .locator('a');
+      for (const mpd of [
+        'https://cdn.example/updated.m3u8',
+        'javascript:alert(1)',
+        keys[0]!.mpd!,
+      ]) {
+        const updated = [{ ...keys[0]!, mpd }, keys[1]!];
+        await worker.evaluate(async (records) => {
+          await browser.storage.local.set({ 'all-keys': JSON.stringify(records) });
+        }, updated);
+        const href = mpd.startsWith('javascript:') ? keys[0]!.url : mpd;
+        await expect.poll(() => manifestLink.getAttribute('href')).toBe(href);
+        expect(await manifestLink.getAttribute('title')).toBe(href);
+        expect(await manifestLink.textContent()).toBe(href.replace('https://', ''));
+      }
       for (const query of [
         'aabbccdd-1122-3344-5566-77889900aabb',
         ' DD-1122 ',

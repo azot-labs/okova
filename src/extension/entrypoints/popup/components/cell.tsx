@@ -20,6 +20,7 @@ interface CellProps {
   disabled?: boolean;
   'aria-expanded'?: boolean;
   'aria-controls'?: string;
+  'aria-pressed'?: boolean;
   onClick?: () => void;
 }
 
@@ -46,6 +47,7 @@ export const Cell: Component<CellProps> = (props) => {
       title={props.title}
       aria-expanded={props['aria-expanded']}
       aria-controls={props['aria-controls']}
+      aria-pressed={props['aria-pressed']}
       disabled={cellProps.component === 'button' ? props.disabled : undefined}
       onClick={props.onClick}
     >

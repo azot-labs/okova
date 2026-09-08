@@ -1,4 +1,4 @@
-import { findManifest } from '@/utils/manifest';
+import { getManifestCapture } from '@/utils/manifest';
 import { z } from 'zod';
 import { CLIENT_KEY_SYSTEMS, type ClientKeySystem } from '@okova/lib/key-system';
 import { toBytes, bytesToBase64, fromHex, fromBase64 } from '@okova/lib/utils';
@@ -78,7 +78,7 @@ export const installDrmPlayback = () => {
           initDataType: 'cenc',
           initData,
           serverCertificate,
-          mpd: findManifest(initData),
+          ...getManifestCapture(initData),
         });
       const dispatchChallenge = (challenge: ArrayBuffer) => {
         // Deliver as a task, after generateRequest or update has resolved.

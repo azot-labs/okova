@@ -247,3 +247,46 @@ test.each(['text', 'blob'] as const)(
     expect(postMessage).not.toHaveBeenCalled();
   },
 );
+
+test.each([
+  [
+    'https://example.com/live',
+    'Application/Vnd.Apple.MpegURL; charset=utf-8',
+    '#EXTM3U\n#EXTINF:4,\nsegment.ts',
+  ],
+  ['https://example.com/live', 'audio/x-mpegurl', '#EXTM3U\n#EXTINF:4,\nsegment.ts'],
+  ['https://example.com/live', 'text/plain', '#EXTM3U\n#EXTINF:4,\nsegment.ts'],
+  [
+    'https://example.com/LIVE.M3U8?token=abc',
+    'application/unknown',
+    '#EXTM3U\n#EXTINF:4,\nsegment.ts',
+  ],
+  ['https://example.com/video.ism/Manifest', '', '<SmoothStreamingMedia/>'],
+  ['https://example.com/live', 'application/vnd.ms-sstr+xml', '<SmoothStreamingMedia/>'],
+])(
+  'captures XHR stream manifests by MIME type or pathname: %s, %s',
+  async (responseURL, type, body) => {
+    const xhr = new XMLHttpRequest();
+    Object.assign(xhr, { responseURL, headers: `content-type: ${type}\r\n`, response: body });
+    xhr.dispatchEvent(new Event('load'));
+    await vi.waitFor(() =>
+      expect(postMessage).toHaveBeenCalledWith(
+        expect.objectContaining({
+          params: expect.objectContaining({ url: responseURL, text: body }),
+        }),
+        '*',
+      ),
+    );
+  },
+);
+
+test('does not forward a media segment with a manifest-looking URL', async () => {
+  const xhr = new XMLHttpRequest();
+  Object.assign(xhr, {
+    responseURL: 'https://example.com/live.m3u8',
+    response: 'binary segment data',
+  });
+  xhr.dispatchEvent(new Event('load'));
+  await Promise.resolve();
+  expect(postMessage).not.toHaveBeenCalled();
+});

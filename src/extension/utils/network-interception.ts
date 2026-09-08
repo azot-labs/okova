@@ -6,16 +6,30 @@ export const installNetworkInterception = () => {
     const isSizeOk = Number(size) < MAX_SIZE;
     if (size && !isSizeOk) return false;
 
-    const type = headers['content-type'];
+    const type = headers['content-type']?.toLowerCase();
     const isTypeOk =
-      type?.includes('xml') || type?.includes('dash') || type?.includes('octet-stream');
-    if (!isTypeOk) return false;
+      type?.includes('xml') ||
+      type?.includes('dash') ||
+      type?.includes('octet-stream') ||
+      type?.includes('mpegurl') ||
+      type?.includes('vnd.ms-sstr') ||
+      type?.includes('text/plain');
+    let isManifestPath = false;
+    try {
+      isManifestPath = /\.(?:mpd|m3u8?|ismc)$|\.ism\/manifest(?:\([^/]*\))?$/i.test(
+        new URL(url).pathname,
+      );
+    } catch {
+      // Synthetic responses may have no URL; their content type can still be inspected.
+    }
+    if (!isTypeOk && !isManifestPath) return false;
 
     return true;
   };
 
   const filterData = (url: string, text: string) => {
-    const isManifest = text.trimStart().startsWith('<');
+    const start = text.trimStart();
+    const isManifest = start.startsWith('<') || /^#EXTM3U(?:\r?\n|$)/.test(start);
     return isManifest;
   };
 

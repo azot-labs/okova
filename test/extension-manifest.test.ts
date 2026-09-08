@@ -1,7 +1,13 @@
 import { DOMParser } from '@xmldom/xmldom';
 import { afterEach, beforeEach, expect, test, vi } from 'vitest';
 import { installManifestInspection } from '../src/extension/utils/manifest-inspection';
-import { findManifest, splitPssh } from '../src/extension/utils/manifest';
+import {
+  findManifest,
+  getManifestCapture,
+  getManifestMetadata,
+  MAX_MANIFESTS,
+  splitPssh,
+} from '../src/extension/utils/manifest';
 import { createPsshBox, psshBoxToBase64, PSSH_SYSTEM_IDS } from '../src/lib/pssh';
 
 const widevine = psshBoxToBase64(createPsshBox({ systemId: PSSH_SYSTEM_IDS.widevine }));
@@ -156,3 +162,151 @@ test('bounds manifest associations and evicts the oldest entry', () => {
   expect(window.MPD_LIST.has('0')).toBe(false);
   expect(findManifest(widevine)).toBe(url);
 });
+
+test('retains multiple DASH URLs for a capture and unrelated manifests as explicit choices', () => {
+  post(mpd(widevine));
+  post(mpd(widevine), `${url}?alternate=1`);
+  post(mpd(playready), 'https://example.test/other.mpd');
+  const capture = getManifestCapture(widevine);
+  expect(capture.manifests).toEqual([
+    { url, kind: 'dash', matched: true },
+    { url: `${url}?alternate=1`, kind: 'dash', matched: true },
+    { url: 'https://example.test/other.mpd', kind: 'dash', matched: false },
+  ]);
+  expect(capture.mpd).toBe(url);
+  expect(getManifestCapture(undefined).mpd).toBeUndefined();
+});
+
+test.each(['KEY', 'SESSION-KEY'])(
+  'matches HLS EXT-X-%s embedded PSSH, including commas in quoted data URIs',
+  (tag) => {
+    post(
+      `#EXTM3U\n#EXT-X-${tag}:METHOD=SAMPLE-AES,URI="data:text/plain;base64,${widevine}",KEYFORMAT="urn:uuid:edef8ba9-79d6-4ace-a3c8-27dcd51d21ed"\n#EXTINF:4,\nsegment.ts`,
+      'https://example.test/video.m3u8',
+    );
+    expect(getManifestCapture(combined)).toEqual({
+      mpd: 'https://example.test/video.m3u8',
+      manifests: [
+        {
+          url: 'https://example.test/video.m3u8',
+          kind: tag === 'SESSION-KEY' ? 'hls-master' : 'hls-media',
+          matched: true,
+        },
+      ],
+    });
+  },
+);
+
+test('prefers the observed HLS master when a relative child matches', () => {
+  const master = 'https://example.test/master.m3u8?masterToken=one';
+  post(
+    '#EXTM3U\n#EXT-X-STREAM-INF:BANDWIDTH=1280000,CODECS="avc1.4d401f,mp4a.40.2"\nvideo/media.m3u8?token=two',
+    master,
+  );
+  post(
+    `#EXTM3U\n#EXT-X-KEY:METHOD=SAMPLE-AES,URI="data:text/plain;base64,${widevine}"`,
+    'https://example.test/video/media.m3u8?token=two',
+  );
+  const capture = getManifestCapture(widevine);
+  expect(capture.mpd).toBe(master);
+  expect(capture.manifests?.map((manifest) => [manifest.kind, manifest.matched])).toEqual([
+    ['hls-master', true],
+    ['hls-media', true],
+  ]);
+});
+
+test('records plain HLS playlists without claiming a DRM association or capturing segment/key URLs', () => {
+  post(
+    '#EXTM3U\n#EXT-X-KEY:METHOD=AES-128,URI="secret.key"\n#EXTINF:10,\nsegment.ts',
+    'https://example.test/plain.m3u8',
+  );
+  expect(getManifestCapture(widevine)).toEqual({
+    mpd: undefined,
+    manifests: [{ url: 'https://example.test/plain.m3u8', kind: 'hls-media', matched: false }],
+  });
+  post('#EXTM3U-not-a-playlist', 'https://example.test/fake.m3u8');
+  expect(window.MANIFEST_LIST.size).toBe(1);
+});
+
+test('matches MSS ProtectionHeader as raw PlayReady data and as an EME PSSH', () => {
+  const data = Buffer.from('synthetic PlayReady Object');
+  const pssh = psshBoxToBase64(createPsshBox({ systemId: PSSH_SYSTEM_IDS.playready, data }));
+  const mss = 'https://example.test/video.ism/Manifest';
+  post(
+    `<SmoothStreamingMedia MajorVersion="2" MinorVersion="1"><Protection><ProtectionHeader SystemID="{9A04F079-9840-4286-AB92-E65BE0885F95}">${data.toString('base64')}</ProtectionHeader></Protection></SmoothStreamingMedia>`,
+    mss,
+  );
+  expect(getManifestCapture(pssh)).toEqual({
+    mpd: mss,
+    manifests: [{ url: mss, kind: 'mss', matched: true }],
+  });
+  expect(getManifestCapture(data.toString('base64')).mpd).toBe(mss);
+});
+
+test('ignores malformed protection data while keeping the detected manifest', () => {
+  post(
+    '<SmoothStreamingMedia><Protection><ProtectionHeader SystemID="9a04f079-9840-4286-ab92-e65be0885f95">%%%bad</ProtectionHeader></Protection></SmoothStreamingMedia>',
+  );
+  expect(getManifestCapture(widevine)).toEqual({
+    mpd: undefined,
+    manifests: [{ url, kind: 'mss', matched: false }],
+  });
+});
+
+test('deduplicates reloads and bounds detected manifests without storing response bodies', () => {
+  for (let index = 0; index < MAX_MANIFESTS + 1; index++)
+    post('#EXTM3U\n#EXTINF:4,\nsegment.ts', `${url}?index=${index}`);
+  post('#EXTM3U\n#EXTINF:5,\nnext.ts', `${url}?index=${MAX_MANIFESTS}`);
+  const manifests = getManifestCapture(undefined).manifests;
+  expect(manifests).toHaveLength(MAX_MANIFESTS);
+  expect(manifests?.some((item) => item.url === `${url}?index=0`)).toBe(false);
+  expect(manifests?.at(-1)).toEqual({
+    url: `${url}?index=${MAX_MANIFESTS}`,
+    kind: 'hls-media',
+    matched: false,
+  });
+});
+
+test('validates and bounds manifest metadata from page messages and old storage', () => {
+  const valid = { url, kind: 'dash', matched: true };
+  expect(
+    getManifestMetadata({
+      mpd: 'javascript:alert(1)',
+      manifests: [
+        valid,
+        valid,
+        { ...valid, url: 'file:///tmp/a' },
+        null,
+        { ...valid, kind: 'html' },
+      ],
+    }),
+  ).toEqual({ mpd: undefined, manifests: [valid] });
+  expect(getManifestMetadata({ mpd: url, manifests: 'not a list' })).toEqual({ mpd: url });
+});
+
+test.each(['dash', 'mss'] as const)(
+  'prefers a direct %s match over an HLS master matched through its child',
+  (kind) => {
+    const data = Buffer.from('shared PlayReady Object');
+    const pssh = psshBoxToBase64(createPsshBox({ systemId: PSSH_SYSTEM_IDS.playready, data }));
+    const master = 'https://example.test/master.m3u8';
+    post('#EXTM3U\n#EXT-X-STREAM-INF:BANDWIDTH=1280000\nmedia.m3u8', master);
+    post(
+      `#EXTM3U\n#EXT-X-KEY:METHOD=SAMPLE-AES,URI="data:text/plain;base64,${pssh}"`,
+      'https://example.test/media.m3u8',
+    );
+    const direct = `https://example.test/${kind}`;
+    const body =
+      kind === 'dash'
+        ? mpd(pssh, PSSH_SYSTEM_IDS.playready)
+        : `<SmoothStreamingMedia><Protection><ProtectionHeader SystemID="9a04f079-9840-4286-ab92-e65be0885f95">${data.toString('base64')}</ProtectionHeader></Protection></SmoothStreamingMedia>`;
+    post(body, direct);
+    const capture = getManifestCapture(pssh);
+    expect(capture.mpd).toBe(direct);
+    expect(capture.manifests).toEqual([
+      { url: direct, kind, matched: true },
+      { url: master, kind: 'hls-master', matched: true },
+      { url: 'https://example.test/media.m3u8', kind: 'hls-media', matched: true },
+    ]);
+  },
+);

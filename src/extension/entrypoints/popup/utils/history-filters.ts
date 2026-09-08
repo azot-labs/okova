@@ -1,3 +1,4 @@
+import { getManifestMetadata } from '@/utils/manifest';
 import { getWebsiteDomain, type KeyInfo } from '@/utils/storage';
 
 export type HistoryFilters = {
@@ -29,7 +30,10 @@ export const filterHistory = (records: readonly KeyInfo[], filters: HistoryFilte
         !query ||
         (kidQuery.length > 0 && key.id.toLowerCase().replaceAll('-', '').includes(kidQuery)) ||
         key.url.toLowerCase().includes(query) ||
-        key.mpd?.toLowerCase().includes(query);
+        key.mpd?.toLowerCase().includes(query) ||
+        getManifestMetadata(key).manifests?.some((manifest) =>
+          manifest.url.toLowerCase().includes(query),
+        );
       const matchesSite = !filters.site || getWebsiteDomain(key.url) === filters.site;
       return matchesDrm && matchesSearch && matchesSite;
     })

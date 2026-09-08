@@ -1,3 +1,4 @@
+import { getManifestMetadata, type Manifest } from '../manifest';
 import type { Credentials } from '../../../lib/credentials';
 import { browser, storage } from '#imports';
 import { z } from 'zod';
@@ -19,14 +20,25 @@ export type KeyInfo = {
   id: string;
   value: string;
   url: string;
+  /** Preferred URL. The legacy field name also supports HLS and MSS. */
   mpd?: string;
+  manifests?: Manifest[];
   pssh: string;
   createdAt: number;
 };
 
 // Include the capture time so a later capture of the same key survives confirmation.
 export const keyRecordToken = (key: KeyInfo) =>
-  JSON.stringify([key.id, key.value, key.url, key.pssh, key.createdAt, key.mpd, key.drmSystem]);
+  JSON.stringify([
+    key.id,
+    key.value,
+    key.url,
+    key.pssh,
+    key.createdAt,
+    key.mpd,
+    key.drmSystem,
+    key.manifests,
+  ]);
 
 export type KeyDeletionScope =
   | { kind: 'all' }
@@ -75,7 +87,12 @@ const retainNewest = <T>(records: T[], createdAt: (record: T) => number): T[] =>
   return records.filter((_, index) => !removed.has(index));
 };
 
-const retainKeys = (keys: KeyInfo[]) => retainNewest(keys, (key) => key.createdAt);
+const sanitizeManifestMetadata = (key: KeyInfo): KeyInfo => {
+  const metadata = getManifestMetadata(key);
+  return { ...key, ...metadata, manifests: metadata.manifests };
+};
+const retainKeys = (keys: KeyInfo[]) =>
+  retainNewest(keys, (key) => key.createdAt).map(sanitizeManifestMetadata);
 
 // The domain cache has one shared record budget, not 1,000 records per domain.
 const retainDomains = (domains: RecentKeysByDomain): RecentKeysByDomain => {
@@ -87,7 +104,7 @@ const retainDomains = (domains: RecentKeysByDomain): RecentKeysByDomain => {
   const result: RecentKeysByDomain = Object.create(null);
   for (const { domain, key } of retained) {
     const keys = (result[domain] ??= []);
-    if (key) keys.push(key);
+    if (key) keys.push(sanitizeManifestMetadata(key));
   }
   return result;
 };
