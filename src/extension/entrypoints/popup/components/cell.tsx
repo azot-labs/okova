@@ -38,7 +38,7 @@ export const Cell: Component<CellProps> = (props) => {
         props.variant === 'warning' && 'text-[#d07200] dark:text-orange-400',
         props.disabled && 'cursor-default pointer-events-none opacity-70',
         props.size === 'sm' &&
-          'text-[13px] font-medium hover:bg-transparent dark:hover:bg-transparent hover:opacity-80 min-h-4 py-1 px-1',
+          'text-[13px] font-medium hover:bg-transparent dark:hover:bg-transparent hover:opacity-80 min-h-4 py-1 px-1.5',
         props.size === 'xs' &&
           'text-[10px] rounded-md font-medium bg-transparent dark:bg-transparent hover:bg-neutral-200/80 hover:dark:bg-neutral-800 min-h-4 py-0 px-1',
         props.class,
