@@ -137,7 +137,15 @@ const inspectManifest = (url: string, text: string): DetectedManifest | undefine
 
 export const installManifestInspection = () => {
   if (!(window.MPD_LIST instanceof Map)) window.MPD_LIST = new Map();
-  if (!(window.MANIFEST_LIST instanceof Map)) window.MANIFEST_LIST = new Map();
+  try {
+    if (!(window.MANIFEST_LIST instanceof Map)) window.MANIFEST_LIST = new Map();
+  } catch {
+    Object.defineProperty(window, 'MANIFEST_LIST', {
+      value: new Map(),
+      writable: true,
+      configurable: true,
+    });
+  }
 
   window.addEventListener('message', (event: MessageEvent<unknown>) => {
     if (event.source !== window) return;

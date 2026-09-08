@@ -95,6 +95,24 @@ test('preserves existing manifest associations when initialized again', () => {
   expect(findManifest(widevine)).toBe(url);
 });
 
+test('recovers manifest inspection from a throwing page-owned cache getter', () => {
+  Object.defineProperty(window, 'MANIFEST_LIST', {
+    configurable: true,
+    get() {
+      throw new Error('Page-owned getter');
+    },
+  });
+  const addEventListener = vi.spyOn(window, 'addEventListener');
+
+  expect(() => installManifestInspection()).not.toThrow();
+  expect(addEventListener).toHaveBeenCalledWith('message', expect.any(Function));
+  post(mpd(widevine));
+  expect(getManifestCapture(widevine)).toEqual({
+    mpd: url,
+    manifests: [{ url, kind: 'dash', matched: true }],
+  });
+});
+
 test.each([
   { pssh: widevine, scheme: PSSH_SYSTEM_IDS.widevine },
   { pssh: playready, scheme: PSSH_SYSTEM_IDS.playready },
