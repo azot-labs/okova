@@ -59,18 +59,17 @@ test('filters and ordering control visible history and both export formats', asy
       await expect.poll(visible).toEqual([...records].reverse().map(pair));
       await popup.getByLabel('Order', { exact: true }).selectOption('oldest');
       await expect.poll(visible).toEqual(records.map(pair));
+      await popup.getByRole('button', { name: 'Search', exact: true }).click();
       await popup.getByRole('searchbox').fill('WATCH.EXAMPLE');
+      await popup.getByRole('searchbox').press('Tab');
       await popup.getByLabel('DRM', { exact: true }).selectOption('W');
       await expect.poll(visible).toEqual([records[0]!, records[2]!].map(pair));
-      await popup.getByRole('checkbox', { name: 'Select All Results', exact: true }).check();
-      await expect
-        .poll(() => popup.getByRole('status').textContent())
-        .toBe('2 selected / 2 filtered / 3 total');
+      await popup.getByRole('button', { name: 'Select All', exact: true }).click();
+      await expect.poll(() => popup.getByRole('status').textContent()).toBe('(2/3)');
+      await popup.getByRole('button', { name: 'Search', exact: true }).click();
       await popup.getByRole('searchbox').fill('first');
       await expect.poll(visible).toEqual([pair(records[0]!)]);
-      await expect
-        .poll(() => popup.getByRole('status').textContent())
-        .toBe('1 selected / 1 filtered / 3 total');
+      await expect.poll(() => popup.getByRole('status').textContent()).toBe('(1/3)');
       for (const format of ['JSON', 'TXT']) {
         const downloaded = popup.waitForEvent('download');
         await popup.getByRole('button', { name: `Export Results as ${format}` }).click();
@@ -97,7 +96,7 @@ test('filters and ordering control visible history and both export formats', asy
       expect(
         await popup.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth),
       ).toBe(true);
-      await popup.getByRole('button', { name: 'Delete Selected', exact: true }).click();
+      await popup.getByRole('button', { name: /^Delete Selected \(/ }).click();
       await expect.poll(() => popup.getByRole('dialog').isVisible()).toBe(true);
       await popup.getByRole('button', { name: 'Cancel', exact: true }).click();
       await popup.getByLabel('DRM', { exact: true }).selectOption('C');
@@ -114,7 +113,9 @@ test('filters and ordering control visible history and both export formats', asy
       await expect
         .poll(visible)
         .toEqual([records[0]!, records[3]!, records[1]!, records[2]!].map(pair));
-      expect(await popup.getByRole('searchbox').inputValue()).toBe('');
+      expect(
+        await popup.getByRole('button', { name: 'Search', exact: true }).getAttribute('title'),
+      ).toBe('Search');
       expect(await popup.getByLabel('DRM', { exact: true }).inputValue()).toBe('all');
       expect(await popup.getByLabel('Order', { exact: true }).inputValue()).toBe('oldest');
     } finally {

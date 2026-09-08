@@ -31,11 +31,6 @@ export const Dashboard = () => {
   const activeDomainRecentKeys = createMemo(() => {
     return getRecentKeysForUrl(activeTabUrl(), recentKeysByDomain(), recentKeys());
   });
-  const recentKeysHeader = createMemo(() =>
-    activeDomain()
-      ? `Recent Keys for ${activeDomain()} (${activeDomainRecentKeys().length})`
-      : 'Recent Keys',
-  );
 
   return (
     <Layout>
@@ -64,11 +59,7 @@ export const Dashboard = () => {
 
         <KeysList
           keys={activeDomainRecentKeys}
-          header={
-            <div class="block truncate" title={recentKeysHeader()}>
-              {recentKeysHeader()}
-            </div>
-          }
+          header="Recent Keys"
           controls={
             <Show when={activeDomain()}>
               {(domain) => (

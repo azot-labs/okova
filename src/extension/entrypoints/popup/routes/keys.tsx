@@ -4,24 +4,42 @@ import { DeleteKeys } from '../components/delete-keys';
 import { Layout } from '../components/layout';
 import { Header } from '../components/header';
 import { Cell } from '../components/cell';
-import { KeyInfo } from '@/utils/storage';
+import { KeyInfo, keyRecordToken } from '@/utils/storage';
 import { KeysList } from '../components/keys-list';
 import { NoKeys } from '../components/no-keys';
 import { Section } from '../components/section';
+import { Select } from '../components/select';
 import { serializeHistory, type HistoryExportFormat } from '../utils/history-export';
 import { saveFile } from '../utils/file';
-import { filterHistory, type HistoryFilters } from '../utils/history-filters';
+import { filterHistory, getHistorySites, type HistoryFilters } from '../utils/history-filters';
 
 export const Keys = () => {
   const [keys, setKeys] = createSignal<KeyInfo[]>([]);
   const [search, setSearch] = createSignal('');
+  const [site, setSite] = createSignal('');
+  const sites = createMemo(() => getHistorySites(keys()));
+  createEffect(() => {
+    if (site() && !sites().includes(site())) setSite('');
+  });
   const [drm, setDrm] = createSignal<HistoryFilters['drm']>('all');
   const [order, setOrder] = createSignal<HistoryFilters['order']>('newest');
   const filteredKeys = createMemo(() =>
-    filterHistory(keys(), { search: search(), drm: drm(), order: order() }),
+    filterHistory(keys(), { search: search(), site: site(), drm: drm(), order: order() }),
   );
+  const [selected, setSelected] = createSignal<string[]>([]);
+  const selectedRecords = createMemo(() =>
+    filteredKeys().filter((key) => selected().includes(keyRecordToken(key))),
+  );
+  const isAllSelected = createMemo(
+    () => filteredKeys().length > 0 && selectedRecords().length === filteredKeys().length,
+  );
+  createEffect(() => {
+    const visible = new Set(filteredKeys().map(keyRecordToken));
+    setSelected((tokens) => tokens.filter((token) => visible.has(token)));
+  });
   const clearFilters = () => {
     setSearch('');
+    setSite('');
     setDrm('all');
   };
   const [isExporting, setIsExporting] = createSignal(false);
@@ -63,7 +81,41 @@ export const Keys = () => {
 
   return (
     <Layout>
-      <Header backHref="/">Keys</Header>
+      <Header
+        backHref="/"
+        actions={
+          <>
+            <DeleteKeys
+              size="sm"
+              class="w-auto shrink-0"
+              label={
+                selectedRecords().length
+                  ? `Delete Selected (${selectedRecords().length})`
+                  : 'Delete All'
+              }
+              scope={
+                selectedRecords().length
+                  ? { kind: 'selected', records: selectedRecords() }
+                  : { kind: 'all' }
+              }
+              disabled={!keys().length}
+              onDeleted={() => setSelected([])}
+            />
+            <Cell
+              component="button"
+              variant="primary"
+              size="sm"
+              class="w-auto shrink-0"
+              disabled={!filteredKeys().length}
+              onClick={() => setSelected(isAllSelected() ? [] : filteredKeys().map(keyRecordToken))}
+            >
+              {isAllSelected() ? 'Deselect All' : 'Select All'}
+            </Cell>
+          </>
+        }
+      >
+        Keys
+      </Header>
       <div class="flex flex-col gap-3">
         <Section
           header="Actions"
@@ -93,7 +145,6 @@ export const Keys = () => {
           >
             Export Results as TXT
           </Cell>
-          <DeleteKeys label="Delete All" scope={{ kind: 'all' }} />
         </Section>
         <KeysList
           keys={filteredKeys}
@@ -102,9 +153,18 @@ export const Keys = () => {
           search={{ value: search(), onChange: setSearch }}
           controls={
             <>
-              <select
+              <Select
+                aria-label="Site"
+                class="max-w-[150px] truncate"
+                title={site() || 'All sites'}
+                value={site()}
+                onChange={(event) => setSite(event.currentTarget.value)}
+              >
+                <option value="">All sites</option>
+                <For each={sites()}>{(site) => <option value={site}>{site}</option>}</For>
+              </Select>
+              <Select
                 aria-label="DRM"
-                class="min-w-[105px] min-h-4 px-0.5 outline-none font-normal rounded-md bg-transparent hover:bg-neutral-100 hover:dark:bg-neutral-800 hover:cursor-pointer dark:[color-scheme:dark]"
                 value={drm()}
                 onChange={(event) => {
                   const value = event.currentTarget.value;
@@ -123,10 +183,9 @@ export const Keys = () => {
                 <option value="P">PlayReady</option>
                 <option value="C">ClearKey</option>
                 <option value="unknown">Unknown</option>
-              </select>
-              <select
+              </Select>
+              <Select
                 aria-label="Order"
-                class="min-w-[82px] min-h-4 px-0.5 outline-none font-normal rounded-md bg-transparent hover:bg-neutral-100 hover:dark:bg-neutral-800 hover:cursor-pointer dark:[color-scheme:dark]"
                 value={order()}
                 onChange={(event) => {
                   const value = event.currentTarget.value;
@@ -135,10 +194,10 @@ export const Keys = () => {
               >
                 <option value="newest">Newest first</option>
                 <option value="oldest">Oldest first</option>
-              </select>
+              </Select>
             </>
           }
-          selectable
+          selection={{ tokens: selectedRecords().map(keyRecordToken), onChange: setSelected }}
         />
         <Show when={!filteredKeys().length}>
           <Show when={keys().length} fallback={<NoKeys />}>
