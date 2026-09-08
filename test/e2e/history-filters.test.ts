@@ -72,7 +72,7 @@ test('filters and ordering control visible history and both export formats', asy
       await expect.poll(() => popup.getByRole('status').textContent()).toBe('(1/3)');
       for (const format of ['JSON', 'TXT']) {
         const downloaded = popup.waitForEvent('download');
-        await popup.getByRole('button', { name: `Export Results as ${format}` }).click();
+        await popup.getByRole('button', { name: format, exact: true }).click();
         const download = await downloaded;
         const path = await download.path();
         if (!path) throw new Error('Missing export download');
@@ -101,7 +101,7 @@ test('filters and ordering control visible history and both export formats', asy
       await popup.getByRole('button', { name: 'Cancel', exact: true }).click();
       await popup.getByLabel('DRM', { exact: true }).selectOption('C');
       await expect.poll(visible).toEqual([]);
-      expect(await popup.getByRole('button', { name: 'Export Results as JSON' }).isDisabled()).toBe(
+      expect(await popup.getByRole('button', { name: 'JSON', exact: true }).isDisabled()).toBe(
         true,
       );
       expect(await popup.getByLabel('DRM', { exact: true }).isVisible()).toBe(true);

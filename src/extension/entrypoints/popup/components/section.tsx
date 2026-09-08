@@ -1,4 +1,5 @@
 import { Component, JSX, children } from 'solid-js';
+import { cn } from '../utils/cn';
 
 export const SectionFooter: Component<{ children: JSX.Element }> = (props) => {
   return (
@@ -9,6 +10,7 @@ export const SectionFooter: Component<{ children: JSX.Element }> = (props) => {
 };
 
 type SectionProps = {
+  class?: string;
   header?: JSX.Element;
   headerControls?: JSX.Element;
   footer?: JSX.Element;
@@ -26,9 +28,9 @@ export const Section: Component<SectionProps> = (props) => {
       ),
   );
   return (
-    <section>
+    <section class={props.class}>
       <Show when={props.header}>
-        <header class="pl-2 pr-1 pt-2 pb-1 text-[10px] cursor-default uppercase text-neutral-500 dark:text-neutral-400 flex items-center gap-0.5">
+        <header class="pl-2 pr-1 pt-2 pb-1 text-[10px] cursor-default uppercase tabular-nums text-neutral-500 dark:text-neutral-400 flex items-center gap-0.5">
           {props.header}
           <div class="ml-auto flex items-center gap-0.5">{props.headerControls}</div>
         </header>

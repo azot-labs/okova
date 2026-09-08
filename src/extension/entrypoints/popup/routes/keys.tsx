@@ -1,5 +1,5 @@
 import { popupHistory } from '../utils/history';
-import { TbOutlineDownload } from 'solid-icons/tb';
+import { TbOutlineFileDownload } from 'solid-icons/tb';
 import { DeleteKeys } from '../components/delete-keys';
 import { Layout } from '../components/layout';
 import { Header } from '../components/header';
@@ -7,7 +7,6 @@ import { Cell } from '../components/cell';
 import { KeyInfo, keyRecordToken } from '@/utils/storage';
 import { KeysList } from '../components/keys-list';
 import { NoKeys } from '../components/no-keys';
-import { Section } from '../components/section';
 import { Select } from '../components/select';
 import { serializeHistory, type HistoryExportFormat } from '../utils/history-export';
 import { saveFile } from '../utils/file';
@@ -117,45 +116,47 @@ export const Keys = () => {
         Keys
       </Header>
       <div class="flex flex-col gap-3">
-        <Section
-          header="Actions"
+        <KeysList
+          keys={filteredKeys}
+          allKeys={keys}
+          header="All Keys"
+          headerActions={
+            <span class="ml-1 capitalize flex items-center gap-1">
+              <Cell
+                component="button"
+                disabled={isExporting() || !filteredKeys().length}
+                onClick={() => exportKeys('json')}
+                title="Matching records, including statuses and metadata"
+                class="text-neutral-500 dark:text-neutral-400"
+                size="xs"
+                before={<TbOutlineFileDownload aria-hidden="true" class="size-3!" />}
+              >
+                JSON
+              </Cell>
+              <Cell
+                component="button"
+                disabled={isExporting() || !filteredKeys().length}
+                onClick={() => exportKeys('txt')}
+                title="Unique KID:KEY pairs, one per line"
+                class="text-neutral-500 dark:text-neutral-400"
+                size="xs"
+                before={<TbOutlineFileDownload aria-hidden="true" class="size-3!" />}
+              >
+                TXT
+              </Cell>
+            </span>
+          }
           footer={
             <Show when={exportError()}>
               <span role="alert">{exportError()}</span>
             </Show>
           }
-        >
-          <Cell
-            component="button"
-            before={<TbOutlineDownload />}
-            variant="primary"
-            subtitle="Matching records, including statuses and metadata"
-            disabled={isExporting() || !filteredKeys().length}
-            onClick={() => exportKeys('json')}
-          >
-            Export Results as JSON
-          </Cell>
-          <Cell
-            component="button"
-            before={<TbOutlineDownload />}
-            variant="primary"
-            subtitle="Unique KID:KEY pairs, one per line"
-            disabled={isExporting() || !filteredKeys().length}
-            onClick={() => exportKeys('txt')}
-          >
-            Export Results as TXT
-          </Cell>
-        </Section>
-        <KeysList
-          keys={filteredKeys}
-          allKeys={keys}
-          header="All Keys"
           search={{ value: search(), onChange: setSearch }}
           controls={
             <>
               <Select
                 aria-label="Site"
-                class="max-w-[150px] truncate"
+                class="max-w-[90px] truncate"
                 title={site() || 'All sites'}
                 value={site()}
                 onChange={(event) => setSite(event.currentTarget.value)}

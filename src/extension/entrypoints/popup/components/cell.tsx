@@ -40,7 +40,7 @@ export const Cell: Component<CellProps> = (props) => {
         props.size === 'sm' &&
           'text-[13px] font-medium hover:bg-transparent dark:hover:bg-transparent hover:opacity-80 min-h-4 py-1 px-1.5',
         props.size === 'xs' &&
-          'text-[10px] rounded-md font-medium bg-transparent dark:bg-transparent hover:bg-neutral-200/80 hover:dark:bg-neutral-800 min-h-4 py-0 px-1',
+          'text-[10px] rounded-md font-medium bg-transparent dark:bg-transparent hover:bg-slate-200/80 hover:dark:bg-slate-800 active:bg-slate-300/80 min-h-4 py-0 px-1',
         props.class,
       )}
       title={props.title}
@@ -70,7 +70,16 @@ export const Cell: Component<CellProps> = (props) => {
           </label>
         )}
       </Show>
-      {props.before && <div class="[&>svg]:w-[18px] [&>svg]:h-[18px] mr-3">{props.before}</div>}
+      {props.before && (
+        <div
+          class={cn(
+            '[&>svg]:w-[18px] [&>svg]:h-[18px] mr-3',
+            props.size === 'xs' && 'mr-0.5 size-3',
+          )}
+        >
+          {props.before}
+        </div>
+      )}
       <div class="flex flex-col truncate select-none w-full">
         <span class="truncate">{props.children}</span>
         <span class={cn('truncate text-[11px] text-neutral-500 select-none dark:text-neutral-400')}>

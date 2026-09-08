@@ -17,6 +17,7 @@ type KeysListProps = {
   search?: { value: string; onChange: (value: string) => void };
   controls?: JSX.Element;
   header?: JSX.Element;
+  headerActions?: JSX.Element;
   footer?: JSX.Element;
 };
 
@@ -64,6 +65,7 @@ export const KeysList: Component<KeysListProps> = (props) => {
                     ({props.selection?.tokens.length ? `${props.selection.tokens.length}/` : ''}
                     {(props.allKeys ?? props.keys)().length})
                   </span>
+                  {props.headerActions}
                 </>
               }
               headerControls={
@@ -91,7 +93,7 @@ export const KeysList: Component<KeysListProps> = (props) => {
                             searchInput?.focus();
                           }}
                         >
-                          <TbOutlineSearch aria-hidden="true" class="size-2.5" />
+                          <TbOutlineSearch aria-hidden="true" class="size-3" />
                         </button>
                         <div
                           class={cn(
