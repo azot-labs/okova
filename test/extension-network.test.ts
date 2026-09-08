@@ -290,3 +290,52 @@ test('does not forward a media segment with a manifest-looking URL', async () =>
   await Promise.resolve();
   expect(postMessage).not.toHaveBeenCalled();
 });
+
+test.each([url, new URL(url), new Request(url), '/manifest.mpd'])(
+  'preserves the original fetch URL across redirects: %#',
+  async (resource) => {
+    vi.stubGlobal('document', { baseURI: 'https://example.com/player' });
+    const response = makeResponse();
+    const finalUrl = 'https://cdn.example/redirected.mpd';
+    vi.spyOn(response, 'url', 'get').mockReturnValue(finalUrl);
+    const pending = Promise.withResolvers<Response>();
+    nativeFetch.mockReturnValue(pending.promise);
+    const fetching = fetch(resource);
+    // Relative URLs must resolve before the page changes its base during the request.
+    vi.stubGlobal('document', { baseURI: 'https://other.example/' });
+    pending.resolve(response);
+    expect(await fetching).toBe(response);
+    await vi.waitFor(() =>
+      expect(postMessage).toHaveBeenCalledWith(
+        expect.objectContaining({
+          params: expect.objectContaining({ url: finalUrl, requestUrl: url, text: manifest }),
+        }),
+        '*',
+      ),
+    );
+  },
+);
+
+test('preserves the original XHR URL during redirects and reuse from load handlers', async () => {
+  vi.useFakeTimers();
+  vi.stubGlobal('document', { baseURI: 'https://example.com/player' });
+  const open = vi.spyOn(NativeXHR.prototype, 'open');
+  const xhr = new XMLHttpRequest();
+  xhr.open('GET', '/manifest.mpd');
+  expect(open).toHaveBeenCalledWith('GET', '/manifest.mpd', true, undefined, undefined);
+  const finalUrl = 'https://cdn.example/redirected.mpd';
+  Object.assign(xhr, {
+    responseURL: finalUrl,
+    responseType: 'arraybuffer',
+    response: new TextEncoder().encode(manifest).buffer,
+  });
+  xhr.addEventListener('load', () => xhr.open('GET', '/next.mpd'));
+  xhr.dispatchEvent(new Event('load'));
+  await vi.runAllTimersAsync();
+  expect(postMessage).toHaveBeenCalledWith(
+    expect.objectContaining({
+      params: expect.objectContaining({ url: finalUrl, requestUrl: url, text: manifest }),
+    }),
+    '*',
+  );
+});

@@ -1,6 +1,17 @@
 export const installNetworkInterception = () => {
   const MAX_SIZE = 1024 * 1024 * 1; // 1 MB
 
+  const getRequestUrl = (resource: URL | RequestInfo) => {
+    try {
+      return new URL(
+        resource instanceof Request ? resource.url : resource,
+        globalThis.document?.baseURI,
+      ).href;
+    } catch {
+      return undefined;
+    }
+  };
+
   const filterHead = (url: string, headers: Record<string, string>) => {
     const size = headers['content-length'];
     const isSizeOk = Number(size) < MAX_SIZE;
@@ -33,17 +44,22 @@ export const installNetworkInterception = () => {
     return isManifest;
   };
 
-  const postMessage = (url: string, headers: Record<string, string>, text: string) => {
+  const postMessage = (
+    url: string,
+    headers: Record<string, string>,
+    text: string,
+    requestUrl?: string,
+  ) => {
     const message = {
       namespace: 'okova:network',
       method: 'response',
-      params: { url, text, headers },
+      params: { url, text, headers, ...(requestUrl ? { requestUrl } : {}) },
       id: Date.now(),
     };
     window.postMessage(message, '*');
   };
 
-  const inspectFetchResponse = async (response: Response) => {
+  const inspectFetchResponse = async (response: Response, requestUrl: string | undefined) => {
     const url = response.url;
     const headers = Object.fromEntries(response.headers.entries());
     if (!filterHead(url, headers)) return;
@@ -69,15 +85,16 @@ export const installNetworkInterception = () => {
     } finally {
       reader.releaseLock();
     }
-    if (filterData(url, text)) postMessage(url, headers, text);
+    if (filterData(url, text)) postMessage(url, headers, text, requestUrl);
   };
 
   const patchFetch = () => {
     if (typeof fetch === 'function') {
       const originalFetch = fetch;
       const cachedFetch = async function fetch(resource: URL | RequestInfo, options?: RequestInit) {
+        const requestUrl = getRequestUrl(resource);
         const response = await originalFetch(resource, options);
-        void inspectFetchResponse(response).catch((error) => {
+        void inspectFetchResponse(response, requestUrl).catch((error) => {
           console.warn('[okova] Fetch response inspection failed', error);
         });
         return response;
@@ -98,6 +115,27 @@ export const installNetworkInterception = () => {
 
   const patchXmlHttpRequest = () => {
     class PatchedXHR extends XMLHttpRequest {
+      #requestUrl: string | undefined;
+
+      open(method: string, url: string | URL): void;
+      open(
+        method: string,
+        url: string | URL,
+        async: boolean,
+        username?: string | null,
+        password?: string | null,
+      ): void;
+      open(
+        method: string,
+        url: string | URL,
+        async = true,
+        username?: string | null,
+        password?: string | null,
+      ) {
+        this.#requestUrl = getRequestUrl(url);
+        super.open(method, url, async, username, password);
+      }
+
       constructor() {
         super();
         this.addEventListener('load', () => {
@@ -109,6 +147,7 @@ export const installNetworkInterception = () => {
 
       async #handleResponse() {
         const url = this.responseURL;
+        const requestUrl = this.#requestUrl;
         const headersString = this.getAllResponseHeaders();
         const headersArray = headersString.trim().split(/[\r\n]+/);
         const headers: Record<string, string> = {};
@@ -148,7 +187,7 @@ export const installNetworkInterception = () => {
         // Reject long strings before allocating a UTF-8 copy for the byte check.
         if (text.length >= MAX_SIZE || new TextEncoder().encode(text).byteLength >= MAX_SIZE)
           return;
-        if (filterData(url, text)) postMessage(url, headers, text);
+        if (filterData(url, text)) postMessage(url, headers, text, requestUrl);
       }
     }
     window.XMLHttpRequest = PatchedXHR;

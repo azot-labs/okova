@@ -1,4 +1,5 @@
 import { mkdir, mkdtemp, rm } from 'node:fs/promises';
+import { createServer } from 'node:http';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { chromium } from 'playwright';
@@ -144,6 +145,7 @@ test('captures HLS/MSS choices through real EME and builds commands in the popup
     viewport: { width: 500, height: 600 },
     args: [`--disable-extensions-except=${extension}`, `--load-extension=${extension}`],
   });
+  const server = createServer();
   try {
     const worker = context.serviceWorkers()[0] ?? (await context.waitForEvent('serviceworker'));
     await expect
@@ -171,31 +173,36 @@ test('captures HLS/MSS choices through real EME and builds commands in the popup
         ),
       )
       .toEqual(['eme-bootstrap.js', 'network.js']);
-    const master = 'https://okova.test/master.m3u8?token=one';
-    const media = 'https://okova.test/media.m3u8?token=two';
-    const mss = 'https://okova.test/video.ism/Manifest';
-    await context.route('https://okova.test/**', async (route) => {
-      const url = route.request().url();
-      if (url === master)
-        await route.fulfill({
-          contentType: 'application/vnd.apple.mpegurl',
-          body: '#EXTM3U\n#EXT-X-STREAM-INF:BANDWIDTH=1280000\nmedia.m3u8?token=two',
-        });
-      else if (url === media)
-        await route.fulfill({ contentType: 'text/plain', body: '#EXTM3U\n#EXTINF:4,\nsegment.ts' });
-      else if (url === mss)
-        await route.fulfill({
-          contentType: 'application/vnd.ms-sstr+xml',
-          body: '<SmoothStreamingMedia MajorVersion="2" MinorVersion="1"/>',
-        });
-      else
-        await route.fulfill({
-          contentType: 'text/html',
-          body: '<!doctype html><title>Manifest workflow</title>',
-        });
+    await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve));
+    const address = server.address();
+    if (!address || typeof address === 'string') throw new Error('Missing test server address');
+    const origin = `http://127.0.0.1:${address.port}`;
+    const master = `${origin}/master.m3u8?token=one`;
+    const media = `${origin}/media.m3u8?token=two`;
+    const mss = `${origin}/video.ism/Manifest`;
+    const mediaRequest = `${origin}/request/media.m3u8`;
+    const mssRequest = `${origin}/request/video.ism/Manifest`;
+    server.on('request', (request, response) => {
+      const url = new URL(request.url!, origin).href;
+      if (url === mediaRequest || url === mssRequest) {
+        response.writeHead(302, { location: url === mediaRequest ? media : mss });
+        response.end();
+      } else if (url === master) {
+        response.setHeader('content-type', 'application/vnd.apple.mpegurl');
+        response.end('#EXTM3U\n#EXT-X-STREAM-INF:BANDWIDTH=1280000\nrequest/media.m3u8');
+      } else if (url === media) {
+        response.setHeader('content-type', 'text/plain');
+        response.end('#EXTM3U\n#EXTINF:4,\nsegment.ts');
+      } else if (url === mss) {
+        response.setHeader('content-type', 'application/vnd.ms-sstr+xml');
+        response.end('<SmoothStreamingMedia MajorVersion="2" MinorVersion="1"/>');
+      } else {
+        response.setHeader('content-type', 'text/html');
+        response.end('<!doctype html><title>Manifest workflow</title>');
+      }
     });
     const page = await context.newPage();
-    await page.goto('https://okova.test/watch');
+    await page.goto(`${origin}/watch`);
     await page.evaluate(
       async ([master, media, mss]) => {
         await fetch(master!);
@@ -209,9 +216,22 @@ test('captures HLS/MSS choices through real EME and builds commands in the popup
           xhr.send();
         });
       },
-      [master, media, mss],
+      [master, mediaRequest, mssRequest],
     );
     await expect.poll(() => page.evaluate(() => window.MANIFEST_LIST.size)).toBe(3);
+    expect(
+      await page.evaluate(
+        ([media, mss]) =>
+          [media, mss].map((url) => {
+            const manifest = window.MANIFEST_LIST.get(url!);
+            return manifest && typeof manifest === 'object' && 'requestUrls' in manifest
+              ? manifest.requestUrls
+              : undefined;
+          }),
+        [media, mss],
+      ),
+    ).toEqual([[mediaRequest], [mssRequest]]);
+    await page.evaluate(() => window.MANIFEST_LIST.set('page-owned', {}));
     await page.evaluate(async () => {
       const access = await navigator.requestMediaKeySystemAccess('org.w3.clearkey', [
         {
@@ -292,6 +312,8 @@ test('captures HLS/MSS choices through real EME and builds commands in the popup
     await popup.screenshot({ path: resolve('output/playwright/manifest/missing.png') });
   } finally {
     await context.close();
+    server.closeAllConnections();
+    await new Promise<void>((resolve) => server.close(() => resolve()));
     await rm(profile, { recursive: true, force: true });
   }
 });

@@ -22,10 +22,14 @@ const mpd = (pssh: string, scheme: string = PSSH_SYSTEM_IDS.widevine) => `
       <other:pssh>\n ${pssh.slice(0, 16)}\n ${pssh.slice(16)} \n</other:pssh>
     </dash:ContentProtection></dash:AdaptationSet></dash:Period>
   </dash:MPD>`;
-const post = (text: string, manifestUrl = url) =>
+const post = (text: string, manifestUrl = url, requestUrl?: string) =>
   receive({
     source: window,
-    data: { namespace: 'okova:network', method: 'response', params: { url: manifestUrl, text } },
+    data: {
+      namespace: 'okova:network',
+      method: 'response',
+      params: { url: manifestUrl, text, requestUrl },
+    },
   });
 
 beforeEach(() => {
@@ -310,3 +314,93 @@ test.each(['dash', 'mss'] as const)(
     ]);
   },
 );
+
+test.each([
+  null,
+  undefined,
+  1,
+  {},
+  { url, kind: 'dash', initData: {}, children: [] },
+  { url, kind: 'dash', initData: [], children: null },
+  { url, kind: 'dash', initData: [widevine], children: [42] },
+  { url, kind: 'dash', initData: [42], children: [] },
+  { url: 'javascript:alert(1)', kind: 'dash', initData: [widevine], children: [] },
+  { url, kind: 'unknown', initData: [widevine], children: [] },
+  {
+    get url() {
+      throw new Error('Page-owned getter');
+    },
+  },
+])('ignores malformed page-owned entries while preserving valid captures: %#', (value) => {
+  post(mpd(widevine));
+  Reflect.set(
+    window,
+    'MANIFEST_LIST',
+    new Map<string, unknown>([['broken', value], ...window.MANIFEST_LIST]),
+  );
+  expect(getManifestCapture(widevine)).toEqual({
+    mpd: url,
+    manifests: [{ url, kind: 'dash', matched: true }],
+  });
+});
+
+test.each(['x', 'é"'])(
+  'bounds serialized per-key metadata with signed URL characters %j',
+  (character) => {
+    const manifests = Array.from({ length: 50 }, (_, index) => ({
+      url: `https://example.test/${index}?signature=${character.repeat(1700)}`,
+      kind: 'dash',
+      matched: index === 49,
+    }));
+    const preferred = manifests[49]!;
+    const metadata = getManifestMetadata({ mpd: preferred.url, manifests });
+    expect(Buffer.byteLength(JSON.stringify(metadata))).toBeLessThanOrEqual(16 * 1024);
+    expect(metadata.mpd).toBe(preferred.url);
+    expect(metadata.manifests?.[0]).toEqual(preferred);
+  },
+);
+
+test('matches a redirected HLS child and retains its original URL through refreshes', () => {
+  const master = 'https://example.test/master.m3u8';
+  const original = 'https://example.test/media.m3u8?token=one';
+  const final = 'https://cdn.example.test/live/media.m3u8?token=two';
+  post('#EXTM3U\n#EXT-X-STREAM-INF:BANDWIDTH=1280000\nmedia.m3u8?token=one', master);
+  const media = `#EXTM3U\n#EXT-X-KEY:METHOD=SAMPLE-AES,URI="data:text/plain;base64,${widevine}"`;
+  post(media, final, original);
+  expect(getManifestCapture(widevine).mpd).toBe(master);
+  post(media, final);
+  expect(getManifestCapture(widevine).mpd).toBe(master);
+  expect(getManifestCapture(widevine).manifests).toEqual([
+    { url: master, kind: 'hls-master', matched: true },
+    { url: final, kind: 'hls-media', matched: true },
+  ]);
+});
+
+test('matches through nested redirected masters regardless of response order', () => {
+  const outer = 'https://example.test/outer.m3u8';
+  const inner = 'https://cdn.example.test/inner.m3u8';
+  const media = 'https://cdn.example.test/media.m3u8';
+  post('#EXTM3U\n#EXT-X-STREAM-INF:BANDWIDTH=1280000\ninner.m3u8', outer);
+  post(
+    '#EXTM3U\n#EXT-X-STREAM-INF:BANDWIDTH=1280000\nhttps://example.test/media.m3u8',
+    inner,
+    'https://example.test/inner.m3u8',
+  );
+  post(
+    `#EXTM3U\n#EXT-X-KEY:METHOD=SAMPLE-AES,URI="data:text/plain;base64,${widevine}"`,
+    media,
+    'https://example.test/media.m3u8',
+  );
+  expect(getManifestCapture(widevine).mpd).toBe(outer);
+  expect(getManifestCapture(widevine).manifests?.every((manifest) => manifest.matched)).toBe(true);
+});
+
+test('omits a single URL that exceeds the serialized budget instead of truncating it', () => {
+  const oversized = `https://example.test/${'漢'.repeat(7000)}`;
+  expect(
+    getManifestMetadata({
+      mpd: oversized,
+      manifests: [{ url: oversized, kind: 'dash', matched: true }],
+    }),
+  ).toEqual({ mpd: undefined });
+});

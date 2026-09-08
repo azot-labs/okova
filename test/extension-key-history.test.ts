@@ -582,3 +582,33 @@ test('persists validated manifest choices across history and recent caches', asy
   expect(await appStorage.recentKeys.getValue()).toEqual([sanitized]);
   expect(await appStorage.recentKeysByDomain.getValue()).toEqual({ 'example.com': [sanitized] });
 });
+
+test('bounds manifest metadata when persisting a multi-key capture to all history stores', async () => {
+  const manifests = Array.from({ length: 50 }, (_, index) => ({
+    url: `https://example.com/${index}?signature=${'x'.repeat(8000)}`,
+    kind: 'dash' as const,
+    matched: true,
+  }));
+  const captured = Array.from({ length: 32 }, (_, index) => ({
+    ...key,
+    id: index.toString(16).padStart(32, '0'),
+    mpd: manifests[0]!.url,
+    manifests,
+  }));
+  await appStorage.allKeys.add(...captured);
+  await appStorage.recentKeys.setForUrl(key.url, captured);
+  const stores = [
+    await appStorage.allKeys.getValue(),
+    await appStorage.recentKeys.getValue(),
+    (await appStorage.recentKeysByDomain.getValue())?.['example.com'],
+  ];
+  for (const records of stores) {
+    expect(records).toHaveLength(32);
+    for (const record of records ?? []) {
+      expect(record.mpd).toBe(captured[0]!.mpd);
+      expect(
+        Buffer.byteLength(JSON.stringify({ mpd: record.mpd, manifests: record.manifests })),
+      ).toBeLessThanOrEqual(16 * 1024);
+    }
+  }
+});

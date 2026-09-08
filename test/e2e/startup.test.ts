@@ -49,12 +49,20 @@ test('document-start bootstrap handles CSP, Trusted Types, frames, and settings 
       )
       .toBeTruthy();
     await expect
-      .poll(() => worker.evaluate(() => browser.scripting.getRegisteredContentScripts()))
-      .not.toEqual([]);
+      .poll(() =>
+        worker.evaluate(
+          async () =>
+            (
+              await browser.scripting.getRegisteredContentScripts({ ids: ['okova-interception'] })
+            )[0]?.js,
+        ),
+      )
+      .toEqual(['eme-bootstrap.js', 'network.js']);
     const initial = await worker.evaluate(async () =>
       JSON.parse(String((await browser.storage.local.get('settings')).settings)),
     );
     expect(initial.emeInterception).toBe(true);
+    expect(initial.requestInterception).toBe(true);
     const errors: string[] = [];
     const page = await context.newPage();
     page.on('pageerror', (error) => errors.push(error.message));
@@ -87,7 +95,7 @@ test('document-start bootstrap handles CSP, Trusted Types, frames, and settings 
         fetch: fetch.toString().includes('[native code]'),
         xhr: XMLHttpRequest.toString().includes('[native code]'),
       })),
-    ).toEqual({ fetch: true, xhr: true });
+    ).toEqual({ fetch: false, xhr: false });
     for (const enabled of [true, false, true]) {
       await worker.evaluate(async (enabled) => {
         const stored = await browser.storage.local.get('settings');
@@ -95,18 +103,20 @@ test('document-start bootstrap handles CSP, Trusted Types, frames, and settings 
           settings: JSON.stringify({
             ...JSON.parse(String(stored.settings)),
             emeInterception: enabled,
+            requestInterception: enabled,
           }),
         });
       }, enabled);
       await expect
         .poll(() =>
-          worker.evaluate(async () =>
-            (await browser.scripting.getRegisteredContentScripts()).some((script) =>
-              script.js?.includes('eme-bootstrap.js'),
-            ),
+          worker.evaluate(
+            async () =>
+              (
+                await browser.scripting.getRegisteredContentScripts({ ids: ['okova-interception'] })
+              )[0]?.js ?? [],
           ),
         )
-        .toBe(enabled);
+        .toEqual(enabled ? ['eme-bootstrap.js', 'network.js'] : []);
       await page.goto('http://localhost/startup');
       await expect.poll(() => page.frames().length).toBe(3);
       for (const frame of page.frames()) {
@@ -116,6 +126,12 @@ test('document-start bootstrap handles CSP, Trusted Types, frames, and settings 
         expect(await frame.evaluate(() => typeof window.__okovaEmeInstaller)).toBe(
           enabled ? 'function' : 'undefined',
         );
+        expect(
+          await frame.evaluate(() => ({
+            fetch: fetch.toString().includes('[native code]'),
+            xhr: XMLHttpRequest.toString().includes('[native code]'),
+          })),
+        ).toEqual({ fetch: !enabled, xhr: !enabled });
       }
       // Changes are applied on the next load; existing pages keep their installed hooks.
       const before = await page.evaluate(() =>

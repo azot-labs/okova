@@ -1,15 +1,23 @@
 import { z } from 'zod/mini';
-import { isManifestUrl, splitPssh, MAX_MANIFESTS, type Manifest } from '@/utils/manifest';
+import {
+  isManifestUrl,
+  splitPssh,
+  MAX_MANIFESTS,
+  MAX_CHILD_PLAYLISTS,
+  MAX_INIT_DATA_ENTRIES,
+  MAX_MANIFEST_REQUEST_URLS,
+  parseDetectedManifest,
+  type DetectedManifest,
+} from '@/utils/manifest';
 
 const DASH_NAMESPACE = 'urn:mpeg:dash:schema:mpd:2011';
 const CENC_NAMESPACE = 'urn:mpeg:cenc:2013';
-const MAX_CHILD_PLAYLISTS = 50;
-const MAX_INIT_DATA_ENTRIES = 50;
 const responseSchema = z.object({
   namespace: z.literal('okova:network'),
   method: z.literal('response'),
   params: z.object({
     url: z.string().check(z.refine(isManifestUrl)),
+    requestUrl: z.optional(z.string().check(z.maxLength(8192), z.refine(isManifestUrl))),
     text: z.string().check(z.maxLength(1024 * 1024)),
   }),
 });
@@ -17,14 +25,9 @@ const responseSchema = z.object({
 declare global {
   interface Window {
     MPD_LIST: Map<string, string>;
-    MANIFEST_LIST: Map<string, DetectedManifest>;
+    MANIFEST_LIST: Map<string, unknown>;
   }
 }
-
-type DetectedManifest = Pick<Manifest, 'url' | 'kind'> & {
-  initData: string[];
-  children: string[];
-};
 
 // Smooth Streaming carries a raw PlayReady Object; EME usually wraps it in a PSSH.
 const playreadyInitData = (value: string) => {
@@ -140,11 +143,15 @@ export const installManifestInspection = () => {
     if (event.source !== window) return;
     const parsed = responseSchema.safeParse(event.data);
     if (!parsed.success) return;
-    const { url, text } = parsed.data.params;
+    const { url, text, requestUrl } = parsed.data.params;
     try {
       const manifest = inspectManifest(url, text);
       if (!manifest) return;
       manifest.initData = [...new Set(manifest.initData)].slice(0, MAX_INIT_DATA_ENTRIES);
+      const previous = parseDetectedManifest(window.MANIFEST_LIST.get(url));
+      manifest.requestUrls = [
+        ...new Set([...(requestUrl ? [requestUrl] : []), ...(previous?.requestUrls ?? [])]),
+      ].slice(0, MAX_MANIFEST_REQUEST_URLS);
       window.MANIFEST_LIST.delete(url);
       window.MANIFEST_LIST.set(url, manifest);
       while (window.MANIFEST_LIST.size > MAX_MANIFESTS) {
