@@ -52,7 +52,8 @@ test.each(
     }
     vi.stubGlobal('MediaKeySession', NativeSession);
     vi.stubGlobal('MediaKeys', NativeKeys);
-    vi.stubGlobal('window', { MPD_LIST: new Map() });
+    // A page-owned cache entry must not block the bridge or native CDM update.
+    vi.stubGlobal('window', { MPD_LIST: new Map(), MANIFEST_LIST: new Map([['page-entry', {}]]) });
     const capture = Promise.withResolvers<unknown>();
     vi.mocked(sendDrmMessage).mockReturnValue(capture.promise);
     installEmeInterception();

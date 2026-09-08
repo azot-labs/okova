@@ -72,13 +72,21 @@ test('history updates preserve search, visible rows, and live details', async ()
 
       await stableAnchor.locator('code').click();
       const details = popup.locator('main').last();
-      const command = details.getByRole('textbox');
-      await expect.poll(() => command.inputValue()).toContain('usable');
+      const command = details.getByRole('textbox', { name: 'Download command' });
+      const manifestUrl = details.getByRole('textbox', { name: 'Manifest URL' });
+      const copyCommand = details.getByRole('button', { name: 'Copy command', exact: true });
+      expect(await command.inputValue()).toBe('');
+      expect(await command.isDisabled()).toBe(true);
+      expect(await copyCommand.isDisabled()).toBe(true);
       const selected = records.find((record) => record.id === anchorKid)!;
       const captured = { ...selected, value: 'a'.repeat(32), mpd: 'https://cdn.example/live.mpd' };
       records = records.map((record) => (record === selected ? captured : record));
       await save();
       await expect.poll(() => command.inputValue()).toContain(captured.value);
+      expect(await manifestUrl.inputValue()).toBe(captured.mpd);
+      expect(await command.inputValue()).toContain(captured.mpd);
+      expect(await command.isEnabled()).toBe(true);
+      expect(await copyCommand.isEnabled()).toBe(true);
       expect(await details.getByText(captured.value, { exact: true }).isVisible()).toBe(true);
       await command.fill('my custom command');
       await details.evaluate((element) => {

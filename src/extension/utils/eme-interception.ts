@@ -1,4 +1,4 @@
-import { findManifest } from '@/utils/manifest';
+import { getManifestCapture } from '@/utils/manifest';
 import { toBytes, bytesToBase64, fromBase64 } from '@okova/lib/utils';
 import { sendDrmMessage } from '@/utils/drm-bridge';
 import { playbackSessions } from '@/utils/playback-sessions';
@@ -99,7 +99,7 @@ export const installEmeInterception = () => {
         keySystem: getKeySystem(session),
         initData: session._initData,
         initDataType: session.initDataType,
-        mpd: findManifest(session._initData),
+        ...getManifestCapture(session._initData),
         keyStatuses,
       });
       return;
@@ -176,7 +176,7 @@ export const installEmeInterception = () => {
         initDataType: session.initDataType,
         message,
         messageBase64,
-        mpd: findManifest(session._initData),
+        ...getManifestCapture(session._initData),
       });
 
       if (result?.keys) {

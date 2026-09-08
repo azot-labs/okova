@@ -1,5 +1,5 @@
 import { createHash } from 'node:crypto';
-import { stat } from 'node:fs/promises';
+import { mkdir, stat } from 'node:fs/promises';
 import { dirname, resolve } from 'node:path';
 import { loadEnv } from 'vite';
 import { defineConfig } from 'wxt';
@@ -11,7 +11,7 @@ const devEnv = loadEnv('development', process.cwd(), 'WXT_');
 export default defineConfig({
   srcDir: './src/extension',
   hooks: {
-    'config:resolved': (wxt) => {
+    'config:resolved': async (wxt) => {
       if (wxt.config.command !== 'serve' || wxt.config.browser === 'firefox') return;
       // Chromium hashes the unpacked extension path, using UTF-16 on Windows.
       const isWindows = process.platform === 'win32';
@@ -24,6 +24,8 @@ export default defineConfig({
         .slice(0, 32)
         .replace(/[0-9a-f]/g, (digit) => String.fromCharCode(97 + parseInt(digit, 16)));
       const webExt = wxt.config.webExt.config;
+      // chrome-launcher opens its logs before Chromium can create a fresh profile.
+      if (webExt.chromiumProfile) await mkdir(webExt.chromiumProfile, { recursive: true });
       webExt.chromiumPref = {
         ...webExt.chromiumPref,
         'extensions.pinned_extensions': [extensionId],

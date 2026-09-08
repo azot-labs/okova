@@ -1,3 +1,4 @@
+import { isManifestUrl } from '@/utils/manifest';
 import { Accessor, Component, JSX, batch, createComputed, untrack } from 'solid-js';
 import { createStore, reconcile } from 'solid-js/store';
 import { Cell } from './cell';
@@ -130,49 +131,54 @@ export const KeysList: Component<KeysListProps> = (props) => {
               footer={props.footer}
             >
               <For each={rows.filter((row) => row.visible)}>
-                {(row) => (
-                  <div data-history-row={row.identity} class="[&>div]:rounded-[inherit]">
-                    <Cell
-                      class="group min-w-0"
-                      onClick={() => setOpenedIdentity(row.identity)}
-                      selection={
-                        props.selection
-                          ? {
-                              label: `Select record ${row.key.id} from ${row.key.url}`,
-                              checked: props.selection.tokens.includes(keyRecordToken(row.key)),
-                              onChange: (checked) => {
-                                const token = keyRecordToken(row.key);
-                                const selection = props.selection;
-                                if (!selection) return;
-                                selection.onChange(
-                                  checked
-                                    ? [...selection.tokens, token]
-                                    : selection.tokens.filter((item) => item !== token),
-                                );
-                              },
-                            }
-                          : undefined
-                      }
-                    >
-                      <code title="Click to copy" class="text-[13px] truncate flex w-full">
-                        <span class="w-1/2 truncate">{row.key.id}</span>:
-                        {/* value may be a status if Spoofing disabled */}
-                        <span class="w-1/2 truncate">{row.key.value}</span>
-                      </code>
-                      <div class="text-[10px] text-gray-500 flex justify-between dark:text-neutral-400">
-                        <a
-                          title={row.key.mpd || row.key.url}
-                          target="_blank"
-                          href={row.key.mpd || row.key.url}
-                          class="w-fit truncate hover:underline hover:text-blue-500 dark:hover:text-blue-400"
-                        >
-                          {shorten(row.key.mpd || row.key.url)}
-                        </a>
-                        <div>{formatRelativeTime(new Date(row.key.createdAt).toISOString())}</div>
-                      </div>
-                    </Cell>
-                  </div>
-                )}
+                {(row) => {
+                  const href = createMemo(() =>
+                    isManifestUrl(row.key.mpd) ? row.key.mpd : row.key.url,
+                  );
+                  return (
+                    <div data-history-row={row.identity} class="[&>div]:rounded-[inherit]">
+                      <Cell
+                        class="group min-w-0"
+                        onClick={() => setOpenedIdentity(row.identity)}
+                        selection={
+                          props.selection
+                            ? {
+                                label: `Select record ${row.key.id} from ${row.key.url}`,
+                                checked: props.selection.tokens.includes(keyRecordToken(row.key)),
+                                onChange: (checked) => {
+                                  const token = keyRecordToken(row.key);
+                                  const selection = props.selection;
+                                  if (!selection) return;
+                                  selection.onChange(
+                                    checked
+                                      ? [...selection.tokens, token]
+                                      : selection.tokens.filter((item) => item !== token),
+                                  );
+                                },
+                              }
+                            : undefined
+                        }
+                      >
+                        <code title="Click to copy" class="text-[13px] truncate flex w-full">
+                          <span class="w-1/2 truncate">{row.key.id}</span>:
+                          {/* value may be a status if Spoofing disabled */}
+                          <span class="w-1/2 truncate">{row.key.value}</span>
+                        </code>
+                        <div class="text-[10px] text-gray-500 flex justify-between dark:text-neutral-400">
+                          <a
+                            title={href()}
+                            target="_blank"
+                            href={href()}
+                            class="w-fit truncate hover:underline hover:text-blue-500 dark:hover:text-blue-400"
+                          >
+                            {shorten(href())}
+                          </a>
+                          <div>{formatRelativeTime(new Date(row.key.createdAt).toISOString())}</div>
+                        </div>
+                      </Cell>
+                    </div>
+                  );
+                }}
               </For>
             </Section>
           </List>

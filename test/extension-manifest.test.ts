@@ -1,7 +1,13 @@
 import { DOMParser } from '@xmldom/xmldom';
 import { afterEach, beforeEach, expect, test, vi } from 'vitest';
 import { installManifestInspection } from '../src/extension/utils/manifest-inspection';
-import { findManifest, splitPssh } from '../src/extension/utils/manifest';
+import {
+  findManifest,
+  getManifestCapture,
+  getManifestMetadata,
+  MAX_MANIFESTS,
+  splitPssh,
+} from '../src/extension/utils/manifest';
 import { createPsshBox, psshBoxToBase64, PSSH_SYSTEM_IDS } from '../src/lib/pssh';
 
 const widevine = psshBoxToBase64(createPsshBox({ systemId: PSSH_SYSTEM_IDS.widevine }));
@@ -16,10 +22,14 @@ const mpd = (pssh: string, scheme: string = PSSH_SYSTEM_IDS.widevine) => `
       <other:pssh>\n ${pssh.slice(0, 16)}\n ${pssh.slice(16)} \n</other:pssh>
     </dash:ContentProtection></dash:AdaptationSet></dash:Period>
   </dash:MPD>`;
-const post = (text: string, manifestUrl = url) =>
+const post = (text: string, manifestUrl = url, requestUrl?: string) =>
   receive({
     source: window,
-    data: { namespace: 'okova:network', method: 'response', params: { url: manifestUrl, text } },
+    data: {
+      namespace: 'okova:network',
+      method: 'response',
+      params: { url: manifestUrl, text, requestUrl },
+    },
   });
 
 beforeEach(() => {
@@ -83,6 +93,38 @@ test('preserves existing manifest associations when initialized again', () => {
   installManifestInspection();
   expect(window.MPD_LIST).toBe(cache);
   expect(findManifest(widevine)).toBe(url);
+});
+
+test('recovers manifest inspection from a throwing page-owned cache getter', () => {
+  Object.defineProperty(window, 'MANIFEST_LIST', {
+    configurable: true,
+    get() {
+      throw new Error('Page-owned getter');
+    },
+  });
+  const addEventListener = vi.spyOn(window, 'addEventListener');
+
+  expect(() => installManifestInspection()).not.toThrow();
+  expect(addEventListener).toHaveBeenCalledWith('message', expect.any(Function));
+  post(mpd(widevine));
+  expect(getManifestCapture(widevine)).toEqual({
+    mpd: url,
+    manifests: [{ url, kind: 'dash', matched: true }],
+  });
+});
+
+test('registers the manifest listener when a page-owned cache cannot be replaced', () => {
+  Object.defineProperty(window, 'MANIFEST_LIST', {
+    configurable: false,
+    get() {
+      throw new Error('Page-owned getter');
+    },
+  });
+  const addEventListener = vi.spyOn(window, 'addEventListener');
+
+  expect(() => installManifestInspection()).not.toThrow();
+  expect(addEventListener).toHaveBeenCalledWith('message', expect.any(Function));
+  expect(() => post(mpd(widevine))).not.toThrow();
 });
 
 test.each([
@@ -155,4 +197,242 @@ test('bounds manifest associations and evicts the oldest entry', () => {
   expect(window.MPD_LIST.size).toBe(1_000);
   expect(window.MPD_LIST.has('0')).toBe(false);
   expect(findManifest(widevine)).toBe(url);
+});
+
+test('retains multiple DASH URLs for a capture and unrelated manifests as explicit choices', () => {
+  post(mpd(widevine));
+  post(mpd(widevine), `${url}?alternate=1`);
+  post(mpd(playready), 'https://example.test/other.mpd');
+  const capture = getManifestCapture(widevine);
+  expect(capture.manifests).toEqual([
+    { url, kind: 'dash', matched: true },
+    { url: `${url}?alternate=1`, kind: 'dash', matched: true },
+    { url: 'https://example.test/other.mpd', kind: 'dash', matched: false },
+  ]);
+  expect(capture.mpd).toBe(url);
+  expect(getManifestCapture(undefined).mpd).toBeUndefined();
+});
+
+test.each(['KEY', 'SESSION-KEY'])(
+  'matches HLS EXT-X-%s embedded PSSH, including commas in quoted data URIs',
+  (tag) => {
+    post(
+      `#EXTM3U\n#EXT-X-${tag}:METHOD=SAMPLE-AES,URI="data:text/plain;base64,${widevine}",KEYFORMAT="urn:uuid:edef8ba9-79d6-4ace-a3c8-27dcd51d21ed"\n#EXTINF:4,\nsegment.ts`,
+      'https://example.test/video.m3u8',
+    );
+    expect(getManifestCapture(combined)).toEqual({
+      mpd: 'https://example.test/video.m3u8',
+      manifests: [
+        {
+          url: 'https://example.test/video.m3u8',
+          kind: tag === 'SESSION-KEY' ? 'hls-master' : 'hls-media',
+          matched: true,
+        },
+      ],
+    });
+  },
+);
+
+test('prefers the observed HLS master when a relative child matches', () => {
+  const master = 'https://example.test/master.m3u8?masterToken=one';
+  post(
+    '#EXTM3U\n#EXT-X-STREAM-INF:BANDWIDTH=1280000,CODECS="avc1.4d401f,mp4a.40.2"\nvideo/media.m3u8?token=two',
+    master,
+  );
+  post(
+    `#EXTM3U\n#EXT-X-KEY:METHOD=SAMPLE-AES,URI="data:text/plain;base64,${widevine}"`,
+    'https://example.test/video/media.m3u8?token=two',
+  );
+  const capture = getManifestCapture(widevine);
+  expect(capture.mpd).toBe(master);
+  expect(capture.manifests?.map((manifest) => [manifest.kind, manifest.matched])).toEqual([
+    ['hls-master', true],
+    ['hls-media', true],
+  ]);
+});
+
+test('records plain HLS playlists without claiming a DRM association or capturing segment/key URLs', () => {
+  post(
+    '#EXTM3U\n#EXT-X-KEY:METHOD=AES-128,URI="secret.key"\n#EXTINF:10,\nsegment.ts',
+    'https://example.test/plain.m3u8',
+  );
+  expect(getManifestCapture(widevine)).toEqual({
+    mpd: undefined,
+    manifests: [{ url: 'https://example.test/plain.m3u8', kind: 'hls-media', matched: false }],
+  });
+  post('#EXTM3U-not-a-playlist', 'https://example.test/fake.m3u8');
+  expect(window.MANIFEST_LIST.size).toBe(1);
+});
+
+test('matches MSS ProtectionHeader as raw PlayReady data and as an EME PSSH', () => {
+  const data = Buffer.from('synthetic PlayReady Object');
+  const pssh = psshBoxToBase64(createPsshBox({ systemId: PSSH_SYSTEM_IDS.playready, data }));
+  const mss = 'https://example.test/video.ism/Manifest';
+  post(
+    `<SmoothStreamingMedia MajorVersion="2" MinorVersion="1"><Protection><ProtectionHeader SystemID="{9A04F079-9840-4286-AB92-E65BE0885F95}">${data.toString('base64')}</ProtectionHeader></Protection></SmoothStreamingMedia>`,
+    mss,
+  );
+  expect(getManifestCapture(pssh)).toEqual({
+    mpd: mss,
+    manifests: [{ url: mss, kind: 'mss', matched: true }],
+  });
+  expect(getManifestCapture(data.toString('base64')).mpd).toBe(mss);
+});
+
+test('ignores malformed protection data while keeping the detected manifest', () => {
+  post(
+    '<SmoothStreamingMedia><Protection><ProtectionHeader SystemID="9a04f079-9840-4286-ab92-e65be0885f95">%%%bad</ProtectionHeader></Protection></SmoothStreamingMedia>',
+  );
+  expect(getManifestCapture(widevine)).toEqual({
+    mpd: undefined,
+    manifests: [{ url, kind: 'mss', matched: false }],
+  });
+});
+
+test('deduplicates reloads and bounds detected manifests without storing response bodies', () => {
+  for (let index = 0; index < MAX_MANIFESTS + 1; index++)
+    post('#EXTM3U\n#EXTINF:4,\nsegment.ts', `${url}?index=${index}`);
+  post('#EXTM3U\n#EXTINF:5,\nnext.ts', `${url}?index=${MAX_MANIFESTS}`);
+  const manifests = getManifestCapture(undefined).manifests;
+  expect(manifests).toHaveLength(MAX_MANIFESTS);
+  expect(manifests?.some((item) => item.url === `${url}?index=0`)).toBe(false);
+  expect(manifests?.at(-1)).toEqual({
+    url: `${url}?index=${MAX_MANIFESTS}`,
+    kind: 'hls-media',
+    matched: false,
+  });
+});
+
+test('validates and bounds manifest metadata from page messages and old storage', () => {
+  const valid = { url, kind: 'dash', matched: true };
+  expect(
+    getManifestMetadata({
+      mpd: 'javascript:alert(1)',
+      manifests: [
+        valid,
+        valid,
+        { ...valid, url: 'file:///tmp/a' },
+        null,
+        { ...valid, kind: 'html' },
+      ],
+    }),
+  ).toEqual({ mpd: undefined, manifests: [valid] });
+  expect(getManifestMetadata({ mpd: url, manifests: 'not a list' })).toEqual({ mpd: url });
+});
+
+test.each(['dash', 'mss'] as const)(
+  'prefers a direct %s match over an HLS master matched through its child',
+  (kind) => {
+    const data = Buffer.from('shared PlayReady Object');
+    const pssh = psshBoxToBase64(createPsshBox({ systemId: PSSH_SYSTEM_IDS.playready, data }));
+    const master = 'https://example.test/master.m3u8';
+    post('#EXTM3U\n#EXT-X-STREAM-INF:BANDWIDTH=1280000\nmedia.m3u8', master);
+    post(
+      `#EXTM3U\n#EXT-X-KEY:METHOD=SAMPLE-AES,URI="data:text/plain;base64,${pssh}"`,
+      'https://example.test/media.m3u8',
+    );
+    const direct = `https://example.test/${kind}`;
+    const body =
+      kind === 'dash'
+        ? mpd(pssh, PSSH_SYSTEM_IDS.playready)
+        : `<SmoothStreamingMedia><Protection><ProtectionHeader SystemID="9a04f079-9840-4286-ab92-e65be0885f95">${data.toString('base64')}</ProtectionHeader></Protection></SmoothStreamingMedia>`;
+    post(body, direct);
+    const capture = getManifestCapture(pssh);
+    expect(capture.mpd).toBe(direct);
+    expect(capture.manifests).toEqual([
+      { url: direct, kind, matched: true },
+      { url: master, kind: 'hls-master', matched: true },
+      { url: 'https://example.test/media.m3u8', kind: 'hls-media', matched: true },
+    ]);
+  },
+);
+
+test.each([
+  null,
+  undefined,
+  1,
+  {},
+  { url, kind: 'dash', initData: {}, children: [] },
+  { url, kind: 'dash', initData: [], children: null },
+  { url, kind: 'dash', initData: [widevine], children: [42] },
+  { url, kind: 'dash', initData: [42], children: [] },
+  { url: 'javascript:alert(1)', kind: 'dash', initData: [widevine], children: [] },
+  { url, kind: 'unknown', initData: [widevine], children: [] },
+  {
+    get url() {
+      throw new Error('Page-owned getter');
+    },
+  },
+])('ignores malformed page-owned entries while preserving valid captures: %#', (value) => {
+  post(mpd(widevine));
+  Reflect.set(
+    window,
+    'MANIFEST_LIST',
+    new Map<string, unknown>([['broken', value], ...window.MANIFEST_LIST]),
+  );
+  expect(getManifestCapture(widevine)).toEqual({
+    mpd: url,
+    manifests: [{ url, kind: 'dash', matched: true }],
+  });
+});
+
+test.each(['x', 'é"'])(
+  'bounds serialized per-key metadata with signed URL characters %j',
+  (character) => {
+    const manifests = Array.from({ length: 50 }, (_, index) => ({
+      url: `https://example.test/${index}?signature=${character.repeat(1700)}`,
+      kind: 'dash',
+      matched: index === 49,
+    }));
+    const preferred = manifests[49]!;
+    const metadata = getManifestMetadata({ mpd: preferred.url, manifests });
+    expect(Buffer.byteLength(JSON.stringify(metadata))).toBeLessThanOrEqual(16 * 1024);
+    expect(metadata.mpd).toBe(preferred.url);
+    expect(metadata.manifests?.[0]).toEqual(preferred);
+  },
+);
+
+test('matches a redirected HLS child and retains its original URL through refreshes', () => {
+  const master = 'https://example.test/master.m3u8';
+  const original = 'https://example.test/media.m3u8?token=one';
+  const final = 'https://cdn.example.test/live/media.m3u8?token=two';
+  post('#EXTM3U\n#EXT-X-STREAM-INF:BANDWIDTH=1280000\nmedia.m3u8?token=one', master);
+  const media = `#EXTM3U\n#EXT-X-KEY:METHOD=SAMPLE-AES,URI="data:text/plain;base64,${widevine}"`;
+  post(media, final, original);
+  expect(getManifestCapture(widevine).mpd).toBe(master);
+  post(media, final);
+  expect(getManifestCapture(widevine).mpd).toBe(master);
+  expect(getManifestCapture(widevine).manifests).toEqual([
+    { url: master, kind: 'hls-master', matched: true },
+    { url: final, kind: 'hls-media', matched: true },
+  ]);
+});
+
+test('matches through nested redirected masters regardless of response order', () => {
+  const outer = 'https://example.test/outer.m3u8';
+  const inner = 'https://cdn.example.test/inner.m3u8';
+  const media = 'https://cdn.example.test/media.m3u8';
+  post('#EXTM3U\n#EXT-X-STREAM-INF:BANDWIDTH=1280000\ninner.m3u8', outer);
+  post(
+    '#EXTM3U\n#EXT-X-STREAM-INF:BANDWIDTH=1280000\nhttps://example.test/media.m3u8',
+    inner,
+    'https://example.test/inner.m3u8',
+  );
+  post(
+    `#EXTM3U\n#EXT-X-KEY:METHOD=SAMPLE-AES,URI="data:text/plain;base64,${widevine}"`,
+    media,
+    'https://example.test/media.m3u8',
+  );
+  expect(getManifestCapture(widevine).mpd).toBe(outer);
+  expect(getManifestCapture(widevine).manifests?.every((manifest) => manifest.matched)).toBe(true);
+});
+
+test('omits a single URL that exceeds the serialized budget instead of truncating it', () => {
+  const oversized = `https://example.test/${'漢'.repeat(7000)}`;
+  expect(
+    getManifestMetadata({
+      mpd: oversized,
+      manifests: [{ url: oversized, kind: 'dash', matched: true }],
+    }),
+  ).toEqual({ mpd: undefined });
 });

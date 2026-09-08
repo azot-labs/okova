@@ -43,9 +43,13 @@ test('updates existing registrations for settings changes and removes them when 
   const remove = vi.spyOn(browser.scripting, 'unregisterContentScripts').mockResolvedValue();
   await syncInterceptionScripts();
   expect(update).toHaveBeenCalledExactlyOnceWith([
-    expect.objectContaining({ js: ['eme-bootstrap.js'] }),
+    expect.objectContaining({ js: ['eme-bootstrap.js', 'network.js'] }),
   ]);
-  await settingsStorage.setValue({ ...defaultSettings, emeInterception: false });
+  await settingsStorage.setValue({
+    ...defaultSettings,
+    emeInterception: false,
+    requestInterception: false,
+  });
   await syncInterceptionScripts();
   expect(remove).toHaveBeenCalledExactlyOnceWith({ ids: ['okova-interception'] });
 });

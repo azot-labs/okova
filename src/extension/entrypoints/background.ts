@@ -1,3 +1,4 @@
+import { getManifestMetadata } from '@/utils/manifest';
 import { getCredentialFingerprint } from '@/utils/credential-fingerprint';
 import {
   clearCaptureDiagnostics,
@@ -611,7 +612,7 @@ export default defineBackground({
               captureId: diagnostic?.captureId,
               drmSystem: system,
               url: message.url,
-              mpd: message.mpd,
+              ...getManifestMetadata(message),
               pssh: message.initData,
               createdAt: Date.now(),
             }));
@@ -650,7 +651,7 @@ export default defineBackground({
             id: fromBase64(id).toHex(),
             value: status,
             url: message.url,
-            mpd: message.mpd,
+            ...getManifestMetadata(message),
             pssh: message.initData,
             createdAt: new Date().getTime(),
           }));
@@ -821,7 +822,7 @@ export default defineBackground({
             id,
             value,
             url: message.url,
-            mpd: message.mpd,
+            ...getManifestMetadata(message),
             pssh: message.initData,
             createdAt: new Date().getTime(),
           }));

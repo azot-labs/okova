@@ -94,7 +94,8 @@ const mockSessionBridge = ({
 beforeEach(() => {
   vi.useFakeTimers();
   vi.stubGlobal('navigator', { requestMediaKeySystemAccess: nativeRequest });
-  vi.stubGlobal('window', { MPD_LIST: new Map() });
+  // Playback bridge requests must survive a page-owned malformed manifest entry.
+  vi.stubGlobal('window', { MPD_LIST: new Map(), MANIFEST_LIST: new Map([['page-entry', {}]]) });
   vi.stubGlobal('MediaKeySystemAccess', NativeAccess);
   vi.stubGlobal('MediaKeys', NativeKeys);
   vi.stubGlobal('MediaKeySession', NativeSession);

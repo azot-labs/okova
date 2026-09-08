@@ -556,3 +556,59 @@ test('selected deletion freezes status variants and all deletion includes recent
   expect(await appStorage.recentKeys.getValue()).toEqual([]);
   expect(await appStorage.recentKeysByDomain.getValue()).toEqual({ 'example.com': [] });
 });
+
+test('persists validated manifest choices across history and recent caches', async () => {
+  const manifest = {
+    url: 'https://example.com/video.m3u8',
+    kind: 'hls-media',
+    matched: true,
+  } as const;
+  const capture = { ...key, mpd: manifest.url, manifests: [manifest] };
+  await appStorage.allKeys.add(capture);
+  await appStorage.recentKeys.setForUrl(key.url, [capture]);
+  expect(await appStorage.allKeys.getValue()).toEqual([capture]);
+  expect(await appStorage.recentKeys.getValue()).toEqual([capture]);
+  expect(await appStorage.recentKeysByDomain.getValue()).toEqual({ 'example.com': [capture] });
+
+  const unsafe = {
+    ...capture,
+    mpd: 'javascript:alert(1)',
+    manifests: [{ ...manifest, url: 'data:text/plain,test' }],
+  };
+  await appStorage.allKeys.setValue([unsafe]);
+  await appStorage.recentKeys.setForUrl(key.url, [unsafe]);
+  const sanitized = { ...key, mpd: undefined };
+  expect(await appStorage.allKeys.getValue()).toEqual([sanitized]);
+  expect(await appStorage.recentKeys.getValue()).toEqual([sanitized]);
+  expect(await appStorage.recentKeysByDomain.getValue()).toEqual({ 'example.com': [sanitized] });
+});
+
+test('bounds manifest metadata when persisting a multi-key capture to all history stores', async () => {
+  const manifests = Array.from({ length: 50 }, (_, index) => ({
+    url: `https://example.com/${index}?signature=${'x'.repeat(8000)}`,
+    kind: 'dash' as const,
+    matched: true,
+  }));
+  const captured = Array.from({ length: 32 }, (_, index) => ({
+    ...key,
+    id: index.toString(16).padStart(32, '0'),
+    mpd: manifests[0]!.url,
+    manifests,
+  }));
+  await appStorage.allKeys.add(...captured);
+  await appStorage.recentKeys.setForUrl(key.url, captured);
+  const stores = [
+    await appStorage.allKeys.getValue(),
+    await appStorage.recentKeys.getValue(),
+    (await appStorage.recentKeysByDomain.getValue())?.['example.com'],
+  ];
+  for (const records of stores) {
+    expect(records).toHaveLength(32);
+    for (const record of records ?? []) {
+      expect(record.mpd).toBe(captured[0]!.mpd);
+      expect(
+        Buffer.byteLength(JSON.stringify({ mpd: record.mpd, manifests: record.manifests })),
+      ).toBeLessThanOrEqual(16 * 1024);
+    }
+  }
+});

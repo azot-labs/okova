@@ -79,3 +79,13 @@ test('sorts timestamps in both directions without changing storage order and kee
   const ties = [record('2026-03-08T00:00:00', 'W'), record('2026-03-08T00:00:00', 'P')];
   expect(filterHistory(ties, defaults)).toEqual(ties);
 });
+
+test('searches alternate manifests as well as the preferred URL', () => {
+  const capture: KeyInfo = {
+    ...records[0]!,
+    manifests: [
+      { url: 'https://alternate.example/master.m3u8', kind: 'hls-master', matched: true },
+    ],
+  };
+  expect(filterHistory([capture], { ...defaults, search: 'ALTERNATE.EXAMPLE' })).toEqual([capture]);
+});
