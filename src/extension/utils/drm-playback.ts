@@ -197,6 +197,7 @@ export const installDrmPlayback = () => {
     return mediaKeys;
   };
 
+  let hasWarnedMissingCredentials = false;
   navigator.requestMediaKeySystemAccess = async (keySystem, configurations) => {
     const isPlayReady = keySystem === PLAYREADY || keySystem === 'com.microsoft.playready';
     const isHardwarePlayReady =
@@ -205,7 +206,15 @@ export const installDrmPlayback = () => {
     if (keySystem !== WIDEVINE && !isPlayReady && !isHardwarePlayReady)
       return requestAccess(keySystem, configurations);
     const activeSystem = await sendDrmMessage({ action: 'playback-config' });
-    if (activeSystem === null) return requestAccess(keySystem, configurations);
+    if (activeSystem === null) {
+      if (!hasWarnedMissingCredentials) {
+        hasWarnedMissingCredentials = true;
+        console.warn(
+          '[okova] No active credentials; using native DRM. Import or select credentials, then reload the page.',
+        );
+      }
+      return requestAccess(keySystem, configurations);
+    }
     if (isHardwarePlayReady)
       throw unsupported('Hardware DRM is unavailable during custom playback');
     if (activeSystem !== (isPlayReady ? PLAYREADY : WIDEVINE)) {

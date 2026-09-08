@@ -41,6 +41,10 @@ import { InvalidLicense } from './exceptions';
 import { ServerException } from './exceptions';
 import { Pssh } from './pssh';
 import { WrmHeader } from './wrmheader';
+import { C14N_ALGORITHM, canonicalizeXml } from './xml-c14n';
+
+const XML_SIGNATURE_NAMESPACE = 'http://www.w3.org/2000/09/xmldsig#';
+const PLAYREADY_PROTOCOL = 'http://schemas.microsoft.com/DRM/2007/03/protocols';
 
 const DEFAULT_CLIENT_VERSION = '10.0.16384.10011';
 
@@ -66,6 +70,20 @@ const requireDirectChild = (parent: Element, localName: string) => {
     throw new InvalidLicense(`Expected one ${localName} in ${getLocalName(parent)}`);
   }
   return children[0]!;
+};
+
+const requireSignatureChild = (parent: Element, localName: string) => {
+  const child = requireDirectChild(parent, localName);
+  if (child.namespaceURI !== XML_SIGNATURE_NAMESPACE) {
+    throw new InvalidLicense(`Invalid namespace for ${localName}`);
+  }
+  return child;
+};
+
+const requireAlgorithm = (element: Element, algorithms: string[]) => {
+  if (!algorithms.includes(element.getAttribute('Algorithm') ?? '') || element.children.length) {
+    throw new InvalidLicense(`Unsupported ${getLocalName(element)} algorithm or parameters`);
+  }
 };
 
 type PlayReadySessionCredentials =
@@ -382,6 +400,7 @@ export class PlayReadySession extends BaseMediaKeysEngineSession {
     } catch {
       throw new InvalidLicense('Invalid license response XML');
     }
+    if (xmlDoc.doctype) throw new InvalidLicense('License response DTD is not supported');
     this.#throwIfSoapFault(xmlDoc);
     let root = xmlDoc.documentElement;
     if (root && getLocalName(root) === 'Envelope') {
@@ -394,7 +413,7 @@ export class PlayReadySession extends BaseMediaKeysEngineSession {
     const result = requireDirectChild(root, 'AcquireLicenseResult');
     const response = requireDirectChild(result, 'Response');
     const licenseResponse = requireDirectChild(response, 'LicenseResponse');
-    await this.#verifySignedLicenseResponse(response);
+    await this.#verifySignedLicenseResponse(response, licenseResponse);
     this.assertOpen();
     const licenses = findDirectChildByLocalName(licenseResponse, 'Licenses');
     const licenseElements = licenses
@@ -496,31 +515,64 @@ export class PlayReadySession extends BaseMediaKeysEngineSession {
     throw new ServerException(faultString);
   }
 
-  async #verifySignedLicenseResponse(responseElement: Element) {
-    const licenseResponseElement = findDirectChildByLocalName(responseElement, 'LicenseResponse');
-    const signatureElement = findDirectChildByLocalName(responseElement, 'Signature');
-    if (!licenseResponseElement || !signatureElement) return;
-
-    const signingCertificateChainValue = findFirstDescendantByLocalName(
+  async #verifySignedLicenseResponse(responseElement: Element, licenseResponseElement: Element) {
+    if (!findDirectChildByLocalName(responseElement, 'Signature')) return;
+    const signatureElement = requireSignatureChild(responseElement, 'Signature');
+    const signedInfoElement = requireSignatureChild(signatureElement, 'SignedInfo');
+    requireAlgorithm(requireSignatureChild(signedInfoElement, 'CanonicalizationMethod'), [
+      C14N_ALGORITHM,
+    ]);
+    requireAlgorithm(requireSignatureChild(signedInfoElement, 'SignatureMethod'), [
+      `${PLAYREADY_PROTOCOL}#ecdsa-sha256`,
+      'http://www.w3.org/2001/04/xmldsig-more#ecdsa-sha256',
+    ]);
+    const reference = requireSignatureChild(signedInfoElement, 'Reference');
+    const responseId = licenseResponseElement.getAttribute('Id');
+    const matchingIds = Array.from(
+      licenseResponseElement.ownerDocument?.getElementsByTagName('*') ?? [],
+    ).filter((element) =>
+      Array.from(element.attributes).some(
+        (attribute) =>
+          attribute.localName?.toLowerCase() === 'id' && attribute.value === responseId,
+      ),
+    );
+    if (
+      !responseId ||
+      reference.getAttribute('URI') !== `#${responseId}` ||
+      matchingIds.length !== 1 ||
+      matchingIds[0] !== licenseResponseElement
+    ) {
+      throw new InvalidLicense('Reference must identify the unique LicenseResponse Id');
+    }
+    requireAlgorithm(requireSignatureChild(reference, 'DigestMethod'), [
+      `${PLAYREADY_PROTOCOL}#sha256`,
+      'http://www.w3.org/2001/04/xmlenc#sha256',
+    ]);
+    // A same-document reference is a node-set. XMLDSig defaults its conversion
+    // to C14N 1.0; an explicit transform must select that same supported algorithm.
+    if (findDirectChildByLocalName(reference, 'Transforms')) {
+      const transforms = requireSignatureChild(reference, 'Transforms');
+      const transform = requireSignatureChild(transforms, 'Transform');
+      if (transforms.children.length !== 1) {
+        throw new InvalidLicense('Unsupported digest transform sequence');
+      }
+      requireAlgorithm(transform, [C14N_ALGORITHM]);
+    }
+    const signingCertificateChainValue = requireDirectChild(
       licenseResponseElement,
       'SigningCertificateChain',
-    )?.textContent?.trim();
-    const signedInfoElement = findFirstDescendantByLocalName(signatureElement, 'SignedInfo');
-    const digestValue = findFirstDescendantByLocalName(
-      signatureElement,
-      'DigestValue',
-    )?.textContent?.trim();
-    const signatureValue = findFirstDescendantByLocalName(
+    ).textContent?.trim();
+    const digestValue = requireSignatureChild(reference, 'DigestValue').textContent?.trim();
+    const signatureValue = requireSignatureChild(
       signatureElement,
       'SignatureValue',
-    )?.textContent?.trim();
-
-    if (!signingCertificateChainValue || !signedInfoElement || !digestValue || !signatureValue) {
-      return;
+    ).textContent?.trim();
+    if (!signingCertificateChainValue || !digestValue || !signatureValue) {
+      throw new InvalidLicense('Incomplete license response signature');
     }
 
-    const serializedLicenseResponse = this.serializer.serializeToString(licenseResponseElement);
-    const responseHash = await createSha256(fromText(serializedLicenseResponse).toBuffer());
+    const canonicalLicenseResponse = canonicalizeXml(licenseResponseElement);
+    const responseHash = await createSha256(fromText(canonicalLicenseResponse).toBuffer());
     if (!compareArrays(responseHash, base64ToBytes(digestValue))) {
       throw new InvalidLicense('Digest mismatch in license');
     }
@@ -537,10 +589,10 @@ export class PlayReadySession extends BaseMediaKeysEngineSession {
     uncompressedPublicKey[0] = 0x04;
     uncompressedPublicKey.set(signingKey, 1);
 
-    const serializedSignedInfo = this.serializer.serializeToString(signedInfoElement);
+    const canonicalSignedInfo = canonicalizeXml(signedInfoElement);
     const isValidSignature = await ecc256Verify(
       uncompressedPublicKey,
-      fromText(serializedSignedInfo).toBuffer(),
+      fromText(canonicalSignedInfo).toBuffer(),
       base64ToBytes(signatureValue),
     );
 
