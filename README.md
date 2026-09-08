@@ -20,34 +20,6 @@ Okova is a toolkit (browser extension, command-line tool, and JavaScript library
 
 ## Browser Extension
 
-With EME interception enabled, the extension inspects ClearKey license responses and saves their key IDs and keys as hex. ClearKey capture works without imported client credentials or spoofing enabled.
-
-Import Widevine or PlayReady client credentials or remote credentials in **Credentials**. Okova automatically enables **Spoofing** and **Playback** when you import credentials. Select the credentials you want to use, then reload the video page.
-
-- **Spoofing** uses your active credentials to retrieve content keys.
-- **Playback** lets supported videos keep playing while Okova retrieves their keys, including in browsers without built-in Widevine or PlayReady.
-
-Playback depends on the website, browser, and selected credentials. Offline licenses and hardware-protected playback are not supported.
-
-Experimental request interception associates Widevine and PlayReady DASH manifests with captured sessions using their `cenc:pssh` boxes. It supports page fetch and XMLHttpRequest responses, including alternate XML prefixes and concatenated initialization data. HLS playlists and requests made inside workers are not inspected.
-
-The toolbar badge shows a count capped at `99+`, followed by `W`, `P`, or `C` for Widevine, PlayReady, or ClearKey, such as `3W` or `99+W`:
-
-- Gray: intercepted key IDs/statuses only, without content keys.
-- Blue: content keys available from saved history for the domain.
-- Green: content keys retrieved during this page visit, including keys retrieved again.
-- Orange with `!`: retrieval failed. Hover over the icon for the error.
-
-Reloading or navigating clears the current result; saved keys then appear blue. Hover over the badge for details. Green indicates key retrieval, not verified playback.
-
-### Deleting captured records
-
-In **Keys**, use the large checkboxes to select individual records or **Select All Results** to select the current search results. **Delete Selected** shows the affected count before deleting. Records hidden by a search are deselected.
-
-**Delete Site Keys** is available on the dashboard and in record details. It removes that site's records from history and recent captures. A site includes its `www.` hostname, but excludes other subdomains. **Delete All** covers every site, regardless of search or selection.
-
-Bulk and site confirmations freeze their target records when opened. Captures arriving afterward are kept. Cancel or press Escape to return without deleting.
-
 ### Installing Chrome extension
 
 1. Download archive from [latest release](https://github.com/azot-labs/okova/releases/latest)
