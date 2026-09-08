@@ -37,7 +37,9 @@ export default defineConfig({
   },
   webExt: {
     startUrls: ['https://bitmovin.com/demos/drm'],
-    chromiumArgs: ['--user-data-dir=./.wxt/chrome-data'],
+    // Let web-ext apply development preferences to the profile Helium actually uses.
+    chromiumProfile: resolve('.wxt/chrome-data'),
+    keepProfileChanges: true,
     disabled: devEnv.WXT_BROWSER_AUTOSTART === 'false',
     binaries: {
       ...(devEnv.WXT_CHROMIUM_BINARY && { chrome: devEnv.WXT_CHROMIUM_BINARY }),
