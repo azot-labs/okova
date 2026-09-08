@@ -52,11 +52,13 @@ test.each(['usable', 'expired', 'output-restricted', 'status-pending'])(
   },
 );
 
-test('preserves captured keys when later statuses or duplicate keys arrive', async () => {
-  await appStorage.allKeys.add(key);
-  await appStorage.allKeys.add({ ...key, value: 'usable' }, { ...key, createdAt: 2 });
-
-  expect(await appStorage.allKeys.getValue()).toEqual([key]);
+test('refreshes capture correlation for newer duplicates without downgrading to statuses or older captures', async () => {
+  const older = { ...key, captureId: 'first' };
+  const newer = { ...key, createdAt: 2, captureId: 'second' };
+  await appStorage.allKeys.add(older);
+  await appStorage.allKeys.add(newer);
+  await appStorage.allKeys.add({ ...key, createdAt: 3, value: 'usable' }, older);
+  expect(await appStorage.allKeys.getValue()).toEqual([newer]);
 });
 
 test('upgrades a status within the same batch while retaining distinct key IDs', async () => {

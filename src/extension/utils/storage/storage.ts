@@ -14,6 +14,7 @@ export { defaultSettings, type Settings, type ThemeMode } from './settings';
 export type BadgeDrmSystem = 'W' | 'P' | 'C';
 
 export type KeyInfo = {
+  captureId?: string;
   drmSystem?: BadgeDrmSystem;
   id: string;
   value: string;
@@ -508,7 +509,10 @@ const createKeyHistory = (isIncognito: boolean, generation?: string) => {
             );
             if (index === -1) {
               keys.push(newKey);
-            } else if (!isCapturedKey(keys[index]!) && isCapturedKey(newKey)) {
+            } else if (
+              isCapturedKey(newKey) &&
+              (!isCapturedKey(keys[index]!) || newKey.createdAt >= keys[index]!.createdAt)
+            ) {
               keys[index] = newKey;
             }
           }

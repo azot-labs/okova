@@ -1,7 +1,8 @@
 import { RemoteCredentials } from '@okova/lib/remote/credentials';
-import { Component, Show } from 'solid-js';
+import { Component, Show, createResource } from 'solid-js';
 import { TbOutlineDownload, TbOutlineTrash } from 'solid-icons/tb';
-import { Credentials } from '@/utils/storage';
+import { Credentials, serializeCredentials } from '@/utils/storage';
+import { getCredentialFingerprint } from '@/utils/credential-fingerprint';
 import { Header } from '../components/header';
 import { Layout } from '../components/layout';
 import { List } from '../components/list';
@@ -20,6 +21,10 @@ type CredentialsSettingsProps = {
 };
 
 export const CredentialsSettings: Component<CredentialsSettingsProps> = (props) => {
+  const [fingerprint] = createResource(
+    () => props.credentials,
+    async (credentials) => getCredentialFingerprint(await serializeCredentials(credentials)),
+  );
   const drmLabel = createMemo(() => {
     if (props.credentials instanceof RemoteCredentials)
       return props.credentials.keySystem === 'com.widevine.alpha'
@@ -54,6 +59,14 @@ export const CredentialsSettings: Component<CredentialsSettingsProps> = (props) 
             Label
           </Cell>
           <Cell subtitle={drmLabel()}>DRM</Cell>
+          <Cell
+            title="Credential fingerprint. Matches session diagnostics from this installation."
+            subtitle={
+              fingerprint.error ? 'Unavailable' : (fingerprint()?.slice(0, 12) ?? 'Loading…')
+            }
+          >
+            Fingerprint
+          </Cell>
           <Show when={remote()} fallback={<Cell subtitle={securityLevel()}>Security Level</Cell>}>
             {(credentials) => (
               <>

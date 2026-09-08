@@ -1,3 +1,4 @@
+import { getCaptureDiagnosticsStorage, type CaptureDiagnostic } from '@/utils/session-diagnostics';
 import { popupHistory } from './history';
 import {
   appStorage,
@@ -34,6 +35,9 @@ export const useRecentKeys = () => recentKeysSignal;
 const recentKeysByDomainSignal = createSignal<RecentKeysByDomain>({});
 export const useRecentKeysByDomain = () => recentKeysByDomainSignal;
 
+const captureDiagnosticsSignal = createSignal<CaptureDiagnostic[]>([]);
+export const useCaptureDiagnostics = () => captureDiagnosticsSignal;
+
 const drmFailureSignal = createSignal<DrmFailure | null>(null);
 export const useDrmFailure = () => drmFailureSignal;
 
@@ -50,11 +54,13 @@ export const useSyncStateWithStorage = () => {
   const [, setActiveTabUrl] = useActiveTabUrl();
 
   const [, setDrmFailure] = useDrmFailure();
+  let unwatchDiagnostics: (() => void) | undefined;
   let unwatchFailure: (() => void) | undefined;
   let isDisposed = false;
   onCleanup(() => {
     isDisposed = true;
     unwatchFailure?.();
+    unwatchDiagnostics?.();
   });
 
   onMount(async () => {
@@ -73,6 +79,15 @@ export const useSyncStateWithStorage = () => {
       setActiveTabUrl(tab?.url ?? null);
       setDrmFailure(null);
       if (tab?.id === undefined) return;
+      const diagnosticStorage = getCaptureDiagnosticsStorage(tab.id);
+      let hasDiagnosticUpdate = false;
+      unwatchDiagnostics = diagnosticStorage.watch((records) => {
+        hasDiagnosticUpdate = true;
+        captureDiagnosticsSignal[1](records ?? []);
+      });
+      const records = await diagnosticStorage.getValue();
+      if (!isDisposed && !hasDiagnosticUpdate) captureDiagnosticsSignal[1](records ?? []);
+      if (isDisposed) return;
       const failureStorage = getDrmFailureStorage(tab.id);
       let hasUpdate = false;
       unwatchFailure = failureStorage.watch((failure) => {

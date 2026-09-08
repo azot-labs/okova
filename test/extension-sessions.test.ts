@@ -20,6 +20,7 @@ import { Widevine } from '../src/lib/widevine/engine';
 
 vi.mock('../src/lib/widevine/client-credentials', () => ({
   WidevineClientCredentials: class {
+    label = 'Test Widevine device';
     async pack() {
       return new Uint8Array();
     }
@@ -187,15 +188,19 @@ test('same-PSSH sessions keep their challenges and updates across tabs, frames a
   await Promise.all(owners.map(({ token, sender }) => send('generateRequest', token, sender)));
   expect(new Set(sessions).size).toBe(owners.length);
 
-  for (const [index, { token, sender }] of owners.entries()) {
-    await expect(send('license-request', token, sender)).resolves.toBe(
-      btoa(sessions[index]!.sessionId),
-    );
-  }
+  const ownerSessions = await Promise.all(
+    owners.map(async ({ token, sender }) => {
+      const challenge = await send('license-request', token, sender);
+      const session = sessions.find((session) => btoa(session.sessionId) === challenge);
+      expect(session).toBeDefined();
+      return session;
+    }),
+  );
+  expect(new Set(ownerSessions).size).toBe(owners.length);
   for (const [index, { token, sender }] of [...owners.entries()].reverse()) {
     await expect(send('update', token, sender)).resolves.toMatchObject({ keys: expect.any(Array) });
-    expect(vi.mocked(Session.prototype.update).mock.contexts.at(-1)).toBe(sessions[index]);
-    expect(vi.mocked(Session.prototype.close).mock.contexts.at(-1)).toBe(sessions[index]);
+    expect(vi.mocked(Session.prototype.update).mock.contexts.at(-1)).toBe(ownerSessions[index]);
+    expect(vi.mocked(Session.prototype.close).mock.contexts.at(-1)).toBe(ownerSessions[index]);
   }
   expect(Session.prototype.close).toHaveBeenCalledTimes(owners.length);
   expect(vi.getTimerCount()).toBe(0);
@@ -438,7 +443,11 @@ test.each(['deadline', 'removal', 'navigation', 'close'])(
       await getBadgeStorage(1).removeValue();
     }
     if (action === 'close') expect(await getDrmFailureStorage(1).getValue()).toBeNull();
-    expect(await browser.storage.session.get(null)).toEqual({});
+    const remaining = await browser.storage.session.get(null);
+    expect(Object.keys(remaining).filter((key) => !key.startsWith('capture-diagnostics:'))).toEqual(
+      [],
+    );
+    if (action === 'removal') expect(remaining).toEqual({});
     expect(vi.getTimerCount()).toBe(0);
   },
 );
@@ -463,7 +472,7 @@ test('tab closure does not leave a record from an interrupted storage write', as
   await sessions[0]!.closed;
   resumeWrite.resolve();
   await expect(challenge).resolves.toBeUndefined();
-  expect(await browser.storage.session.get(null)).toEqual({});
+  await vi.waitFor(async () => expect(await browser.storage.session.get(null)).toEqual({}));
 });
 
 test.each([
@@ -975,4 +984,139 @@ test.each([
   const send = startBackground();
   await expect(send('playback-config', '')).resolves.toBe(expected);
   expect(appStorage.credentials.active.getValue).not.toHaveBeenCalled();
+});
+
+test('diagnostics correlate concurrent frames and preserve credential provenance across updates', async () => {
+  const { getCaptureDiagnosticsStorage, formatCaptureTrace } =
+    await import('../src/extension/utils/session-diagnostics');
+  const send = startBackground();
+  const first = {
+    tab: tab(81),
+    frameId: 0,
+    documentId: 'first',
+    url: 'https://example.com/frame?token=secret',
+  };
+  const second = { ...first, frameId: 2, documentId: 'second' };
+  await Promise.all([
+    send('generateRequest', 'same-token', first),
+    send('generateRequest', 'same-token', second),
+  ]);
+  const initial = (await getCaptureDiagnosticsStorage(81).getValue())!;
+  expect(initial).toHaveLength(2);
+  expect(new Set(initial.map((record) => record.captureId)).size).toBe(2);
+  expect(initial.map((record) => record.frameId).sort()).toEqual([0, 2]);
+  const capture = initial.find((record) => record.frameId === 0)!;
+  expect(capture.credential?.type).toBe('wvd');
+  expect(capture.credential?.name).toBe('Test Widevine device');
+  expect(capture.events).toEqual(
+    expect.arrayContaining([
+      expect.objectContaining({ stage: 'eme', status: 'succeeded' }),
+      expect.objectContaining({ stage: 'challenge', status: 'succeeded' }),
+    ]),
+  );
+  const replacementCredentials = new WidevineClientCredentials(new Uint8Array());
+  Object.defineProperty(replacementCredentials, 'label', { value: 'Other device' });
+  vi.mocked(appStorage.credentials.active.getValue).mockResolvedValue(replacementCredentials);
+  await send('update', 'same-token', first);
+  const records = (await getCaptureDiagnosticsStorage(81).getValue())!;
+  const updated = records.find((record) => record.captureId === capture.captureId)!;
+  expect(updated.outcome).toBe('keys-returned');
+  expect(updated.credential).toEqual(capture.credential);
+  expect(updated.keyCount).toBe(1);
+  expect((await appStorage.allKeys.getValue())?.[0]?.captureId).toBe(capture.captureId);
+  const trace = formatCaptureTrace(updated);
+  expect(trace).not.toContain('same-token');
+  expect(trace).not.toContain('secret');
+  expect(trace).not.toContain('ffeeddccbbaa99887766554433221100');
+  expect(trace).not.toContain('cHNzaA==');
+  expect(JSON.parse(trace).frameOrigin).toBe('https://example.com');
+});
+
+test('diagnostics distinguish no content keys from license processing failure', async () => {
+  const { getCaptureDiagnosticsStorage } =
+    await import('../src/extension/utils/session-diagnostics');
+  const send = startBackground();
+  const sender = { tab: tab(82), frameId: 0 };
+  vi.mocked(Session.prototype.update).mockResolvedValue();
+  await send('generateRequest', 'empty', sender);
+  await send('update', 'empty', sender);
+  // The response is sent before the handler's final diagnostic write.
+  await vi.waitFor(async () => {
+    const records = (await getCaptureDiagnosticsStorage(82).getValue())!;
+    expect(records[0]?.outcome).toBe('no-content-keys');
+    expect(records[0]?.events.at(-1)).toMatchObject({ stage: 'keys', status: 'failed' });
+  });
+  vi.mocked(Session.prototype.update).mockRejectedValue(new Error('license secret payload'));
+  await send('generateRequest', 'failure', sender);
+  await send('update', 'failure', sender);
+  await vi.waitFor(async () => {
+    const records = (await getCaptureDiagnosticsStorage(82).getValue())!;
+    expect(records.find((record) => record.outcome === 'failed')?.events.at(-1)).toMatchObject({
+      stage: 'license',
+      status: 'failed',
+    });
+    expect(JSON.stringify(records)).not.toContain('license secret payload');
+  });
+});
+
+test('a late-expiry request cannot leave or resurrect a pending diagnostic', async () => {
+  const { getCaptureDiagnosticsStorage } =
+    await import('../src/extension/utils/session-diagnostics');
+  const send = startBackground();
+  const sender = { tab: tab(83), frameId: 0 };
+  await send('generateRequest', 'expired', sender);
+  vi.setSystemTime(Date.now() + 5 * 60_000 + 1);
+  await send('license-request', 'expired', sender);
+  await send('update', 'expired', sender);
+  expect((await getCaptureDiagnosticsStorage(83).getValue())?.[0]?.outcome).toBe('closed');
+});
+
+test('updates of an evicted active session preserve the latest 20 captures', async () => {
+  const { getCaptureDiagnosticsStorage } =
+    await import('../src/extension/utils/session-diagnostics');
+  const send = startBackground();
+  const sender = { tab: tab(84), frameId: 0 };
+  let firstCaptureId: string | undefined;
+  for (let index = 0; index < 21; index++) {
+    vi.setSystemTime(Date.now() + 1);
+    await send('generateRequest', `capture-${index}`, sender);
+    if (index === 0)
+      firstCaptureId = (await getCaptureDiagnosticsStorage(84).getValue())?.[0]?.captureId;
+  }
+  await vi.waitFor(async () =>
+    expect((await getCaptureDiagnosticsStorage(84).getValue())?.at(-1)?.events.at(-1)?.status).toBe(
+      'succeeded',
+    ),
+  );
+  const before = await getCaptureDiagnosticsStorage(84).getValue();
+  expect(before).toHaveLength(20);
+  expect(firstCaptureId).toBeDefined();
+  await expect(send('update', 'capture-0', sender)).resolves.toMatchObject({
+    keys: [expect.objectContaining({ captureId: firstCaptureId })],
+  });
+  expect(await getCaptureDiagnosticsStorage(84).getValue()).toEqual(before);
+});
+
+test('navigation interrupts a trace while credentials are still loading', async () => {
+  const { getCaptureDiagnosticsStorage } =
+    await import('../src/extension/utils/session-diagnostics');
+  const entered = Promise.withResolvers<void>();
+  vi.mocked(appStorage.credentials.active.getValue).mockImplementation(() => {
+    entered.resolve();
+    return new Promise(() => {});
+  });
+  const updated = vi.spyOn(browser.tabs.onUpdated, 'addListener');
+  const send = startBackground();
+  const request = send('generateRequest', 'loading', { tab: tab(85) });
+  await entered.promise;
+  updated.mock.calls[0]![0](85, { status: 'loading' }, tab(85));
+  await request;
+  await vi.waitFor(async () =>
+    expect((await getCaptureDiagnosticsStorage(85).getValue())?.[0]).toMatchObject({
+      outcome: 'closed',
+      events: expect.arrayContaining([
+        expect.objectContaining({ stage: 'credentials', status: 'interrupted' }),
+      ]),
+    }),
+  );
 });
