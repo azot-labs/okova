@@ -27,6 +27,12 @@ test('built content bridge associates DASH and reads playback configuration thro
     });
     try {
       const worker = context.serviceWorkers()[0] ?? (await context.waitForEvent('serviceworker'));
+      // Let first-install initialization finish before replacing the default settings.
+      await expect
+        .poll(() =>
+          worker.evaluate(async () => (await browser.storage.local.get('settings')).settings),
+        )
+        .toBeTruthy();
       await worker.evaluate(async () => {
         await browser.storage.local.set({
           settings: JSON.stringify({

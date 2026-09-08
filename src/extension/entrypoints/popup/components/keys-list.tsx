@@ -1,7 +1,6 @@
 import { Accessor, Component, JSX, batch, createComputed, untrack } from 'solid-js';
 import { createStore, reconcile } from 'solid-js/store';
 import { Cell } from './cell';
-import { DeleteKeys } from './delete-keys';
 import { keyRecordToken, KeyInfo } from '@/utils/storage';
 import { List } from './list';
 import { Section } from './section';
@@ -9,11 +8,12 @@ import { KeySettings } from '../routes/key-settings';
 import { formatRelativeTime } from '../utils/date';
 import { captureHistoryScroll, reconcileHistoryRows, type HistoryRow } from '../utils/history-rows';
 import { TbOutlineSearch } from 'solid-icons/tb';
+import { cn } from '../utils/cn';
 
 type KeysListProps = {
   keys: Accessor<KeyInfo[]>;
   allKeys?: Accessor<KeyInfo[]>;
-  selectable?: boolean;
+  selection?: { tokens: string[]; onChange: (tokens: string[]) => void };
   search?: { value: string; onChange: (value: string) => void };
   controls?: JSX.Element;
   header?: JSX.Element;
@@ -26,14 +26,9 @@ export const KeysList: Component<KeysListProps> = (props) => {
   const [rows, setRows] = createStore<HistoryRow[]>([]);
   const [openedIdentity, setOpenedIdentity] = createSignal<number | null>(null);
   const openedKey = createMemo(() => rows.find((row) => row.identity === openedIdentity())?.key);
-  const [selected, setSelected] = createSignal<string[]>([]);
-  const selectedRecords = createMemo(() =>
-    props.keys().filter((key) => selected().includes(keyRecordToken(key))),
-  );
-  createEffect(() => {
-    const visible = new Set(props.keys().map(keyRecordToken));
-    setSelected((tokens) => tokens.filter((token) => visible.has(token)));
-  });
+  const [isSearchExpanded, setIsSearchExpanded] = createSignal(false);
+  let searchInput: HTMLInputElement | undefined;
+  let searchButton: HTMLButtonElement | undefined;
   let nextIdentity = 0;
   let list: HTMLDivElement | undefined;
 
@@ -55,70 +50,79 @@ export const KeysList: Component<KeysListProps> = (props) => {
 
   return (
     <>
-      <Show when={props.search || (props.selectable && props.keys().length)}>
-        <Section
-          footer={
-            props.search ? (
-              <span role="status">
-                {selectedRecords().length} selected / {props.keys().length} filtered /{' '}
-                {(props.allKeys ?? props.keys)().length} total
-              </span>
-            ) : undefined
-          }
-        >
-          <Show when={props.search}>
-            {(search) => (
-              <Cell class="w-full" before={<TbOutlineSearch class="text-neutral-500" />}>
-                <input
-                  type="search"
-                  aria-label="Search"
-                  class="outline-none bg-transparent border-none w-full"
-                  placeholder="Search..."
-                  value={search().value}
-                  onInput={(event) => search().onChange(event.currentTarget.value)}
-                />
-              </Cell>
-            )}
-          </Show>
-          <Show when={props.selectable && props.keys().length}>
-            <Cell
-              selection={{
-                label: 'Select All Results',
-                checked: selectedRecords().length === props.keys().length,
-                indeterminate:
-                  selectedRecords().length > 0 && selectedRecords().length < props.keys().length,
-                onChange: (checked) => setSelected(checked ? props.keys().map(keyRecordToken) : []),
-              }}
-              onClick={() =>
-                setSelected(
-                  selectedRecords().length === props.keys().length
-                    ? []
-                    : props.keys().map(keyRecordToken),
-                )
-              }
-            >
-              Select All Results
-            </Cell>
-          </Show>
-        </Section>
-      </Show>
       <div ref={list}>
         <Show when={props.keys().length > 0 || props.search}>
           <List>
             <Section
-              header={props.header}
+              header={
+                <>
+                  {props.header}{' '}
+                  <span
+                    role="status"
+                    aria-label={`${props.selection?.tokens.length ?? 0} selected / ${(props.allKeys ?? props.keys)().length} total`}
+                  >
+                    ({props.selection?.tokens.length ? `${props.selection.tokens.length}/` : ''}
+                    {(props.allKeys ?? props.keys)().length})
+                  </span>
+                </>
+              }
               headerControls={
                 <>
-                  <Show when={selectedRecords().length}>
-                    <DeleteKeys
-                      label="Delete Selected"
-                      scope={{ kind: 'selected', records: selectedRecords() }}
-                      size="xs"
-                      disabled={!selectedRecords().length}
-                      onDeleted={() => setSelected([])}
-                    />
+                  <div class={isSearchExpanded() ? 'hidden' : 'flex items-center gap-0.5'}>
+                    {props.controls}
+                  </div>
+                  <Show when={props.search}>
+                    {(search) => (
+                      <>
+                        <button
+                          ref={searchButton}
+                          type="button"
+                          aria-label="Search"
+                          aria-expanded={isSearchExpanded()}
+                          title={search().value.trim() ? `Search: ${search().value}` : 'Search'}
+                          class={cn(
+                            'size-4 items-center justify-center rounded-md cursor-pointer hover:bg-slate-200/80 dark:hover:bg-neutral-800 focus-visible:outline-2',
+                            isSearchExpanded() ? 'hidden' : 'inline-flex',
+                            search().value.trim() &&
+                              'bg-blue-100 text-blue-600 dark:bg-blue-500/20 dark:text-blue-400',
+                          )}
+                          onClick={() => {
+                            setIsSearchExpanded(true);
+                            searchInput?.focus();
+                          }}
+                        >
+                          <TbOutlineSearch aria-hidden="true" class="size-2.5" />
+                        </button>
+                        <div
+                          class={cn(
+                            'relative items-center',
+                            isSearchExpanded() ? 'inline-flex' : 'hidden',
+                          )}
+                        >
+                          <TbOutlineSearch
+                            aria-hidden="true"
+                            class="pointer-events-none absolute left-1 size-2.5"
+                          />
+                          <input
+                            ref={searchInput}
+                            type="search"
+                            aria-label="Search"
+                            class="min-h-4 w-56 rounded-md pl-5 pr-1 font-normal outline-none bg-slate-200/80 dark:bg-neutral-800 focus-visible:outline-2"
+                            placeholder="Search..."
+                            value={search().value}
+                            onInput={(event) => search().onChange(event.currentTarget.value)}
+                            onBlur={() => setIsSearchExpanded(false)}
+                            onKeyDown={(event) => {
+                              if (event.key !== 'Escape') return;
+                              event.preventDefault();
+                              setIsSearchExpanded(false);
+                              searchButton?.focus();
+                            }}
+                          />
+                        </div>
+                      </>
+                    )}
                   </Show>
-                  {props.controls}
                 </>
               }
               footer={props.footer}
@@ -130,16 +134,18 @@ export const KeysList: Component<KeysListProps> = (props) => {
                       class="group min-w-0"
                       onClick={() => setOpenedIdentity(row.identity)}
                       selection={
-                        props.selectable
+                        props.selection
                           ? {
                               label: `Select record ${row.key.id} from ${row.key.url}`,
-                              checked: selected().includes(keyRecordToken(row.key)),
+                              checked: props.selection.tokens.includes(keyRecordToken(row.key)),
                               onChange: (checked) => {
                                 const token = keyRecordToken(row.key);
-                                setSelected((tokens) =>
+                                const selection = props.selection;
+                                if (!selection) return;
+                                selection.onChange(
                                   checked
-                                    ? [...tokens, token]
-                                    : tokens.filter((item) => item !== token),
+                                    ? [...selection.tokens, token]
+                                    : selection.tokens.filter((item) => item !== token),
                                 );
                               },
                             }

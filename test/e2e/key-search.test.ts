@@ -40,9 +40,17 @@ test('saved keys filter immediately by KID, page URL, and manifest URL', async (
       const popup = await context.newPage();
       await popup.goto(`chrome-extension://${new URL(worker.url()).hostname}/popup.html`);
       await popup.getByRole('link', { name: 'Keys', exact: true }).click();
+      const searchButton = popup.getByRole('button', { name: 'Search', exact: true });
       const search = popup.getByRole('searchbox', { name: 'Search' });
+      expect(await search.isVisible()).toBe(false);
+      await searchButton.click();
+      expect(await search.evaluate((input) => input === document.activeElement)).toBe(true);
+      expect(await popup.getByLabel('DRM', { exact: true }).isVisible()).toBe(false);
+      expect(await popup.getByLabel('Site', { exact: true }).isVisible()).toBe(false);
+      expect(await popup.getByLabel('Order', { exact: true }).isVisible()).toBe(false);
       const count = popup.getByRole('status');
-      await expect.poll(() => count.textContent()).toBe('0 selected / 2 filtered / 2 total');
+      await expect.poll(() => count.textContent()).toBe('(2)');
+      await expect.poll(() => popup.locator('[data-history-row]').count()).toBe(2);
       for (const query of [
         'aabbccdd-1122-3344-5566-77889900aabb',
         ' DD-1122 ',
@@ -52,19 +60,33 @@ test('saved keys filter immediately by KID, page URL, and manifest URL', async (
         'MANIFEST.MPD',
       ]) {
         await search.fill(query);
-        await expect.poll(() => count.textContent()).toBe('0 selected / 1 filtered / 2 total');
+        await expect.poll(() => count.textContent()).toBe('(2)');
+        await expect.poll(() => popup.locator('[data-history-row]').count()).toBe(1);
         expect(await popup.locator('code').allTextContents()).toEqual([
           `${keys[0]!.id}:${keys[0]!.value}`,
         ]);
       }
+      await search.press('Tab');
+      expect(await search.isVisible()).toBe(false);
+      expect(await searchButton.getAttribute('title')).toBe('Search: MANIFEST.MPD');
+      expect(await searchButton.getAttribute('class')).toContain('text-blue-600');
+      expect(await popup.getByLabel('DRM', { exact: true }).isVisible()).toBe(true);
+      expect(await popup.getByLabel('Site', { exact: true }).isVisible()).toBe(true);
+      expect(await popup.getByLabel('Order', { exact: true }).isVisible()).toBe(true);
+      await expect.poll(() => count.textContent()).toBe('(2)');
+      await expect.poll(() => popup.locator('[data-history-row]').count()).toBe(1);
+      await searchButton.click();
+      expect(await search.inputValue()).toBe('MANIFEST.MPD');
       await search.fill('5678ABCDEF90');
-      await expect.poll(() => count.textContent()).toBe('0 selected / 1 filtered / 2 total');
+      await expect.poll(() => count.textContent()).toBe('(2)');
+      await expect.poll(() => popup.locator('[data-history-row]').count()).toBe(1);
       expect(await popup.locator('code').allTextContents()).toEqual([
         `${keys[1]!.id}:${keys[1]!.value}`,
       ]);
       for (const query of ['missing.example', '---', keys[0]!.value]) {
         await search.fill(query);
-        await expect.poll(() => count.textContent()).toBe('0 selected / 0 filtered / 2 total');
+        await expect.poll(() => count.textContent()).toBe('(2)');
+        await expect.poll(() => popup.locator('[data-history-row]').count()).toBe(0);
         expect(await popup.getByRole('heading', { name: 'No matching keys' }).isVisible()).toBe(
           true,
         );
@@ -73,18 +95,27 @@ test('saved keys filter immediately by KID, page URL, and manifest URL', async (
       await mkdir(resolve('output/playwright/key-search'), { recursive: true });
       await popup.screenshot({ path: resolve('output/playwright/key-search/no-matches.png') });
       await popup.getByRole('button', { name: 'Clear filters', exact: true }).click();
-      await expect.poll(() => count.textContent()).toBe('0 selected / 2 filtered / 2 total');
+      await expect.poll(() => count.textContent()).toBe('(2)');
+      await expect.poll(() => popup.locator('[data-history-row]').count()).toBe(2);
+      expect(await searchButton.getAttribute('title')).toBe('Search');
+      await searchButton.click();
       expect(await search.inputValue()).toBe('');
       await search.fill('   ');
-      await expect.poll(() => count.textContent()).toBe('0 selected / 2 filtered / 2 total');
+      await expect.poll(() => count.textContent()).toBe('(2)');
+      await expect.poll(() => popup.locator('[data-history-row]').count()).toBe(2);
       await search.fill('');
+      await search.press('Escape');
+      expect(await search.isVisible()).toBe(false);
+      expect(await searchButton.evaluate((button) => button === document.activeElement)).toBe(true);
+      expect(await searchButton.getAttribute('class')).not.toContain('text-blue-600');
       await popup.screenshot({ path: resolve('output/playwright/key-search/all-keys.png') });
       await popup.getByRole('button', { name: 'Delete All', exact: true }).click();
       await popup
         .getByRole('dialog')
         .getByRole('button', { name: 'Delete 2 records', exact: true })
         .click();
-      await expect.poll(() => count.textContent()).toBe('0 selected / 0 filtered / 0 total');
+      await expect.poll(() => count.textContent()).toBe('(0)');
+      await expect.poll(() => popup.locator('[data-history-row]').count()).toBe(0);
       expect(await popup.getByRole('heading', { name: 'Keys will appear here' }).isVisible()).toBe(
         true,
       );
