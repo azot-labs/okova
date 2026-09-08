@@ -12,7 +12,7 @@ export const pendingRecords = async () =>
     key.startsWith('pending-session:'),
   );
 
-export const startWorker = () => {
+export const startWorker = (messageSender = sender) => {
   const now = Date.now();
   vi.clearAllTimers();
   vi.setSystemTime(now);
@@ -31,7 +31,7 @@ export const startWorker = () => {
           url: 'https://example.com/video',
           ...extra,
         },
-        sender,
+        messageSender,
         resolve,
       );
     });

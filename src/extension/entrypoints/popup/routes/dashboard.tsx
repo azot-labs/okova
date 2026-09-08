@@ -1,6 +1,6 @@
+import { SessionDiagnostics } from '../components/session-diagnostics';
 import { DeleteKeys } from '../components/delete-keys';
 import { A } from '@solidjs/router';
-import { Cell } from '../components/cell';
 import {
   useActiveCredentials,
   useActiveTabUrl,
@@ -59,6 +59,8 @@ export const Dashboard = () => {
             </div>
           )}
         </Show>
+
+        <SessionDiagnostics />
 
         <KeysList
           keys={activeDomainRecentKeys}

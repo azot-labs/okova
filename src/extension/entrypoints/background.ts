@@ -1,3 +1,12 @@
+import { getCredentialFingerprint } from '@/utils/credential-fingerprint';
+import {
+  clearCaptureDiagnostics,
+  closeCaptureDiagnostics,
+  diagnosticOrigin,
+  getCaptureDiagnosticsStorage,
+  saveCaptureDiagnostic,
+  type CaptureDiagnostic,
+} from '@/utils/session-diagnostics';
 import {
   getBadgeAppearance,
   getBadgeDrmSystem,
@@ -58,10 +67,12 @@ const storedSessionSchema = z.object({
   expiresAt: z.number(),
   serverCertificate: z.string().optional(),
   challenge: z.string(),
+  captureId: z.string().optional(),
 });
 
 type SessionEntry = {
   credentials: z.infer<typeof storedSessionSchema>['credentials'];
+  captureId?: string;
   expiresAt: number;
   challenge: string;
   session: Session;
@@ -145,6 +156,8 @@ export default defineBackground({
         () => {
           const entry = state.sessions.get(id);
           if (entry && entry.expiresAt <= Date.now()) {
+            if (entry.tabId !== undefined)
+              void closeCaptureDiagnostics(entry.tabId, id).catch(() => {});
             void closeSession(id).catch((error: unknown) => {
               console.warn('[okova] Unable to expire DRM session', error);
             });
@@ -163,6 +176,7 @@ export default defineBackground({
           expiresAt: entry.expiresAt,
           serverCertificate: entry.serverCertificate,
           challenge: entry.challenge,
+          captureId: entry.captureId,
         } satisfies z.infer<typeof storedSessionSchema>,
       });
       // A lifecycle close can interrupt an in-flight storage write.
@@ -209,6 +223,7 @@ export default defineBackground({
               : value,
           );
           if (record.expiresAt <= Date.now()) {
+            if (record.tabId !== undefined) await closeCaptureDiagnostics(record.tabId, id);
             await browser.storage.session.remove(key);
             if (record.credentials.type === 'remote') {
               const credentials = await RemoteCredentials.from(record.credentials.config);
@@ -253,6 +268,7 @@ export default defineBackground({
     const tabGenerations = new Map<number, number>();
     const closeTabSessions = (tabId: number) => {
       tabGenerations.set(tabId, (tabGenerations.get(tabId) ?? 0) + 1);
+      void closeCaptureDiagnostics(tabId).catch(() => {});
       void getDrmFailureStorage(tabId)
         .removeValue()
         .catch((error: unknown) => {
@@ -279,6 +295,7 @@ export default defineBackground({
     };
     browser.tabs.onRemoved.addListener((tabId) => {
       closeTabSessions(tabId);
+      void clearCaptureDiagnostics(tabId).catch(() => {});
       void (badgeUpdates.get(tabId) ?? Promise.resolve())
         .catch(() => {})
         .then(() => getBadgeStorage(tabId).removeValue())
@@ -432,6 +449,32 @@ export default defineBackground({
       const run = <T>(operation: T | Promise<T>) =>
         withAbort(Promise.resolve(operation), controller.signal);
       let stage: DrmStage = 'setup';
+      let diagnostic: CaptureDiagnostic | undefined;
+      const saveDiagnostic = async () => {
+        if (!diagnostic || tabId === undefined) return;
+        try {
+          await saveCaptureDiagnostic(
+            tabId,
+            diagnostic,
+            () => tabGeneration === (tabGenerations.get(tabId) ?? 0),
+          );
+        } catch {
+          // Diagnostics must not prevent playback when storage is unavailable.
+        }
+      };
+      const advance = async (next: DrmStage) => {
+        if (diagnostic) {
+          const previous = diagnostic.events.at(-1);
+          if (previous?.status === 'started') {
+            previous.status = 'succeeded';
+            previous.completedAt = Date.now();
+          }
+          diagnostic.events.push({ stage: next, status: 'started', at: Date.now() });
+          diagnostic.events = diagnostic.events.slice(-100);
+        }
+        stage = next;
+        await saveDiagnostic();
+      };
       const historyReady = getKeyHistory(sender.tab?.incognito === true, sender.tab?.windowId);
       void historyReady.catch(() => {});
       const tabId = sender.tab?.id;
@@ -522,7 +565,7 @@ export default defineBackground({
           return;
         }
         if (message.action === 'close') {
-          stage = 'close';
+          await advance('close');
           if (sessionKey) await closeSession(sessionKey);
           respond();
           return;
@@ -536,12 +579,11 @@ export default defineBackground({
           clearTimeout(entry.timer);
           entry.expiresAt = Date.now() + SESSION_IDLE_TIMEOUT_MS;
           entry.timer = scheduleExpiry(sessionKey, entry.expiresAt);
-          stage = 'storage';
+          await advance('storage');
           await run(persistSession(sessionKey, entry));
         }
-        console.log('[okova] Received message', message);
 
-        stage = 'setup';
+        await advance('setup');
         const settings = await run(appStorage.settings.getValue());
         const setRecentKeys = async (keys: KeyInfo[]) => {
           await run(history.recentKeys.setForUrl(message.url, keys));
@@ -554,26 +596,40 @@ export default defineBackground({
           message.action === 'update' &&
           message.keySystem === 'org.w3.clearkey'
         ) {
-          stage = 'license';
+          await advance('license');
           const clearKeys = parseClearKeyResponse(parseBinary(message.message));
           if (clearKeys?.length) {
             const results = clearKeys.map((key) => ({
               ...key,
+              captureId: diagnostic?.captureId,
               drmSystem: system,
               url: message.url,
               mpd: message.mpd,
               pssh: message.initData,
               createdAt: Date.now(),
             }));
-            stage = 'history';
+            await advance('history');
+            if (diagnostic) {
+              diagnostic.outcome = 'keys-returned';
+              diagnostic.keyCount = results.length;
+            }
             await setRecentKeys(results);
             await run(history.allKeys.add(...results));
             await run(clearFailure());
             await recordBadgeResult({ kind: 'success', system, keys: results.map(getBadgeKey) });
-            stage = 'close';
+            await advance('close');
             if (sessionKey) await closeSession(sessionKey);
             respond({ keys: results });
             return;
+          }
+          if (diagnostic) {
+            if (clearKeys) await advance('keys');
+            diagnostic.outcome = clearKeys ? 'no-content-keys' : 'failed';
+            const last = diagnostic.events.at(-1);
+            if (last) {
+              last.status = 'failed';
+              last.completedAt = Date.now();
+            }
           }
         }
 
@@ -582,6 +638,7 @@ export default defineBackground({
         if (settings?.emeInterception && message.action === 'keystatuseschange') {
           const keyStatuses = message.keyStatuses as Record<string, string>;
           const keys = Object.entries(keyStatuses).map(([id, status]) => ({
+            captureId: diagnostic?.captureId,
             drmSystem: system,
             id: fromBase64(id).toHex(),
             value: status,
@@ -590,7 +647,7 @@ export default defineBackground({
             pssh: message.initData,
             createdAt: new Date().getTime(),
           }));
-          stage = 'history';
+          await advance('history');
           const recentKeys = getRecentKeysForUrl(
             message.url,
             await run(history.recentKeysByDomain.getValue()),
@@ -630,12 +687,27 @@ export default defineBackground({
             return;
           }
           await run(clearFailure());
-          stage = 'credentials';
+          await advance('credentials');
           const credentials = await run(loadCredentials());
           if (!credentials)
             throw new Error(
               'No active DRM credentials. Import or select credentials in the popup.',
             );
+          const credentialsInfo = await run(serializeCredentials(credentials));
+          if (diagnostic) {
+            diagnostic.credential = {
+              type: credentialsInfo.type,
+              name: credentials.label,
+              keySystem:
+                credentialsInfo.type === 'remote'
+                  ? credentialsInfo.config.keySystem
+                  : credentialsInfo.type === 'wvd'
+                    ? 'com.widevine.alpha'
+                    : 'com.microsoft.playready',
+              fingerprint: await getCredentialFingerprint(credentialsInfo),
+            };
+            diagnostic.outcome = 'pending';
+          }
           const cdm = createCdm(credentials);
           if (typeof message.keySystem !== 'string') throw new Error('DRM key system is required');
           if (normalizeKeySystem(message.keySystem) !== cdm.keySystem) {
@@ -646,14 +718,13 @@ export default defineBackground({
           const serverCertificate =
             typeof message.serverCertificate === 'string' ? message.serverCertificate : undefined;
           if (serverCertificate && cdm.keySystem === 'com.widevine.alpha') {
-            stage = 'certificate';
+            await advance('certificate');
             await run(cdm.setServerCertificate(fromBase64(serverCertificate).toBuffer()));
           }
-          stage = 'session';
+          await advance('session');
           setSupportedEngines([cdm]);
           const keySystemAccess = await requestMediaKeySystemAccess(cdm.keySystem, [{}]);
           const mediaKeys = await run(keySystemAccess.createMediaKeys());
-          const credentialsInfo = await run(serializeCredentials(credentials));
           const session = mediaKeys.createSession();
           // Close after five minutes of inactivity, including silently removed frames.
           const expiresAt = Date.now() + SESSION_IDLE_TIMEOUT_MS;
@@ -661,6 +732,7 @@ export default defineBackground({
           const entry: SessionEntry = {
             session,
             credentials: credentialsInfo,
+            captureId: diagnostic?.captureId,
             expiresAt,
             challenge: '',
             tabId: sender.tab?.id,
@@ -668,10 +740,11 @@ export default defineBackground({
             serverCertificate,
           };
           state.sessions.set(sessionKey, entry);
-          stage = 'challenge';
+          await advance('challenge');
           await run(session.generateRequest(message.initDataType, fromBase64(initData).toBuffer()));
+          if (diagnostic) diagnostic.sessionId = session.sessionId;
           entry.challenge = fromBuffer(await run(session.waitForLicenseRequest())).toBase64();
-          stage = 'storage';
+          await advance('storage');
           await run(persistSession(sessionKey, entry));
           respond();
           return;
@@ -685,14 +758,14 @@ export default defineBackground({
 
         const { session } = sessionEntry;
         if (message.action === 'license-request') {
-          stage = 'challenge';
+          await advance('challenge');
           const serverCertificate = message.serverCertificate;
           if (
             session.engine.keySystem === 'com.widevine.alpha' &&
             typeof serverCertificate === 'string' &&
             serverCertificate !== sessionEntry.serverCertificate
           ) {
-            stage = 'certificate';
+            await advance('certificate');
             const { signedDrmCertificate } = await run(parseCertificate(serverCertificate));
             // Replace any session-level override and regenerate with the new certificate.
             await run(
@@ -706,37 +779,37 @@ export default defineBackground({
               ),
             );
             sessionEntry.serverCertificate = serverCertificate;
-            stage = 'challenge';
+            await advance('challenge');
             sessionEntry.challenge = fromBuffer(
               await run(session.waitForLicenseRequest()),
             ).toBase64();
           }
-          stage = 'storage';
+          await advance('storage');
           await run(persistSession(sessionKey, sessionEntry));
           respond(sessionEntry.challenge);
         } else if (message.action === 'update') {
-          stage = 'license';
           const response = parseBinary(message.message);
           const isServiceCertificate =
             session.engine.keySystem === 'com.widevine.alpha' &&
             isWidevineServiceCertificate(response);
-          if (isServiceCertificate) stage = 'certificate';
+          await advance(isServiceCertificate ? 'certificate' : 'license');
           await run(session.update(response));
           if (isServiceCertificate) {
-            stage = 'challenge';
+            await advance('challenge');
             sessionEntry.challenge = fromBuffer(
               await run(session.waitForLicenseRequest()),
             ).toBase64();
-            stage = 'storage';
+            await advance('storage');
             await run(persistSession(sessionKey, sessionEntry));
             respond({ challenge: sessionEntry.challenge });
             return;
           }
 
-          stage = 'keys';
+          await advance('keys');
           const keys = new Map(session.keys);
           if (!keys.size) throw new NoContentKeysError();
           const results = Array.from(keys, ([id, value]) => ({
+            captureId: diagnostic?.captureId,
             drmSystem: system,
             id,
             value,
@@ -745,12 +818,16 @@ export default defineBackground({
             pssh: message.initData,
             createdAt: new Date().getTime(),
           }));
-          stage = 'history';
+          await advance('history');
+          if (diagnostic) {
+            diagnostic.outcome = 'keys-returned';
+            diagnostic.keyCount = results.length;
+          }
           await setRecentKeys(results);
           await run(history.allKeys.add(...results));
           await run(clearFailure());
           await recordBadgeResult({ kind: 'success', system, keys: results.map(getBadgeKey) });
-          stage = 'close';
+          await advance('close');
           await closeSession(sessionKey);
           respond({ keys: results });
         } else {
@@ -766,8 +843,67 @@ export default defineBackground({
             respond();
             return;
           }
+          if (
+            tabId !== undefined &&
+            sessionKey &&
+            ['generateRequest', 'license-request', 'update', 'keystatuseschange', 'close'].includes(
+              message.action,
+            )
+          ) {
+            try {
+              const records = await getCaptureDiagnosticsStorage(tabId).getValue();
+              diagnostic = records?.find((record) => record.owner === sessionKey);
+              if (
+                !diagnostic &&
+                ['generateRequest', 'update', 'keystatuseschange'].includes(message.action)
+              )
+                diagnostic = {
+                  captureId: state.sessions.get(sessionKey)?.captureId ?? crypto.randomUUID(),
+                  owner: sessionKey,
+                  createdAt: Date.now(),
+                  origin: diagnosticOrigin(sender.tab?.url ?? message.url),
+                  frameOrigin: diagnosticOrigin(sender.url),
+                  frameId: sender.frameId ?? null,
+                  documentId: sender.documentId ?? null,
+                  keySystem: String(message.keySystem).slice(0, 100),
+                  credential: null,
+                  sessionId: null,
+                  outcome: 'observed',
+                  keyCount: 0,
+                  events: [{ stage: 'eme', status: 'succeeded', at: Date.now() }],
+                };
+              await saveDiagnostic();
+            } catch {
+              /* Capture remains usable if diagnostics storage fails. */
+            }
+          }
           await handleMessage();
+          if (diagnostic) {
+            const last = diagnostic.events.at(-1);
+            if (last?.status === 'started') {
+              last.status = 'succeeded';
+              last.completedAt = Date.now();
+            }
+            if (message.action === 'close' && diagnostic.outcome === 'pending')
+              diagnostic.outcome = 'closed';
+          }
         } catch (error: unknown) {
+          if (diagnostic) {
+            const last = diagnostic.events.at(-1);
+            if (last) {
+              last.status =
+                controller.signal.reason === EXPLICIT_CLOSE_REASON ? 'interrupted' : 'failed';
+              last.completedAt = Date.now();
+            }
+            diagnostic.outcome =
+              controller.signal.reason === EXPLICIT_CLOSE_REASON
+                ? 'closed'
+                : error instanceof NoContentKeysError
+                  ? 'no-content-keys'
+                  : controller.signal.aborted
+                    ? 'timed-out'
+                    : 'failed';
+          }
           const isExplicitClose = controller.signal.reason === EXPLICIT_CLOSE_REASON;
           if (!isExplicitClose) console.warn('[okova] DRM request failed at', stage, error);
           try {
@@ -798,6 +934,7 @@ export default defineBackground({
           }
           respond();
         } finally {
+          await saveDiagnostic();
           clearTimeout(timer);
           if (sessionKey && activeRequests.get(sessionKey) === controller)
             activeRequests.delete(sessionKey);

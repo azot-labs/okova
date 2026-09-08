@@ -14,6 +14,7 @@ export { defaultSettings, type Settings, type ThemeMode } from './settings';
 export type BadgeDrmSystem = 'W' | 'P' | 'C';
 
 export type KeyInfo = {
+  captureId?: string;
   drmSystem?: BadgeDrmSystem;
   id: string;
   value: string;

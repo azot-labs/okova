@@ -312,3 +312,26 @@ test('unreachable expired remote sessions do not delay new local sessions', asyn
     vi.unstubAllGlobals();
   }
 });
+
+test('capture diagnostics retain identity and successful stages after worker restart', async () => {
+  const { getCaptureDiagnosticsStorage } =
+    await import('../src/extension/utils/session-diagnostics');
+  await appStorage.credentials.active.setValue(await createWidevineCredentials());
+  const tab = await browser.tabs.create({ url: 'https://example.com/video' });
+  const sender = { tab, frameId: 0, documentId: 'restart-document', url: tab.url };
+  let send = startWorker(sender);
+  await send('generateRequest');
+  const before = (await getCaptureDiagnosticsStorage(tab.id!).getValue())![0]!;
+  send = startWorker(sender);
+  await send('license-request');
+  const after = (await getCaptureDiagnosticsStorage(tab.id!).getValue())![0]!;
+  expect(after.captureId).toBe(before.captureId);
+  expect(before.credential?.name).toBe((await appStorage.credentials.active.getValue())?.label);
+  expect(before.credential?.name).toBeTruthy();
+  expect(after.credential).toEqual(before.credential);
+  expect(after.sessionId).toBe(before.sessionId);
+  expect(after.events).toEqual(expect.arrayContaining(before.events));
+  expect(
+    after.events.filter((event) => event.stage === 'challenge' && event.status === 'succeeded'),
+  ).toHaveLength(2);
+});
