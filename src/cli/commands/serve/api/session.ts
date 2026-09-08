@@ -1,3 +1,11 @@
+import { SessionInputError } from '../../../../lib/session-input-error';
+import {
+  InvalidPssh,
+  InvalidInitData,
+  InvalidWrmHeader,
+  InvalidLicense,
+  ServerException,
+} from '../../../../lib/playready/exceptions';
 import { readFile } from 'node:fs/promises';
 import { resolve } from 'node:path';
 import { Hono } from 'hono';
@@ -16,6 +24,33 @@ import { WidevineSession } from '../../../../lib/widevine/session';
 const app = new Hono();
 const SESSION_MESSAGE_TIMEOUT_MS = 5_000;
 const SESSION_UPDATE_SYNC_TIMEOUT_MS = 250;
+
+const sessionFailure = (error: unknown) => {
+  if (
+    error instanceof SessionInputError ||
+    error instanceof InvalidPssh ||
+    error instanceof InvalidInitData ||
+    error instanceof InvalidWrmHeader ||
+    error instanceof InvalidLicense
+  ) {
+    return { error: 'Invalid session input', status: 400 as const };
+  }
+  if (error instanceof ServerException) {
+    return { error: 'License server rejected the request', status: 502 as const };
+  }
+  if (error instanceof DOMException && error.name === 'TimeoutError') {
+    return { error: 'Timed out waiting for a session message', status: 504 as const };
+  }
+  console.error('Session operation failed', {
+    errorType: error instanceof Error ? error.name : 'Unknown',
+  });
+  return { error: 'Internal session error', status: 500 as const };
+};
+
+app.onError((error, c) => {
+  const failure = sessionFailure(error);
+  return c.json({ error: failure.error }, failure.status);
+});
 
 const secretKeyMiddleware = createMiddleware(async (c, next) => {
   const secretKey = c.req.header('x-secret-key');
@@ -187,7 +222,7 @@ app.post(
   zValidator(
     'json',
     z.object({
-      initDataType: z.string().optional(),
+      initDataType: z.literal('cenc').optional(),
       initData: base64,
       serverCertificate: base64.optional(),
     }),
@@ -208,7 +243,7 @@ app.post(
         );
         if (!accepted) return c.json({ error: 'Server certificates are unsupported' }, 400);
       } catch (error) {
-        return c.json({ error: error instanceof Error ? error.message : String(error) }, 400);
+        return c.json({ error: 'Invalid server certificate' }, 400);
       }
     }
     if (config.forcePrivacyMode) {
@@ -250,26 +285,33 @@ app.post(
 
       session.addEventListener('message', handler);
       const timeout = setTimeout(() => {
-        fail(
-          new Error(
-            `Timed out after ${SESSION_MESSAGE_TIMEOUT_MS}ms waiting for a session message`,
-          ),
-        );
+        fail(new DOMException('Timed out waiting for a session message', 'TimeoutError'));
       }, SESSION_MESSAGE_TIMEOUT_MS);
       rejectNextMessage = fail;
     });
 
     try {
-      await session.generateRequest(initDataType, initData);
+      // Observe both promises immediately; the message deadline also bounds a stalled generator.
+      const [, message] = await Promise.all([
+        session.generateRequest(initDataType, initData),
+        nextMessage,
+      ]);
+      return c.json({
+        message: Buffer.from(new Uint8Array(message.message)).toString('base64'),
+        messageType: message.messageType,
+        serverCertificateAccepted: serverCertificate !== undefined,
+      });
     } catch (error) {
       rejectNextMessage?.(error);
+      sessions.delete(sessionKey);
+      try {
+        await session.close();
+      } catch {
+        console.error('Failed to close session after generation failure');
+      }
+      const failure = sessionFailure(error);
+      return c.json({ error: failure.error }, failure.status);
     }
-    const message = await nextMessage;
-    return c.json({
-      message: Buffer.from(new Uint8Array(message.message)).toString('base64'),
-      messageType: message.messageType,
-      serverCertificateAccepted: serverCertificate !== undefined,
-    });
   },
 );
 
@@ -323,10 +365,10 @@ app.post(
       await session.update(response);
       await synchronization;
     } catch (error) {
-      const message = error instanceof Error ? error.message : String(error);
-      console.error('Failed to update remote CDM session', error);
-      return c.json({ error: `Failed to update remote CDM session: ${message}` }, 502);
+      const failure = sessionFailure(error);
+      return c.json({ error: failure.error }, failure.status);
     } finally {
+      settleSynchronization();
       session.removeEventListener('message', handleMessage);
       session.removeEventListener('keystatuseschange', handleKeyStatusesChange);
     }

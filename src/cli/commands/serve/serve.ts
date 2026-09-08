@@ -1,5 +1,5 @@
 import { readdir } from 'node:fs/promises';
-import { resolve } from 'node:path';
+import { extname, resolve } from 'node:path';
 import { Hono } from 'hono';
 import { logger } from 'hono/logger';
 import { secureHeaders } from 'hono/secure-headers';
@@ -19,22 +19,50 @@ type ServeOptions = {
   public?: boolean;
 };
 
+const describeCredentials = (path: string) => {
+  const format = extname(path).toLowerCase();
+  const drm = { '.wvd': 'Widevine', '.prd': 'PlayReady' }[format] ?? 'unknown DRM';
+  return `${resolve(path)} (${drm}, based on file extension)`;
+};
+
 export const serve = async (options: ServeOptions = {}) => {
   await loadConfig(options.config);
   if (options.credentials) config.credentials.push(options.credentials);
   if (!config.credentials.length) {
-    const files = await readdir(process.cwd());
-    const credentialsPath = files.find((file) => file.endsWith('.wvd'));
+    const files = await readdir(process.cwd(), { withFileTypes: true });
+    const candidates = files
+      .filter((file) => file.isFile() && /\.(wvd|prd)$/.test(file.name))
+      .map((file) => file.name)
+      .sort();
+    if (candidates.length > 1) {
+      console.warn(
+        'Multiple credential files found. Selecting the first filename in sorted order.',
+      );
+    }
+    const credentialsPath = candidates[0];
     if (credentialsPath) config.credentials.push(credentialsPath);
+  }
+  if (!options.credentials && config.credentials[0]) {
+    console.warn(
+      `Default credentials: ${describeCredentials(config.credentials[0])}. ` +
+        'Using the first configured file. Use --credentials to choose credentials explicitly.',
+    );
   }
   if (options.secret) {
     const anonymousUser = { name: 'anonymous', credentials: [] };
     const user = Object.hasOwn(config.users, options.secret)
       ? config.users[options.secret]!
       : anonymousUser;
-    const credentialsPath = options.credentials ?? config.credentials.at(-1);
-    if (!user.credentials.length && credentialsPath)
+    const credentialsPath = options.credentials ?? config.credentials[0];
+    if (!user.credentials.length && credentialsPath) {
       user.credentials.push(resolve(credentialsPath));
+      if (!options.credentials) {
+        console.warn(
+          `Granted --secret access to ${describeCredentials(credentialsPath)}. ` +
+            'Use --credentials to choose a different grant.',
+        );
+      }
+    }
     config.users = { ...config.users, [options.secret]: user };
   }
 

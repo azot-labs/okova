@@ -1,5 +1,7 @@
 import { afterEach, beforeEach, expect, test, vi } from 'vitest';
 import sessionApi from '../src/cli/commands/serve/api/session';
+import { SessionInputError } from '../src/lib/session-input-error';
+import { InvalidLicense, ServerException } from '../src/lib/playready/exceptions';
 import { config, sessions } from '../src/cli/commands/serve/state';
 import { BaseMediaKeysEngine, BaseMediaKeysEngineSession, Session } from '../src/lib/api';
 
@@ -147,7 +149,9 @@ test('releases mutation ownership after a failed challenge or invalid request', 
   vi.spyOn(console, 'error').mockImplementation(() => {});
   vi.spyOn(native, 'generateRequest').mockRejectedValueOnce(new Error('Challenge failed'));
   expect((await request('generate-request')).status).toBe(500);
-  expect((await request('generate-request')).status).toBe(200);
+  expect(sessions.has(':session')).toBe(false);
+  expect((await request('generate-request')).status).toBe(400);
+  openSession();
   const invalid = await sessionApi.request('/session/update', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
@@ -156,3 +160,61 @@ test('releases mutation ownership after a failed challenge or invalid request', 
   expect(invalid.status).toBe(400);
   expect((await request('update')).status).toBe(200);
 });
+
+test('rejects unsupported init data before mutating the session and permits retry', async () => {
+  const { native } = openSession();
+  const generate = vi.spyOn(native, 'generateRequest');
+  const result = await sessionApi.request('/session/generate-request', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ initDataType: 'webm', initData: 'AQ==' }),
+  });
+  expect(result.status).toBe(400);
+  expect(generate).not.toHaveBeenCalled();
+  expect((await request('generate-request')).status).toBe(200);
+});
+
+test.each([
+  new SessionInputError('private input'),
+  new InvalidLicense('private license'),
+  new ServerException('private fault'),
+  new Error('private internal'),
+])('maps update errors without exposing payloads: %s', async (error) => {
+  const { native } = openSession();
+  const log = vi.spyOn(console, 'error').mockImplementation(() => {});
+  vi.spyOn(native, 'update').mockRejectedValueOnce(error);
+  const result = await request('update');
+  expect(result.status).toBe(
+    error instanceof ServerException ? 502 : error.constructor === Error ? 500 : 400,
+  );
+  expect(JSON.stringify(await result.json())).not.toContain('private');
+  expect(JSON.stringify(log.mock.calls)).not.toContain('private');
+  expect((await request('update')).status).toBe(200);
+});
+
+test.each([false, true])(
+  'closes generation after a message deadline, stalled generator: %s',
+  async (stalled) => {
+    vi.useFakeTimers();
+    try {
+      const { native } = openSession();
+      const started = Promise.withResolvers<void>();
+      const resume = Promise.withResolvers<void>();
+      vi.spyOn(native, 'generateRequest').mockImplementationOnce(async () => {
+        started.resolve();
+        if (stalled) await resume.promise;
+      });
+      const close = vi.spyOn(native, 'close');
+      const pending = request('generate-request');
+      await started.promise;
+      await vi.advanceTimersByTimeAsync(5_000);
+      const result = await pending;
+      expect(result.status).toBe(504);
+      expect(sessions.has(':session')).toBe(false);
+      expect(close).toHaveBeenCalledOnce();
+      resume.resolve();
+    } finally {
+      vi.useRealTimers();
+    }
+  },
+);
