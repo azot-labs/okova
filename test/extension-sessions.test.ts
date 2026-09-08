@@ -1058,3 +1058,65 @@ test('diagnostics distinguish no content keys from license processing failure', 
     expect(JSON.stringify(records)).not.toContain('license secret payload');
   });
 });
+
+test('a late-expiry request cannot leave or resurrect a pending diagnostic', async () => {
+  const { getCaptureDiagnosticsStorage } =
+    await import('../src/extension/utils/session-diagnostics');
+  const send = startBackground();
+  const sender = { tab: tab(83), frameId: 0 };
+  await send('generateRequest', 'expired', sender);
+  vi.setSystemTime(Date.now() + 5 * 60_000 + 1);
+  await send('license-request', 'expired', sender);
+  await send('update', 'expired', sender);
+  expect((await getCaptureDiagnosticsStorage(83).getValue())?.[0]?.outcome).toBe('closed');
+});
+
+test('updates of an evicted active session preserve the latest 20 captures', async () => {
+  const { getCaptureDiagnosticsStorage } =
+    await import('../src/extension/utils/session-diagnostics');
+  const send = startBackground();
+  const sender = { tab: tab(84), frameId: 0 };
+  let firstCaptureId: string | undefined;
+  for (let index = 0; index < 21; index++) {
+    vi.setSystemTime(Date.now() + 1);
+    await send('generateRequest', `capture-${index}`, sender);
+    if (index === 0)
+      firstCaptureId = (await getCaptureDiagnosticsStorage(84).getValue())?.[0]?.captureId;
+  }
+  await vi.waitFor(async () =>
+    expect((await getCaptureDiagnosticsStorage(84).getValue())?.at(-1)?.events.at(-1)?.status).toBe(
+      'succeeded',
+    ),
+  );
+  const before = await getCaptureDiagnosticsStorage(84).getValue();
+  expect(before).toHaveLength(20);
+  expect(firstCaptureId).toBeDefined();
+  await expect(send('update', 'capture-0', sender)).resolves.toMatchObject({
+    keys: [expect.objectContaining({ captureId: firstCaptureId })],
+  });
+  expect(await getCaptureDiagnosticsStorage(84).getValue()).toEqual(before);
+});
+
+test('navigation interrupts a trace while credentials are still loading', async () => {
+  const { getCaptureDiagnosticsStorage } =
+    await import('../src/extension/utils/session-diagnostics');
+  const entered = Promise.withResolvers<void>();
+  vi.mocked(appStorage.credentials.active.getValue).mockImplementation(() => {
+    entered.resolve();
+    return new Promise(() => {});
+  });
+  const updated = vi.spyOn(browser.tabs.onUpdated, 'addListener');
+  const send = startBackground();
+  const request = send('generateRequest', 'loading', { tab: tab(85) });
+  await entered.promise;
+  updated.mock.calls[0]![0](85, { status: 'loading' }, tab(85));
+  await request;
+  await vi.waitFor(async () =>
+    expect((await getCaptureDiagnosticsStorage(85).getValue())?.[0]).toMatchObject({
+      outcome: 'closed',
+      events: expect.arrayContaining([
+        expect.objectContaining({ stage: 'credentials', status: 'interrupted' }),
+      ]),
+    }),
+  );
+});

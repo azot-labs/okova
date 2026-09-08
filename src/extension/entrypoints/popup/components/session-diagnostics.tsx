@@ -1,3 +1,4 @@
+import { getShareableCredentialFingerprint } from '@/utils/credential-fingerprint';
 import { For, Show, createSignal } from 'solid-js';
 import { TbOutlineChevronRight, TbOutlineCopy, TbOutlineDownload } from 'solid-icons/tb';
 import { formatCaptureTrace, type CaptureDiagnostic } from '@/utils/session-diagnostics';
@@ -44,14 +45,14 @@ const captureStatus = (record: CaptureDiagnostic) => {
 
 export const SessionDiagnostics = () => {
   const [records] = useCaptureDiagnostics();
-  const [feedback, setFeedback] = createSignal('');
+  const [feedback, setFeedback] = createSignal<{ captureId: string; message: string }>();
   const [expanded, setExpanded] = createSignal<string[]>([]);
   const copyTrace = async (record: CaptureDiagnostic) => {
     try {
       await navigator.clipboard.writeText(formatCaptureTrace(record));
-      setFeedback(`Trace copied`);
+      setFeedback({ captureId: record.captureId, message: 'Trace copied' });
     } catch {
-      setFeedback('Could not copy trace. Try again');
+      setFeedback({ captureId: record.captureId, message: 'Could not copy trace. Try again' });
     }
   };
   const downloadTrace = async (record: CaptureDiagnostic) => {
@@ -60,13 +61,15 @@ export const SessionDiagnostics = () => {
         new TextEncoder().encode(formatCaptureTrace(record)),
         `okova-trace-${record.captureId}.json`,
       );
-      setFeedback(`Trace saved`);
+      setFeedback({ captureId: record.captureId, message: 'Trace saved' });
     } catch (error) {
-      setFeedback(
-        error instanceof DOMException && error.name === 'AbortError'
-          ? 'Download cancelled'
-          : 'Could not save trace. Try again',
-      );
+      setFeedback({
+        captureId: record.captureId,
+        message:
+          error instanceof DOMException && error.name === 'AbortError'
+            ? 'Download cancelled'
+            : 'Could not save trace. Try again',
+      });
     }
   };
   return (
@@ -77,13 +80,11 @@ export const SessionDiagnostics = () => {
       >
         <For each={[...records()].reverse()}>
           {(record) => (
-            <div>
+            <div data-capture-id={record.captureId}>
               <div class="group flex items-center">
                 <Cell
-                  component="button"
+                  component="div"
                   class="min-w-0 flex-1 focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-blue-500"
-                  aria-expanded={expanded().includes(record.captureId)}
-                  aria-controls={`capture-${record.captureId}`}
                   title={record.sessionId || `Capture ${record.captureId}`}
                   onClick={() =>
                     setExpanded((ids) =>
@@ -99,7 +100,7 @@ export const SessionDiagnostics = () => {
                     />
                   }
                   after={
-                    <div class="relative mr-3 flex shrink-0 gap-3 min-w-5 min-h-5 transition-all translate-x-2 opacity-0 group-hover:opacity-100 group-hover:translate-x-0">
+                    <div class="relative mr-3 flex shrink-0 gap-3 min-w-5 min-h-5 transition-all translate-x-2 opacity-0 group-hover:opacity-100 group-hover:translate-x-0 group-focus-within:opacity-100 group-focus-within:translate-x-0">
                       <button
                         type="button"
                         title="Copy diagnostic trace"
@@ -126,11 +127,28 @@ export const SessionDiagnostics = () => {
                       </button>
                     </div>
                   }
-                  subtitle={[drmName(record.keySystem), captureStatus(record), feedback()]
-                    .filter(Boolean)
-                    .join(' · ')}
+                  subtitle={
+                    <span role="status">
+                      {[
+                        drmName(record.keySystem),
+                        captureStatus(record),
+                        feedback()?.captureId === record.captureId
+                          ? feedback()?.message
+                          : undefined,
+                      ]
+                        .filter(Boolean)
+                        .join(' · ')}
+                    </span>
+                  }
                 >
-                  <code>{record.sessionId || `Capture ${record.captureId}`}</code>
+                  <button
+                    type="button"
+                    class="w-full text-left focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-blue-500"
+                    aria-expanded={expanded().includes(record.captureId)}
+                    aria-controls={`capture-${record.captureId}`}
+                  >
+                    <code>{record.sessionId || `Capture ${record.captureId}`}</code>
+                  </button>
                 </Cell>
               </div>
               <Show when={expanded().includes(record.captureId)}>
@@ -172,7 +190,9 @@ export const SessionDiagnostics = () => {
                             class="block text-neutral-500"
                             title="Matches the fingerprint in Credentials Settings"
                           >
-                            Fingerprint: {credential().fingerprint.slice(0, 12)}
+                            Fingerprint:{' '}
+                            {getShareableCredentialFingerprint(credential())?.slice(0, 12) ??
+                              'Unavailable for this capture'}
                           </span>
                         </>
                       )}

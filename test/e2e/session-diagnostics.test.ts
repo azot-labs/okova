@@ -1,5 +1,5 @@
 import { remoteCredentialsSchema } from '../../src/lib/remote/credentials';
-import { createHash } from 'node:crypto';
+import { createHmac } from 'node:crypto';
 import { z } from 'zod';
 import { mkdir, mkdtemp, readFile, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
@@ -53,9 +53,14 @@ test('popup displays session progress and copies a trace without bridge tokens',
               (await browser.storage.local.get('credentials-registry'))['credentials-registry'],
           ),
         );
-      const fingerprint = createHash('sha256')
+      const fingerprintKey = Buffer.alloc(32, 7);
+      await worker.evaluate(
+        async (key) => browser.storage.local.set({ 'diagnostic-fingerprint-key': key }),
+        fingerprintKey.toString('base64'),
+      );
+      const fingerprint = `v2:${createHmac('sha256', fingerprintKey)
         .update(JSON.stringify(registry.credentials[0]!.info))
-        .digest('hex');
+        .digest('hex')}`;
       const record: CaptureDiagnostic = {
         captureId: 'b1d8ef94-4203-43d2-9299-c5bec9873261',
         owner: 'private-bridge-token',
@@ -118,6 +123,7 @@ test('popup displays session progress and copies a trace without bridge tokens',
       expect(await popup.getByText('PlayReady · In progress', { exact: true }).count()).toBe(1);
       expect(await popup.getByText('ClearKey · 1 key', { exact: true }).count()).toBe(1);
       expect(await popup.getByText('Capture queued-capture', { exact: true }).count()).toBe(1);
+      const captureRow = popup.locator(`[data-capture-id="${record.captureId}"]`);
       const disclosure = popup.getByRole('button', { name: /^ABC123/ });
       await disclosure.focus();
       await disclosure.press('Enter');
@@ -132,16 +138,24 @@ test('popup displays session progress and copies a trace without bridge tokens',
       expect(await timeline.textContent()).not.toContain('Session storage');
       expect(await timeline.textContent()).toMatch(/\d{2}:\d{2}:\d{2}\.100 · License processing/);
       expect(await timeline.textContent()).toContain('Key extraction · failed');
-      await popup.getByRole('button', { name: 'Copy diagnostic trace' }).first().click();
+      await popup.mouse.move(0, 0);
+      await disclosure.focus();
+      await popup.keyboard.press('Tab');
+      const copyButton = captureRow.getByRole('button', { name: 'Copy diagnostic trace' });
+      expect(await copyButton.evaluate((button) => button === document.activeElement)).toBe(true);
       await expect
         .poll(() =>
-          popup
-            .locator('section')
-            .filter({ hasText: 'Sessions' })
-            .getByRole('status')
-            .textContent(),
+          copyButton.evaluate((button) => getComputedStyle(button.parentElement!).opacity),
         )
+        .toBe('1');
+      await copyButton.press('Enter');
+      await expect
+        .poll(() => captureRow.getByRole('status').textContent())
         .toContain('Trace copied');
+      expect(await popup.getByRole('status').filter({ hasText: 'Trace copied' }).count()).toBe(1);
+      expect(await popup.locator('[data-capture-id="queued-capture"]').textContent()).not.toContain(
+        'Trace copied',
+      );
       await context.grantPermissions(['clipboard-read']);
       const copied = await popup.evaluate(() => navigator.clipboard.readText());
       expect(JSON.parse(copied).captureId).toBe(record.captureId);
@@ -158,6 +172,10 @@ test('popup displays session progress and copies a trace without bridge tokens',
       const downloadPath = await download.path();
       expect(downloadPath).not.toBeNull();
       expect(await readFile(downloadPath!, 'utf8')).toBe(copied);
+      await expect
+        .poll(() => captureRow.getByRole('status').textContent())
+        .toContain('Trace saved');
+      expect(await popup.getByRole('status').filter({ hasText: 'Trace saved' }).count()).toBe(1);
       expect(await disclosure.getAttribute('aria-expanded')).toBe('true');
       expect(
         await popup
@@ -202,14 +220,8 @@ test('popup displays session progress and copies a trace without bridge tokens',
       });
       await popup.getByRole('button', { name: 'Copy diagnostic trace' }).first().click();
       await expect
-        .poll(() =>
-          popup
-            .locator('section')
-            .filter({ hasText: 'Sessions' })
-            .getByRole('status')
-            .textContent(),
-        )
-        .toBe('Could not copy trace. Try again.');
+        .poll(() => captureRow.getByRole('status').textContent())
+        .toContain('Could not copy trace. Try again');
       await popup.getByRole('link', { name: 'Credentials', exact: true }).click();
       await popup.getByText('Test device', { exact: true }).hover();
       await popup.getByTitle('Credentials Settings').click();

@@ -450,6 +450,7 @@ export default defineBackground({
         withAbort(Promise.resolve(operation), controller.signal);
       let stage: DrmStage = 'setup';
       let diagnostic: CaptureDiagnostic | undefined;
+      let isNewCapture = false;
       const saveDiagnostic = async () => {
         if (!diagnostic || tabId === undefined) return;
         try {
@@ -457,9 +458,12 @@ export default defineBackground({
             tabId,
             diagnostic,
             () => tabGeneration === (tabGenerations.get(tabId) ?? 0),
+            isNewCapture,
           );
         } catch {
           // Diagnostics must not prevent playback when storage is unavailable.
+        } finally {
+          isNewCapture = false;
         }
       };
       const advance = async (next: DrmStage) => {
@@ -572,7 +576,10 @@ export default defineBackground({
         }
         if (sessionKey) {
           const current = state.sessions.get(sessionKey);
-          if (current && current.expiresAt <= Date.now()) await closeSession(sessionKey);
+          if (current && current.expiresAt <= Date.now()) {
+            if (tabId !== undefined) await closeCaptureDiagnostics(tabId, sessionKey);
+            await closeSession(sessionKey);
+          }
         }
         const entry = sessionKey ? state.sessions.get(sessionKey) : undefined;
         if (sessionKey && entry) {
@@ -704,7 +711,7 @@ export default defineBackground({
                   : credentialsInfo.type === 'wvd'
                     ? 'com.widevine.alpha'
                     : 'com.microsoft.playready',
-              fingerprint: await getCredentialFingerprint(credentialsInfo),
+              fingerprint: await getCredentialFingerprint(credentialsInfo).catch(() => ''),
             };
             diagnostic.outcome = 'pending';
           }
@@ -809,7 +816,7 @@ export default defineBackground({
           const keys = new Map(session.keys);
           if (!keys.size) throw new NoContentKeysError();
           const results = Array.from(keys, ([id, value]) => ({
-            captureId: diagnostic?.captureId,
+            captureId: diagnostic?.captureId ?? sessionEntry.captureId,
             drmSystem: system,
             id,
             value,
@@ -855,10 +862,12 @@ export default defineBackground({
               diagnostic = records?.find((record) => record.owner === sessionKey);
               if (
                 !diagnostic &&
+                !state.sessions.get(sessionKey)?.captureId &&
                 ['generateRequest', 'update', 'keystatuseschange'].includes(message.action)
-              )
+              ) {
+                isNewCapture = true;
                 diagnostic = {
-                  captureId: state.sessions.get(sessionKey)?.captureId ?? crypto.randomUUID(),
+                  captureId: crypto.randomUUID(),
                   owner: sessionKey,
                   createdAt: Date.now(),
                   origin: diagnosticOrigin(sender.tab?.url ?? message.url),
@@ -872,6 +881,7 @@ export default defineBackground({
                   keyCount: 0,
                   events: [{ stage: 'eme', status: 'succeeded', at: Date.now() }],
                 };
+              }
               await saveDiagnostic();
             } catch {
               /* Capture remains usable if diagnostics storage fails. */

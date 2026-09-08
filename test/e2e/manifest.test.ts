@@ -54,6 +54,16 @@ test('built content bridge associates DASH and reads playback configuration thro
           },
         });
       });
+      await expect
+        .poll(() =>
+          worker.evaluate(
+            async () =>
+              (
+                await browser.scripting.getRegisteredContentScripts({ ids: ['okova-interception'] })
+              )[0]?.js,
+          ),
+        )
+        .toEqual(['network.js']);
       await context.route('https://okova.test/**', async (route) => {
         if (route.request().url() === manifestUrl) {
           await route.fulfill({
@@ -77,11 +87,7 @@ test('built content bridge associates DASH and reads playback configuration thro
       const errors: string[] = [];
       page.on('pageerror', (error) => errors.push(error.message));
       for (let index = 0; index < 5; index++) {
-        const ready = page.waitForEvent('console', {
-          predicate: (message) => message.text() === '[okova] Response interception added',
-        });
         await page.goto(`https://okova.test/page-${index}`);
-        await ready;
         await page.evaluate(async (url) => {
           window.postMessage(null, '*');
           window.postMessage({ method: 'response', params: null }, '*');

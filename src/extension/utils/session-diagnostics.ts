@@ -1,3 +1,4 @@
+import { getShareableCredentialFingerprint } from './credential-fingerprint';
 import { storage } from '#imports';
 import type { DrmStage } from './storage';
 
@@ -46,11 +47,15 @@ export const saveCaptureDiagnostic = (
   tabId: number,
   diagnostic: CaptureDiagnostic,
   isCurrent: () => boolean,
+  isNewCapture = false,
 ) =>
   navigator.locks.request(`okova:diagnostics:${tabId}`, async () => {
     if (!isCurrent()) return;
     const item = getCaptureDiagnosticsStorage(tabId);
     const records = (await item.getValue()) ?? [];
+    const previous = records.find((record) => record.captureId === diagnostic.captureId);
+    // Cleanup and retention decisions win over requests holding an older snapshot.
+    if (previous?.outcome === 'closed' || (!previous && !isNewCapture)) return;
     await item.setValue(
       [...records.filter((record) => record.captureId !== diagnostic.captureId), diagnostic]
         .sort((left, right) => left.createdAt - right.createdAt)
@@ -69,7 +74,10 @@ export const closeCaptureDiagnostics = (tabId: number, owner?: string) =>
     const records = await item.getValue();
     if (!records) return;
     for (const record of records) {
-      if (record.outcome !== 'pending' || (owner !== undefined && record.owner !== owner)) continue;
+      const isActive =
+        record.outcome === 'pending' ||
+        (record.outcome === 'observed' && record.events.at(-1)?.status === 'started');
+      if (!isActive || (owner !== undefined && record.owner !== owner)) continue;
       record.outcome = 'closed';
       const last = record.events.at(-1);
       if (last?.status === 'started') {
@@ -92,7 +100,10 @@ export const formatCaptureTrace = (record: CaptureDiagnostic) =>
       frameId: record.frameId,
       documentId: record.documentId,
       keySystem: record.keySystem,
-      credential: record.credential,
+      credential: record.credential && {
+        ...record.credential,
+        fingerprint: getShareableCredentialFingerprint(record.credential),
+      },
       sessionId: record.sessionId,
       outcome: record.outcome,
       keyCount: record.keyCount,

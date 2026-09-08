@@ -60,7 +60,7 @@ export const CredentialsSettings: Component<CredentialsSettingsProps> = (props) 
           </Cell>
           <Cell subtitle={drmLabel()}>DRM</Cell>
           <Cell
-            title="SHA-256 fingerprint of the credential configuration. Matches session diagnostics."
+            title="Credential fingerprint. Matches session diagnostics from this installation."
             subtitle={
               fingerprint.error ? 'Unavailable' : (fingerprint()?.slice(0, 12) ?? 'Loading…')
             }

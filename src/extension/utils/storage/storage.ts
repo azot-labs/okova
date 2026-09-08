@@ -509,7 +509,10 @@ const createKeyHistory = (isIncognito: boolean, generation?: string) => {
             );
             if (index === -1) {
               keys.push(newKey);
-            } else if (!isCapturedKey(keys[index]!) && isCapturedKey(newKey)) {
+            } else if (
+              isCapturedKey(newKey) &&
+              (!isCapturedKey(keys[index]!) || newKey.createdAt >= keys[index]!.createdAt)
+            ) {
               keys[index] = newKey;
             }
           }
