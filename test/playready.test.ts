@@ -11,6 +11,7 @@ import { InvalidLicense, ServerException, TooManySessions } from '../src/lib/pla
 import { Key } from '../src/lib/playready/key';
 import { DEFAULT_REVOCATION_LIST_IDS } from '../src/lib/playready/revocation-info';
 import { PlayReadySession } from '../src/lib/playready/session';
+import { canonicalizeXml, C14N_ALGORITHM } from '../src/lib/playready/xml-c14n';
 import { XmrLicense } from '../src/lib/playready/xmr-license';
 
 afterEach(() => {
@@ -62,18 +63,25 @@ const buildSignedLicenseResponse = async (
   options: {
     digestValue?: string;
     signatureValue?: string;
+    transform?: string;
   } = {},
 ) => {
   const xml = [
     '<AcquireLicenseResponse xmlns="http://schemas.microsoft.com/DRM/2007/03/protocols">',
     '<AcquireLicenseResult><Response>',
-    '<LicenseResponse>',
+    '<LicenseResponse Id="SignedData">',
     '<Version>1</Version>',
     '<SigningCertificateChain>AA==</SigningCertificateChain>',
     '</LicenseResponse>',
     '<Signature xmlns="http://www.w3.org/2000/09/xmldsig#">',
     '<SignedInfo xmlns="http://www.w3.org/2000/09/xmldsig#">',
+    `<CanonicalizationMethod Algorithm="${C14N_ALGORITHM}"/>`,
+    '<SignatureMethod Algorithm="http://schemas.microsoft.com/DRM/2007/03/protocols#ecdsa-sha256"/>',
     '<Reference URI="#SignedData">',
+    options.transform
+      ? `<Transforms><Transform Algorithm="${options.transform}"/></Transforms>`
+      : '',
+    '<DigestMethod Algorithm="http://schemas.microsoft.com/DRM/2007/03/protocols#sha256"/>',
     '<DigestValue></DigestValue>',
     '</Reference>',
     '</SignedInfo>',
@@ -94,9 +102,7 @@ const buildSignedLicenseResponse = async (
   const digestValue =
     options.digestValue ??
     serializeToBase64(
-      await common.createSha256(
-        new TextEncoder().encode(serializer.serializeToString(licenseResponseElement)),
-      ),
+      await common.createSha256(new TextEncoder().encode(canonicalizeXml(licenseResponseElement))),
     );
   digestValueElement.textContent = digestValue;
 
@@ -106,7 +112,7 @@ const buildSignedLicenseResponse = async (
       (
         await common.ecc256Sign(
           signingKey.privateKey,
-          new TextEncoder().encode(serializer.serializeToString(signedInfoElement)),
+          new TextEncoder().encode(canonicalizeXml(signedInfoElement)),
         )
       ).toCompactRawBytes(),
     );
@@ -369,24 +375,27 @@ test('playready parseLicense raises server exceptions for SOAP faults', async ()
   ).rejects.toThrowError(new ServerException('License server failure'));
 });
 
-test('playready parseLicense verifies signed license responses before key extraction', async () => {
-  const session = new PlayReadySession('temporary', {
-    certificateChain: new Uint8Array(),
-    encryptionKey: EccKey.generate().dumps(),
-    signingKey: EccKey.generate().dumps(),
-  });
-  const responseSigningKey = EccKey.generate();
-  const certificateChainSpy = vi.spyOn(CertificateChain, 'from').mockReturnValue({
-    verify: vi.fn().mockResolvedValue(true),
-    get: vi.fn().mockReturnValue({
-      getKeyByUsage: vi.fn().mockReturnValue(responseSigningKey.publicBytes()),
-    }),
-  } as unknown as CertificateChain);
-  const licenseResponse = await buildSignedLicenseResponse(responseSigningKey);
+test.each([undefined, C14N_ALGORITHM])(
+  'playready verifies signed responses with transform %s',
+  async (transform) => {
+    const session = new PlayReadySession('temporary', {
+      certificateChain: new Uint8Array(),
+      encryptionKey: EccKey.generate().dumps(),
+      signingKey: EccKey.generate().dumps(),
+    });
+    const responseSigningKey = EccKey.generate();
+    const certificateChainSpy = vi.spyOn(CertificateChain, 'from').mockReturnValue({
+      verify: vi.fn().mockResolvedValue(true),
+      get: vi.fn().mockReturnValue({
+        getKeyByUsage: vi.fn().mockReturnValue(responseSigningKey.publicBytes()),
+      }),
+    } as unknown as CertificateChain);
+    const licenseResponse = await buildSignedLicenseResponse(responseSigningKey, { transform });
 
-  await expect(session.parseLicense(licenseResponse)).resolves.toEqual([]);
-  expect(certificateChainSpy).toHaveBeenCalledTimes(1);
-});
+    await expect(session.parseLicense(licenseResponse)).resolves.toEqual([]);
+    expect(certificateChainSpy).toHaveBeenCalledTimes(1);
+  },
+);
 
 test('playready parseLicense rejects signed license responses with digest mismatches', async () => {
   const session = new PlayReadySession('temporary', {
