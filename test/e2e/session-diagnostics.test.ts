@@ -117,7 +117,7 @@ test('popup displays session progress and copies a trace without bridge tokens',
         },
         { popupUrl, record },
       );
-      await expect.poll(() => popup.getByText('Sessions', { exact: true }).count()).toBe(1);
+      await expect.poll(() => popup.getByText(/^Recent Sessions \(\d+\)$/).count()).toBe(1);
       expect(await popup.getByText('Session diagnostics', { exact: true }).count()).toBe(0);
       expect(await popup.getByText('Widevine · No content keys', { exact: true }).count()).toBe(1);
       expect(await popup.getByText('PlayReady · In progress', { exact: true }).count()).toBe(1);

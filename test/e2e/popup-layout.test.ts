@@ -25,16 +25,21 @@ test.for([300, 450, 600])(
         expect(
           await root.evaluate((element) => element.getBoundingClientRect().bottom),
         ).toBeLessThanOrEqual(height);
+        // Appearance and About sit side by side, so the page fits without
+        // scrolling at 600px but still scrolls at shorter heights.
         expect(
           await root.evaluate((element) => ({
             width: element.clientWidth,
             scrollable: element.scrollHeight > element.clientHeight,
             horizontalOverflow: element.scrollWidth > element.clientWidth,
           })),
-        ).toEqual({ width: 484, scrollable: true, horizontalOverflow: false });
+        ).toEqual({ width: 484, scrollable: height < 600, horizontalOverflow: false });
         await root.hover();
         await popup.mouse.wheel(0, 2000);
         const github = popup.getByRole('button', { name: 'GitHub', exact: true });
+        // GitHub lives in the right column: 16px page padding + 228px
+        // Appearance column + 12px flex gap from the left edge,
+        // 16px scrollbar gutter at the right edge.
         await expect
           .poll(() =>
             github.evaluate((element) => {
@@ -46,7 +51,7 @@ test.for([300, 450, 600])(
               };
             }),
           )
-          .toEqual({ visible: true, leftSpacing: 16, rightSpacing: 16 });
+          .toEqual({ visible: true, leftSpacing: 256, rightSpacing: 16 });
         await mkdir(resolve('output/playwright/popup-layout'), { recursive: true });
         await popup.screenshot({
           path: resolve(`output/playwright/popup-layout/settings-${height}px.png`),

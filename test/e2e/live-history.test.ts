@@ -42,6 +42,9 @@ test('history updates preserve search, visible rows, and live details', async ()
         element.scrollTop = 1100;
       });
       const anchor = popup.locator('[data-history-row]').nth(20);
+      // Center the anchor so later clicks never trigger scroll-into-view,
+      // which would move it independently of history updates.
+      await anchor.evaluate((element) => element.scrollIntoView({ block: 'center' }));
       const anchorIdentity = await anchor.getAttribute('data-history-row');
       const stableAnchor = popup.locator(`[data-history-row="${anchorIdentity}"]`);
       const anchorKid = await stableAnchor.locator('code span').first().textContent();
