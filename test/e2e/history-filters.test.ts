@@ -53,7 +53,7 @@ test('filters and ordering control visible history and both export formats', asy
         Object.defineProperty(window, 'showSaveFilePicker', { value: undefined }),
       );
       await popup.goto(`chrome-extension://${new URL(worker.url()).hostname}/popup.html`);
-      await popup.getByRole('link', { name: 'Keys', exact: true }).click();
+      await popup.getByRole('link', { name: 'Captures', exact: true }).click();
       const visible = () => popup.locator('[data-history-row] code').allTextContents();
       const pair = (key: KeyInfo) => `${key.id}:${key.value}`;
       await expect.poll(visible).toEqual([...records].reverse().map(pair));

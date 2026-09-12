@@ -51,10 +51,10 @@ test('deletes individual records and confirms frozen selected, site, and all-rec
       });
       await dashboard.goto(`chrome-extension://${new URL(worker.url()).hostname}/popup.html`);
       await expect.poll(() => dashboard.locator('code').count()).toBe(2);
-      await popup.getByRole('link', { name: 'Keys', exact: true }).click();
+      await popup.getByRole('link', { name: 'Captures', exact: true }).click();
       await expect.poll(() => popup.locator('code').count()).toBe(2);
       await popup.locator('code').first().click();
-      await popup.getByRole('button', { name: 'Delete Key', exact: true }).click();
+      await popup.getByRole('button', { name: 'Delete', exact: true }).click();
       await expect.poll(() => popup.locator('code').count()).toBe(1);
       expect(await popup.getByRole('status').innerText()).toBe('(1)');
       await expect.poll(() => dashboard.locator('code').count()).toBe(1);
@@ -69,7 +69,7 @@ test('deletes individual records and confirms frozen selected, site, and all-rec
         'recent-keys-by-domain': JSON.stringify({ 'example.com': [otherPage] }),
       });
       await dashboard.locator('code').click();
-      await dashboard.getByRole('button', { name: 'Delete Key', exact: true }).click();
+      await dashboard.getByRole('button', { name: 'Delete', exact: true }).click();
       await expect.poll(() => popup.getByRole('status').innerText()).toBe('(0)');
       expect(await popup.locator('#root > main').isVisible()).toBe(true);
       expect(await readRecords()).toEqual({
@@ -102,7 +102,7 @@ test('deletes individual records and confirms frozen selected, site, and all-rec
         true,
       );
       await expect.poll(() => popup.getByRole('status').innerText()).toBe('(1/3)');
-      expect(await popup.getByRole('heading', { name: 'Key Details' }).count()).toBe(0);
+      expect(await popup.getByRole('heading', { name: 'Capture Details' }).count()).toBe(0);
       if (!(await popup.getByRole('searchbox').isVisible()))
         await popup.getByRole('button', { name: 'Search', exact: true }).click();
       await popup.getByRole('searchbox').fill('other.example');
@@ -170,7 +170,7 @@ test('deletes individual records and confirms frozen selected, site, and all-rec
         await popup.getByRole('button', { name: 'Search', exact: true }).click();
       await popup.getByRole('searchbox').fill('');
       await popup.screenshot({ path: resolve('output/playwright/bulk-deletion/selection.png') });
-      await dashboard.getByRole('button', { name: 'Delete Site Keys', exact: true }).click();
+      await dashboard.getByRole('button', { name: 'Delete Site Captures', exact: true }).click();
       const siteDialog = dashboard.getByRole('dialog');
       await expect.poll(() => siteDialog.isVisible()).toBe(true);
       expect(await siteDialog.innerText()).toContain('example.com');

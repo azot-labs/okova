@@ -11,8 +11,9 @@ import { Select } from '../components/select';
 import { serializeHistory, type HistoryExportFormat } from '../utils/history-export';
 import { saveFile } from '../utils/file';
 import { filterHistory, getHistorySites, type HistoryFilters } from '../utils/history-filters';
+import { CAPTURES_LABEL } from '../utils/captures';
 
-export const Keys = () => {
+export const Captures = () => {
   const [keys, setKeys] = createSignal<KeyInfo[]>([]);
   const [search, setSearch] = createSignal('');
   const [site, setSite] = createSignal('');
@@ -113,13 +114,13 @@ export const Keys = () => {
           </>
         }
       >
-        Keys
+        {CAPTURES_LABEL}
       </Header>
       <div class="flex flex-col gap-3">
         <KeysList
           keys={filteredKeys}
           allKeys={keys}
-          header="All Keys"
+          header="All"
           headerActions={
             <span class="ml-1 capitalize flex items-center gap-1">
               <Cell

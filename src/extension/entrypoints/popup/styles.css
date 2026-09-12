@@ -42,7 +42,7 @@
   html,
   body,
   #root {
-    min-height: 500px; /* Preferred popup height; the scroll area can be shorter. */
+    min-height: 550px; /* Preferred popup height; the scroll area can be shorter. */
     background: var(--popup-bg);
     color: var(--popup-fg);
   }

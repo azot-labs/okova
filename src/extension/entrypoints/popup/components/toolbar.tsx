@@ -1,10 +1,11 @@
 import { popupHistory } from '../utils/history';
 import { A } from '@solidjs/router';
-import { TbOutlineKey, TbOutlineDevices, TbOutlineSettings } from 'solid-icons/tb';
+import { TbOutlineDevices, TbOutlineSettings, TbOutlineLayersDifference } from 'solid-icons/tb';
 import { CardButton } from './card-button';
 import { Section } from './section';
 import { isCapturedKey } from '@/utils/storage';
 import { useCredentials } from '../utils/state';
+import { CAPTURES_LABEL, CAPTURES_PATH } from '../utils/captures';
 
 export const Toolbar = () => {
   const [credentials] = useCredentials();
@@ -34,11 +35,11 @@ export const Toolbar = () => {
           </CardButton>
         </Section>
       </A>
-      <A href="/keys" aria-label="Keys">
+      <A href={CAPTURES_PATH} aria-label={CAPTURES_LABEL}>
         <Section>
           <CardButton badge={capturedKeyCount()}>
-            <TbOutlineKey />
-            Keys
+            <TbOutlineLayersDifference />
+            {CAPTURES_LABEL}
           </CardButton>
         </Section>
       </A>

@@ -31,7 +31,7 @@ test('history updates preserve search, visible rows, and live details', async ()
       await save();
       const popup = await context.newPage();
       await popup.goto(`chrome-extension://${new URL(worker.url()).hostname}/popup.html`);
-      await popup.getByRole('link', { name: 'Keys', exact: true }).click();
+      await popup.getByRole('link', { name: 'Captures', exact: true }).click();
       const search = popup.getByRole('searchbox', { includeHidden: true });
       await popup.getByRole('button', { name: 'Search', exact: true }).click();
       await search.fill('history.example');
@@ -101,7 +101,7 @@ test('history updates preserve search, visible rows, and live details', async ()
       expect(await command.inputValue()).toBe('my custom command');
       expect(await details.evaluate((element) => element.scrollTop)).toBe(detailsScroll);
       await details.locator('svg').first().click();
-      await expect.poll(() => popup.getByText('Key Details', { exact: true }).count()).toBe(0);
+      await expect.poll(() => popup.getByText('Capture Details', { exact: true }).count()).toBe(0);
       expect(await popup.getByRole('button', { name: 'Search', exact: true }).isVisible()).toBe(
         true,
       );
@@ -118,10 +118,10 @@ test('history updates preserve search, visible rows, and live details', async ()
       await expect
         .poll(() => details.getByText('https://outside.example', { exact: true }).count())
         .toBe(1);
-      expect(await popup.getByText('Key Details', { exact: true }).isVisible()).toBe(true);
+      expect(await popup.getByText('Capture Details', { exact: true }).isVisible()).toBe(true);
       records = records.filter((record) => record.id !== selected.id);
       await save();
-      await expect.poll(() => popup.getByText('Key Details', { exact: true }).count()).toBe(0);
+      await expect.poll(() => popup.getByText('Capture Details', { exact: true }).count()).toBe(0);
       expect(await popup.getByRole('button', { name: 'Search', exact: true }).isVisible()).toBe(
         true,
       );

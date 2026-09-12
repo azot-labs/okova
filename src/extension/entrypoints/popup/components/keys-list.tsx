@@ -22,7 +22,7 @@ type KeysListProps = {
   footer?: JSX.Element;
 };
 
-const shorten = (url?: string) => url?.replace('https://', '');
+const shorten = (url?: string) => url?.replace('https://', '').replace('www.', '');
 
 export const KeysList: Component<KeysListProps> = (props) => {
   const [rows, setRows] = createStore<HistoryRow[]>([]);
@@ -159,7 +159,7 @@ export const KeysList: Component<KeysListProps> = (props) => {
                             : undefined
                         }
                       >
-                        <code title="Click to copy" class="text-[13px] truncate flex w-full">
+                        <code title="Click to copy" class="text-[11px] truncate flex w-full">
                           <span class="w-1/2 truncate">{row.key.id}</span>:
                           {/* value may be a status if Spoofing disabled */}
                           <span class="w-1/2 truncate">{row.key.value}</span>
@@ -173,7 +173,9 @@ export const KeysList: Component<KeysListProps> = (props) => {
                           >
                             {shorten(href())}
                           </a>
-                          <div>{formatRelativeTime(new Date(row.key.createdAt).toISOString())}</div>
+                          <div title={new Date(row.key.createdAt).toLocaleString()}>
+                            {formatRelativeTime(new Date(row.key.createdAt).toISOString())}
+                          </div>
                         </div>
                       </Cell>
                     </div>

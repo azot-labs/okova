@@ -53,8 +53,8 @@ export const Settings = () => {
       <Header backHref="/">Settings</Header>
       <List>
         <Section
-          header="General"
-          footer="Spoofing can interrupt playback. Enable Playback to play supported videos with your active credentials. Reload the video page after changing these settings."
+          header="Encrypted Media Extensions"
+          footer="Spoofing can interrupt playback: enable Playback to play protected videos with your active client credentials."
         >
           <Cell
             title="You can view logs from an Encrypted Media Extensions (EME) session in Developer Tools under the Console tab"
@@ -102,12 +102,12 @@ export const Settings = () => {
           </Cell>
         </Section>
         <Section
-          header="Network"
-          footer="Experimental feature. Requests inside workers are not inspected. Reload the page after changing request interception."
+          header="Manifests"
+          footer="Supported formats: DASH, HLS, MSS. It may not work on some websites."
         >
           {[
             <Cell
-              subtitle="Streaming manifest URL detection"
+              subtitle="Intercept network requests to detect links to streaming manifests"
               component="label"
               after={
                 <Switch
@@ -116,60 +116,60 @@ export const Settings = () => {
                 />
               }
             >
-              Request interception
+              Manifest URL detection
             </Cell>,
           ]}
         </Section>
-        <Section header="Appearance">
-          {themeOptions.map((option) => (
-            <Cell
-              component="button"
-              subtitle={option.subtitle}
-              after={<CellCheckmark checked={settings.theme === option.value} />}
-              onClick={() => setTheme(option.value)}
+        <div class="w-full flex gap-3">
+          <Section header="Appearance">
+            {themeOptions.map((option) => (
+              <Cell
+                component="button"
+                subtitle={option.subtitle}
+                after={<CellCheckmark checked={settings.theme === option.value} />}
+                onClick={() => setTheme(option.value)}
+              >
+                {option.label}
+              </Cell>
+            ))}
+          </Section>
+          <Section header="About">
+            <Cell>Version {browser.runtime.getManifest().version}</Cell>
+            <Show
+              when={hasUpdate()}
+              fallback={
+                allowUpdateCheck() ? (
+                  <Cell
+                    component="button"
+                    variant="primary"
+                    subtitle={updateCheckError() ?? undefined}
+                    disabled={isCheckingForUpdates()}
+                    onClick={() => checkForUpdates()}
+                  >
+                    {isCheckingForUpdates()
+                      ? 'Checking for Updates…'
+                      : updateCheckError()
+                        ? 'Retry Update Check'
+                        : 'Check for Updates'}
+                  </Cell>
+                ) : (
+                  <Cell disabled>Up to Date</Cell>
+                )
+              }
             >
-              {option.label}
-            </Cell>
-          ))}
-        </Section>
-        <Section header="About">
-          <Cell subtitle="Current version of the extension.">
-            Version {browser.runtime.getManifest().version}
-          </Cell>
-          <Show
-            when={hasUpdate()}
-            fallback={
-              allowUpdateCheck() ? (
-                <Cell
-                  component="button"
-                  variant="primary"
-                  subtitle={updateCheckError() ?? undefined}
-                  disabled={isCheckingForUpdates()}
-                  onClick={() => checkForUpdates()}
-                >
-                  {isCheckingForUpdates()
-                    ? 'Checking for Updates…'
-                    : updateCheckError()
-                      ? 'Retry Update Check'
-                      : 'Check for Updates'}
-                </Cell>
-              ) : (
-                <Cell disabled>Up to Date</Cell>
-              )
-            }
-          >
-            <Cell
-              title="Click to download"
-              component="label"
-              variant="primary"
-              subtitle={`Version ${updateInfo()?.version} (published ${updateInfo()?.timeSinceRelease})`}
-              onClick={() => window.open(updateInfo()?.url, '_blank')}
-            >
-              {`Update available`}
-            </Cell>
-          </Show>
-          <CellLink href="https://github.com/azot-labs/okova">GitHub</CellLink>
-        </Section>
+              <Cell
+                title="Click to download"
+                component="label"
+                variant="primary"
+                subtitle={`Version ${updateInfo()?.version} (published ${updateInfo()?.timeSinceRelease})`}
+                onClick={() => window.open(updateInfo()?.url, '_blank')}
+              >
+                {`Update available`}
+              </Cell>
+            </Show>
+            <CellLink href="https://github.com/azot-labs/okova">GitHub</CellLink>
+          </Section>
+        </div>
       </List>
     </Layout>
   );

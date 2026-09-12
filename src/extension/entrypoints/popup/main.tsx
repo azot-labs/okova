@@ -6,9 +6,10 @@ import './styles.css';
 import { initializePopupHistory } from './utils/history';
 import { Dashboard } from './routes/dashboard';
 import { CredentialsPage } from './routes/credentials';
-import { Keys } from './routes/keys';
+import { Captures } from './routes/captures';
 import { Settings } from './routes/settings';
 import { useSettings, useSyncStateWithStorage } from './utils/state';
+import { CAPTURES_PATH } from './utils/captures';
 
 const colorSchemeQuery = window.matchMedia('(prefers-color-scheme: dark)');
 
@@ -37,7 +38,7 @@ const Popup = () => {
     <Router base="/popup.html">
       <Route path="/" component={Dashboard} />
       <Route path="/credentials" component={CredentialsPage} />
-      <Route path="/keys" component={Keys} />
+      <Route path={CAPTURES_PATH} component={Captures} />
       <Route path="/settings" component={Settings} />
     </Router>
   );

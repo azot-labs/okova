@@ -99,7 +99,7 @@ export const CredentialsPage = () => {
         <Show when={credentials().length > 0}>
           <List class="mt-2">
             <Section
-              header="Imported Credentials"
+              header="Imported Client Credentials"
               footer="You can add a maximum of 10 credentials."
             >
               {credentials().map((entry) => (

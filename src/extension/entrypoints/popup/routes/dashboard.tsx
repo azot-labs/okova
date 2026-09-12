@@ -17,6 +17,7 @@ import { CellImportCredentials } from '../components/cell-import-credentials';
 import { NoKeys } from '../components/no-keys';
 import { KeysList } from '../components/keys-list';
 import { getRecentKeysForUrl, getWebsiteDomain, drmStages } from '@/utils/storage';
+import { DELETE_SITE_CAPTURES_LABEL, RECENT_CAPTURES_LABEL } from '../utils/captures';
 
 export const Dashboard = () => {
   const [failure] = useDrmFailure();
@@ -59,13 +60,13 @@ export const Dashboard = () => {
 
         <KeysList
           keys={activeDomainRecentKeys}
-          header="Recent Keys"
+          header={RECENT_CAPTURES_LABEL}
           controls={
             <Show when={activeDomain()}>
               {(domain) => (
                 <DeleteKeys
                   class="w-fit ml-auto"
-                  label="Delete Site Keys"
+                  label={DELETE_SITE_CAPTURES_LABEL}
                   scope={{ kind: 'site', domain: domain() }}
                   size="xs"
                 />

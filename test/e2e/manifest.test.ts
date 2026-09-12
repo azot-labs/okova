@@ -271,7 +271,7 @@ test('captures HLS/MSS choices through real EME and builds commands in the popup
       .toBe(1);
     const popup = await context.newPage();
     await popup.goto(`chrome-extension://${new URL(worker.url()).hostname}/popup.html`);
-    await popup.getByRole('link', { name: 'Keys', exact: true }).click();
+    await popup.getByRole('link', { name: 'Captures', exact: true }).click();
     await popup.locator('[data-history-row]').first().click();
     const choices = popup.locator('button[aria-pressed]');
     const command = popup.getByRole('textbox', { name: 'Download command' });

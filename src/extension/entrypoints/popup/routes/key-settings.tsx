@@ -13,6 +13,7 @@ import { Cell } from '../components/cell';
 import { copyKey } from '../utils/key';
 import { formatRelativeTime } from '../utils/date';
 import { buildDownloadCommand } from '../utils/command';
+import { CAPTURE_DETAILS_LABEL, DELETE_SITE_CAPTURES_LABEL } from '../utils/captures';
 
 type KeySettingsProps = {
   key: KeyInfo;
@@ -97,12 +98,12 @@ export const KeySettings: Component<KeySettingsProps> = (props) => {
             disabled={isDeleting()}
             onClick={deleteRecord}
           >
-            Delete Key
+            Delete
           </Cell>
         }
         onClose={props.onClose}
       >
-        Key Details
+        {CAPTURE_DETAILS_LABEL}
       </Header>
       <List>
         <Section header="Details">
@@ -135,7 +136,10 @@ export const KeySettings: Component<KeySettingsProps> = (props) => {
         >
           <Show when={getWebsiteDomain(props.key.url)}>
             {(domain) => (
-              <DeleteKeys label="Delete Site Keys" scope={{ kind: 'site', domain: domain() }} />
+              <DeleteKeys
+                label={DELETE_SITE_CAPTURES_LABEL}
+                scope={{ kind: 'site', domain: domain() }}
+              />
             )}
           </Show>
         </Section>

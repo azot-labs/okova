@@ -39,7 +39,7 @@ test('saved keys filter immediately by KID, page URL, and manifest URL', async (
       }, keys);
       const popup = await context.newPage();
       await popup.goto(`chrome-extension://${new URL(worker.url()).hostname}/popup.html`);
-      await popup.getByRole('link', { name: 'Keys', exact: true }).click();
+      await popup.getByRole('link', { name: 'Captures', exact: true }).click();
       const searchButton = popup.getByRole('button', { name: 'Search', exact: true });
       const search = popup.getByRole('searchbox', { name: 'Search' });
       expect(await search.isVisible()).toBe(false);

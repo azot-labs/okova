@@ -28,7 +28,7 @@ export const Section: Component<SectionProps> = (props) => {
       ),
   );
   return (
-    <section class={props.class}>
+    <section class={cn('w-full', props.class)}>
       <Show when={props.header}>
         <header class="pl-2 pr-1 pt-2 pb-1 text-[10px] cursor-default uppercase tabular-nums text-neutral-500 dark:text-neutral-400 flex items-center gap-0.5">
           {props.header}

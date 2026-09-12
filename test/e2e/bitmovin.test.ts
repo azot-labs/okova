@@ -286,8 +286,8 @@ test.for([
 
       expect(pageErrors, 'Popup and player should have no uncaught JavaScript errors').toEqual([]);
 
-      // All Keys avoids changing the active website tab used by dashboard filtering.
-      await popup.getByRole('link', { name: 'Keys', exact: true }).click();
+      // Captures avoids changing the active website tab used by dashboard filtering.
+      await popup.getByRole('link', { name: 'Captures', exact: true }).click();
       await expect
         .poll(() =>
           popup

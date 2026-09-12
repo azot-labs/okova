@@ -75,7 +75,7 @@ export const SessionDiagnostics = () => {
   return (
     <Show when={records().length}>
       <Section
-        header="Sessions"
+        header={`Recent Sessions (${records().length})`}
         footer="Latest 20 captures in this tab. Cleared when the tab closes."
       >
         <For each={[...records()].reverse()}>
