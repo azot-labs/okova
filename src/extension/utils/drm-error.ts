@@ -1,5 +1,3 @@
-import { z } from 'zod';
-
 export const drmStages = {
   setup: 'Request setup',
   credentials: 'Credentials loading',
@@ -14,16 +12,11 @@ export const drmStages = {
 } as const;
 
 export type DrmStage = keyof typeof drmStages;
-export const drmErrorSchema = z.object({
-  kind: z.enum(['request', 'timeout', 'transport']),
-  stage: z.union([
-    z.enum(Object.keys(drmStages) as [DrmStage, ...DrmStage[]]),
-    z.literal('bridge'),
-  ]),
-  message: z.string(),
-});
-
-export type DrmErrorData = z.infer<typeof drmErrorSchema>;
+export type DrmErrorData = {
+  kind: 'request' | 'timeout' | 'transport';
+  stage: DrmStage | 'bridge';
+  message: string;
+};
 export type DrmErrorResponse = { error: DrmErrorData };
 
 /** Reconstructed on the page because Error instances do not survive runtime messaging. */

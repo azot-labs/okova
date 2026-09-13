@@ -1,4 +1,14 @@
-import { drmErrorSchema, DrmRequestError } from './drm-error';
+import { z } from 'zod';
+import { drmStages, DrmRequestError, type DrmErrorData, type DrmStage } from './drm-error';
+
+const drmErrorSchema = z.object({
+  kind: z.enum(['request', 'timeout', 'transport']),
+  stage: z.union([
+    z.enum(Object.keys(drmStages) as [DrmStage, ...DrmStage[]]),
+    z.literal('bridge'),
+  ]),
+  message: z.string(),
+}) satisfies z.ZodType<DrmErrorData>;
 
 export const sendDrmMessage = (
   data: Record<string, unknown>,
