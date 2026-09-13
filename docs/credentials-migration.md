@@ -51,3 +51,17 @@ const credentials = await RemoteCredentials.from({
 const engine = new Remote(credentials.config);
 const session = await engine.createSession();
 ```
+
+## Unreadable imported credentials
+
+The popup validates and decodes each stored credential separately. Unreadable
+entries remain in storage and appear on the Credentials page with Delete and
+Re-import actions. Other credentials remain usable. Re-import accepts the same
+files as Import and replaces the chosen entry only after parsing and saving
+succeed, preserving its ID and selection. Failed entries still count toward the
+10-entry limit, but can be replaced at that limit.
+
+A failed active entry is not silently switched to another credential. Selecting
+a readable entry or repairing the failed one is explicit. Deleting the active
+entry selects the first readable remaining entry, or clears the selection.
+Legacy data is never used for automatic recovery once the registry exists.

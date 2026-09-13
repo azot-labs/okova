@@ -2,7 +2,12 @@ import { RemoteCredentials } from '@okova/lib/remote/credentials';
 import { BsCheckLg } from 'solid-icons/bs';
 import { TbOutlineSettings } from 'solid-icons/tb';
 import { appStorage, Credentials, StoredCredentials } from '@/utils/storage';
-import { syncCredentials, useActiveCredentials, useCredentials } from '../utils/state';
+import {
+  syncCredentials,
+  useActiveCredentials,
+  useCredentials,
+  useFailedCredentials,
+} from '../utils/state';
 import { Layout } from '../components/layout';
 import { Header } from '../components/header';
 import { Cell } from '../components/cell';
@@ -17,6 +22,8 @@ import { saveFile } from '../utils/file';
 export const CredentialsPage = () => {
   const [activeCredentials] = useActiveCredentials();
   const [credentials] = useCredentials();
+  const [failedCredentials] = useFailedCredentials();
+  const credentialCount = () => credentials().length + failedCredentials().length;
 
   const [error, setError] = createSignal<string>();
   const [isSaving, setIsSaving] = createSignal(false);
@@ -53,7 +60,7 @@ export const CredentialsPage = () => {
     await saveFile(data, filename);
   };
 
-  const removeCredentials = (entry: StoredCredentials) =>
+  const removeCredentials = (entry: { id: string }) =>
     changeCredentials(async () => {
       syncCredentials(await appStorage.credentials.remove(entry.id));
       setOpenedCredentials(null);
@@ -85,17 +92,38 @@ export const CredentialsPage = () => {
     >
       <Layout>
         <Header backHref="/">Credentials</Header>
-        <CellImportCredentials disabled={isSaving() || credentials().length >= 10} />
+        <CellImportCredentials disabled={isSaving() || credentialCount() >= 10} />
         <Show when={error()}>
           <SectionFooter>
             <span role="alert">{error()}</span>
           </SectionFooter>
         </Show>
-        <Show when={credentials().length === 0}>
+        <Show when={credentialCount() === 0}>
           <SectionFooter>
             Import a WVD, PRD, raw credential files, or JSON config for remote server
           </SectionFooter>
         </Show>
+        <For each={failedCredentials()}>
+          {(entry) => (
+            <Section header="Unreadable credentials">
+              <Cell class="cursor-default" subtitle={entry.id}>
+                {entry.error}
+              </Cell>
+              <SectionFooter>
+                Re-import the original files to replace this entry, or delete it.
+              </SectionFooter>
+              <CellImportCredentials replaceId={entry.id} disabled={isSaving()} />
+              <Cell
+                component="button"
+                variant="danger"
+                disabled={isSaving()}
+                onClick={() => removeCredentials(entry)}
+              >
+                Delete
+              </Cell>
+            </Section>
+          )}
+        </For>
         <Show when={credentials().length > 0}>
           <List class="mt-2">
             <Section

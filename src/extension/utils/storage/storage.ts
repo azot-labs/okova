@@ -206,27 +206,35 @@ export const serializeCredentials = async (credentials: Credentials): Promise<Cr
 };
 
 const credentialsRegistrySchema = z.object({
-  credentials: z.array(z.object({ id: z.string(), info: credentialsInfoSchema })),
+  credentials: z.array(z.object({ id: z.string(), info: z.unknown() })),
   activeCredentialsId: z.string().nullable(),
 });
 type CredentialsRegistry = z.infer<typeof credentialsRegistrySchema>;
 export type StoredCredentials = { id: string; credentials: Credentials };
+export type FailedCredentials = { id: string; error: string };
 export type CredentialsSnapshot = {
   credentials: StoredCredentials[];
+  failedCredentials: FailedCredentials[];
   activeCredentialsId: string | null;
 };
 const credentialsRegistry = storage.defineItem<CredentialsRegistry>('local:credentials-registry');
 const legacyRegistry = storage.defineItem<unknown>('local:client-registry');
 const legacyRegistrySchema = z.object({
-  clients: z.array(z.object({ id: z.string(), info: credentialsInfoSchema })),
+  clients: z.array(z.object({ id: z.string(), info: z.unknown() })),
   activeClientId: z.string().nullable(),
 });
 const legacyCredentials = asJson(storage.defineItem<(string | CredentialsInfo)[]>('local:clients'));
 const legacyActiveCredentials = storage.defineItem<string | CredentialsInfo>('local:active-client');
 const withCredentialsLock = <T>(operation: () => Promise<T>) =>
   navigator.locks.request('okova:credentials', operation);
-const sameCredentialsInfo = (left: CredentialsInfo, right: CredentialsInfo) =>
-  JSON.stringify(left) === JSON.stringify(right);
+const sameCredentialsInfo = (left: unknown, right: unknown) => {
+  const parsedLeft = credentialsInfoSchema.safeParse(left);
+  const parsedRight = credentialsInfoSchema.safeParse(right);
+  return (
+    JSON.stringify(parsedLeft.success ? parsedLeft.data : left) ===
+    JSON.stringify(parsedRight.success ? parsedRight.data : right)
+  );
+};
 
 // Keep legacy data as a backup. Once written, the registry is the only source of truth.
 const readCredentialsRegistry = async (): Promise<CredentialsRegistry> => {
@@ -240,7 +248,13 @@ const readCredentialsRegistry = async (): Promise<CredentialsRegistry> => {
   const registry: CredentialsRegistry = { credentials: [], activeCredentialsId: null };
   const normalizeLegacy = async (value: string | CredentialsInfo) => {
     const info = typeof value === 'string' ? { type: 'wvd' as const, data: value } : value;
-    return serializeCredentials(await deserializeCredentials(credentialsInfoSchema.parse(info)));
+    try {
+      return await serializeCredentials(
+        await deserializeCredentials(credentialsInfoSchema.parse(info)),
+      );
+    } catch {
+      return info;
+    }
   };
   for (const value of (await legacyCredentials.getValue()) ?? []) {
     const info = await normalizeLegacy(value);
@@ -265,18 +279,26 @@ const readCredentialsRegistry = async (): Promise<CredentialsRegistry> => {
 
 const decodeCredentialsRegistry = async (
   registry: CredentialsRegistry,
-): Promise<CredentialsSnapshot> => ({
-  credentials: await Promise.all(
-    registry.credentials.map(async (entry) => ({
-      id: entry.id,
-      credentials: await deserializeCredentials(entry.info),
-    })),
-  ),
-  activeCredentialsId: registry.activeCredentialsId,
-});
+): Promise<CredentialsSnapshot> => {
+  const snapshot: CredentialsSnapshot = {
+    credentials: [],
+    failedCredentials: [],
+    activeCredentialsId: registry.activeCredentialsId,
+  };
+  for (const entry of registry.credentials) {
+    try {
+      const credentials = await deserializeCredentials(credentialsInfoSchema.parse(entry.info));
+      snapshot.credentials.push({ id: entry.id, credentials });
+    } catch {
+      // Parser errors may contain remote secrets or credential bytes. Keep UI errors generic.
+      snapshot.failedCredentials.push({ id: entry.id, error: 'Unable to read credentials' });
+    }
+  }
+  return snapshot;
+};
 
 const saveCredentialsRegistry = async (registry: CredentialsRegistry, settings?: Settings) => {
-  // Parse before committing so a decoding failure cannot leave the popup behind storage.
+  // Build the snapshot before committing; unreadable entries remain stored for explicit repair.
   const snapshot = await decodeCredentialsRegistry(registry);
   await storage.setItems([
     { key: credentialsRegistry.key, value: registry },
@@ -289,6 +311,7 @@ const addCredentials = (credentials: Credentials, enablePlayback = false) =>
   withCredentialsLock(async () => {
     const registry = await readCredentialsRegistry();
     const info = await serializeCredentials(credentials);
+    await deserializeCredentials(credentialsInfoSchema.parse(info));
     if (registry.credentials.some((entry) => sameCredentialsInfo(entry.info, info))) {
       throw new Error('These credentials are already imported');
     }
@@ -323,10 +346,32 @@ const credentialsStorage = {
     (await credentialsStorage.getSnapshot()).credentials.map((entry) => entry.credentials),
   add: (credentials: Credentials) => addCredentials(credentials),
   import: (credentials: Credentials) => addCredentials(credentials, true),
+  replace: (id: string, credentials: Credentials) =>
+    withCredentialsLock(async () => {
+      const registry = await readCredentialsRegistry();
+      const entry = registry.credentials.find((entry) => entry.id === id);
+      if (!entry) throw new Error('Credentials are no longer available');
+      const snapshot = await decodeCredentialsRegistry(registry);
+      if (!snapshot.failedCredentials.some((entry) => entry.id === id))
+        throw new Error('These credentials no longer need re-importing');
+      const info = await serializeCredentials(credentials);
+      await deserializeCredentials(credentialsInfoSchema.parse(info));
+      if (
+        registry.credentials.some(
+          (entry) => entry.id !== id && sameCredentialsInfo(entry.info, info),
+        )
+      )
+        throw new Error('These credentials are already imported');
+      entry.info = info;
+      return saveCredentialsRegistry(registry);
+    }),
   select: (id: string | null) =>
     withCredentialsLock(async () => {
       const registry = await readCredentialsRegistry();
-      if (id !== null && !registry.credentials.some((entry) => entry.id === id)) {
+      if (
+        id !== null &&
+        !(await decodeCredentialsRegistry(registry)).credentials.some((entry) => entry.id === id)
+      ) {
         throw new Error('Credentials are no longer available');
       }
       return saveCredentialsRegistry({ ...registry, activeCredentialsId: id });
@@ -342,22 +387,32 @@ const credentialsStorage = {
       const remainingCredentials = registry.credentials.filter((entry) => entry.id !== id);
       const activeCredentialsId =
         registry.activeCredentialsId === id
-          ? (remainingCredentials[0]?.id ?? null)
+          ? ((await decodeCredentialsRegistry({ ...registry, credentials: remainingCredentials }))
+              .credentials[0]?.id ?? null)
           : registry.activeCredentialsId;
       return saveCredentialsRegistry({ credentials: remainingCredentials, activeCredentialsId });
     }),
   active: {
     getInfo: () =>
       withCredentialsLock(async () => {
-        const registry = await readCredentialsRegistry();
-        return (
-          registry.credentials.find((entry) => entry.id === registry.activeCredentialsId)?.info ??
-          null
-        );
+        try {
+          const registry = await readCredentialsRegistry();
+          const entry = registry.credentials.find(
+            (entry) => entry.id === registry.activeCredentialsId,
+          );
+          return entry ? credentialsInfoSchema.parse(entry.info) : null;
+        } catch {
+          // Background diagnostics persist these errors, so omit parser details and causes.
+          throw new Error('Unable to read active credentials');
+        }
       }),
     getValue: async (): Promise<Credentials | null> => {
-      const info = await credentialsStorage.active.getInfo();
-      return info ? deserializeCredentials(info) : null;
+      try {
+        const info = await credentialsStorage.active.getInfo();
+        return info ? await deserializeCredentials(info) : null;
+      } catch {
+        throw new Error('Unable to read active credentials');
+      }
     },
     // Library-side callers may supply credentials before adding it to the popup list.
     setValue: (credentials: Credentials | null) =>
@@ -366,6 +421,7 @@ const credentialsStorage = {
         if (!credentials)
           return saveCredentialsRegistry({ ...registry, activeCredentialsId: null });
         const info = await serializeCredentials(credentials);
+        await deserializeCredentials(credentialsInfoSchema.parse(info));
         let entry = registry.credentials.find((entry) => sameCredentialsInfo(entry.info, info));
         if (!entry) {
           entry = { id: crypto.randomUUID(), info };

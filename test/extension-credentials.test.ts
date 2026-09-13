@@ -73,6 +73,7 @@ test('same-model provisions retain distinct IDs across selection, export, reload
   await appStorage.credentials.remove(one!.id);
   expect(await appStorage.credentials.getSnapshot()).toEqual({
     credentials: [],
+    failedCredentials: [],
     activeCredentialsId: null,
   });
   expect(await appStorage.credentials.active.getValue()).toBeNull();
@@ -231,4 +232,153 @@ test.each([
 test('malformed credential files reject before touching storage', async () => {
   await expect(parseCredentialsFiles([new File(['invalid'], 'credentials.wvd')])).rejects.toThrow();
   expect(await browser.storage.local.get(null)).toEqual({});
+});
+
+test.each([
+  { type: 'wvd', data: 'AAAA' },
+  { type: 'prd', data: 'AAAA' },
+  { type: 'remote', config: { secret: 'do-not-display' } },
+  { type: 'wvd', data: 42 },
+  null,
+])(
+  'isolates corrupt credential payloads without writing or recovering backups: %j',
+  async (info) => {
+    const good = await serializeCredentials(await remote());
+    const registry = {
+      credentials: [
+        { id: 'broken', info },
+        { id: 'good', info: good },
+      ],
+      activeCredentialsId: 'good',
+    };
+    await browser.storage.local.set({
+      'credentials-registry': registry,
+      'active-client': await serializeCredentials(await remote('stale')),
+    });
+    const write = vi.spyOn(browser.storage.local, 'set');
+    const snapshot = await appStorage.credentials.getSnapshot();
+    expect(snapshot.credentials.map((entry) => entry.id)).toEqual(['good']);
+    expect(snapshot.failedCredentials).toEqual([
+      { id: 'broken', error: 'Unable to read credentials' },
+    ]);
+    expect(snapshot.activeCredentialsId).toBe('good');
+    expect(await appStorage.credentials.active.getInfo()).toEqual(good);
+    expect(write).not.toHaveBeenCalled();
+    await expect(appStorage.credentials.select('broken')).rejects.toThrow('no longer available');
+    await appStorage.credentials.select('good');
+    expect(
+      (await browser.storage.local.get('credentials-registry'))['credentials-registry'],
+    ).toEqual(registry);
+    await appStorage.credentials.import(await remote('another'));
+    const removed = await appStorage.credentials.remove('broken');
+    expect(removed.failedCredentials).toEqual([]);
+    expect(removed.credentials).toHaveLength(2);
+    expect(removed.activeCredentialsId).toBe('good');
+  },
+);
+
+test('re-import replaces only the failed entry at the limit and preserves its selection', async () => {
+  const info = { type: 'wvd', data: 'AAAA' };
+  const registry = {
+    credentials: Array.from({ length: 10 }, (_, index) => ({ id: `broken-${index}`, info })),
+    activeCredentialsId: 'broken-0',
+  };
+  await browser.storage.local.set({ 'credentials-registry': registry });
+  const credentials = await remote();
+  vi.spyOn(browser.storage.local, 'set').mockRejectedValueOnce(new Error('Quota exceeded'));
+  await expect(appStorage.credentials.replace('broken-0', credentials)).rejects.toThrow(
+    'Quota exceeded',
+  );
+  expect((await browser.storage.local.get('credentials-registry'))['credentials-registry']).toEqual(
+    registry,
+  );
+  const snapshot = await appStorage.credentials.replace('broken-0', credentials);
+  expect(snapshot.credentials.map((entry) => entry.id)).toEqual(['broken-0']);
+  expect(snapshot.failedCredentials).toHaveLength(9);
+  expect(snapshot.activeCredentialsId).toBe('broken-0');
+  await expect(appStorage.credentials.replace('broken-1', credentials)).rejects.toThrow(
+    'already imported',
+  );
+  await expect(appStorage.credentials.replace('broken-0', await remote('other'))).rejects.toThrow(
+    'no longer need',
+  );
+  await expect(appStorage.credentials.replace('missing', credentials)).rejects.toThrow(
+    'no longer available',
+  );
+  const removed = await appStorage.credentials.remove('broken-0');
+  expect(removed.activeCredentialsId).toBeNull();
+  expect(removed.failedCredentials).toHaveLength(9);
+});
+
+test('deleting corrupt active credentials selects a readable entry, skipping other failures', async () => {
+  await browser.storage.local.set({
+    'credentials-registry': {
+      credentials: [
+        { id: 'active', info: null },
+        { id: 'broken', info: null },
+        { id: 'good', info: await serializeCredentials(await remote()) },
+      ],
+      activeCredentialsId: 'active',
+    },
+  });
+  expect((await appStorage.credentials.getSnapshot()).activeCredentialsId).toBe('active');
+  expect((await appStorage.credentials.remove('active')).activeCredentialsId).toBe('good');
+});
+
+test('legacy migration retains corrupt entries alongside readable credentials', async () => {
+  const good = await serializeCredentials(await remote());
+  await browser.storage.local.set({
+    clients: JSON.stringify(['AAAA', good]),
+    'active-client': 'AAAA',
+  });
+  const snapshot = await appStorage.credentials.getSnapshot();
+  expect(snapshot.credentials).toHaveLength(1);
+  expect(snapshot.failedCredentials).toHaveLength(1);
+  expect(snapshot.activeCredentialsId).toBe(snapshot.failedCredentials[0]!.id);
+  expect(await appStorage.credentials.getSnapshot()).toEqual(snapshot);
+});
+
+test('duplicate detection normalizes remote fields after storage reorders them', async () => {
+  const credentials = await remote();
+  const info = await serializeCredentials(credentials);
+  if (info.type !== 'remote') throw new Error('Expected remote credentials');
+  await browser.storage.local.set({
+    'credentials-registry': {
+      credentials: [
+        {
+          id: 'good',
+          info: {
+            type: 'remote',
+            config: Object.fromEntries(Object.entries(info.config).reverse()),
+          },
+        },
+      ],
+      activeCredentialsId: 'good',
+    },
+  });
+  await expect(appStorage.credentials.import(credentials)).rejects.toThrow('already imported');
+});
+
+test.each([
+  { type: 'wvd', data: 'AAAA' },
+  { type: 'prd', data: 'AAAA' },
+  { type: 'remote', config: { protocol: 'private-remote-value', secret: 'private-secret' } },
+])('active credential decoding exposes only a safe error: %j', async (info) => {
+  const registry = {
+    credentials: [{ id: 'broken', info }],
+    activeCredentialsId: 'broken',
+  };
+  await browser.storage.local.set({ 'credentials-registry': registry });
+  await expect(appStorage.credentials.active.getValue()).rejects.toThrowError(
+    /^Unable to read active credentials$/,
+  );
+  if (info.type === 'remote') {
+    // Playback configuration reads metadata without going through getValue.
+    await expect(appStorage.credentials.active.getInfo()).rejects.toThrowError(
+      /^Unable to read active credentials$/,
+    );
+  }
+  expect((await browser.storage.local.get('credentials-registry'))['credentials-registry']).toEqual(
+    registry,
+  );
 });
