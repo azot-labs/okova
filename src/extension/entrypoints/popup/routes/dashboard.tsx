@@ -1,3 +1,4 @@
+import { getCredentialsSystem } from '@/utils/storage';
 import { SessionDiagnostics } from '../components/session-diagnostics';
 import { DeleteKeys } from '../components/delete-keys';
 import { A } from '@solidjs/router';
@@ -41,11 +42,24 @@ export const Dashboard = () => {
 
   return (
     <Layout>
-      <Header subtitle={activeCredentials()?.credentials.label}>Dashboard</Header>
+      <Header
+        subtitle={
+          <For each={activeCredentials()}>
+            {(entry) => (
+              <div>
+                {getCredentialsSystem(entry.credentials) === 'widevine' ? 'Widevine' : 'PlayReady'}:{' '}
+                {entry.credentials.label}
+              </div>
+            )}
+          </For>
+        }
+      >
+        Dashboard
+      </Header>
       <div class="flex flex-col gap-3">
         <Toolbar />
 
-        <Show when={!activeCredentials() && credentials().length === 0}>
+        <Show when={credentials().length === 0}>
           <CellImportCredentials />
         </Show>
 

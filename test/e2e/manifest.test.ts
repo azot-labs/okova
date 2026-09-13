@@ -121,7 +121,11 @@ test('built content bridge associates DASH and reads playback configuration thro
             };
             window.addEventListener('drm-message-response', onResponse);
             window.postMessage(
-              { type: 'drm-message', requestId, log: { action: 'playback-config' } },
+              {
+                type: 'drm-message',
+                requestId,
+                log: { action: 'playback-config', keySystem: 'com.widevine.alpha' },
+              },
               '*',
             );
           }),

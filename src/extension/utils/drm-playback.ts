@@ -205,7 +205,7 @@ export const installDrmPlayback = () => {
       keySystem === 'com.microsoft.playready.hardware';
     if (keySystem !== WIDEVINE && !isPlayReady && !isHardwarePlayReady)
       return requestAccess(keySystem, configurations);
-    const activeSystem = await sendDrmMessage({ action: 'playback-config' });
+    const activeSystem = await sendDrmMessage({ action: 'playback-config', keySystem });
     if (activeSystem === null) {
       if (!hasWarnedMissingCredentials) {
         hasWarnedMissingCredentials = true;

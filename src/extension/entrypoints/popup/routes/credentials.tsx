@@ -45,7 +45,8 @@ export const CredentialsPage = () => {
     changeCredentials(async () => {
       syncCredentials(await appStorage.credentials.select(entry.id));
     });
-  const isActive = (entry: StoredCredentials) => activeCredentials()?.id === entry.id;
+  const isActive = (entry: StoredCredentials) =>
+    activeCredentials().some((active) => active.id === entry.id);
 
   const exportCredentials = async (credentials: Credentials) => {
     const data = Uint8Array.from(await credentials.pack());
@@ -128,7 +129,7 @@ export const CredentialsPage = () => {
           <List class="mt-2">
             <Section
               header="Imported Client Credentials"
-              footer="You can add a maximum of 10 credentials."
+              footer="Select one active credential for each DRM system. You can add a maximum of 10 credentials."
             >
               {credentials().map((entry) => (
                 <Cell

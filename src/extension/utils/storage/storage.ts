@@ -1,3 +1,4 @@
+import { CLIENT_KEY_SYSTEMS, normalizeKeySystem } from '../../../lib/key-system';
 import type { DrmStage } from '../drm-error';
 import { getManifestMetadata, type Manifest } from '../manifest';
 import type { Credentials } from '../../../lib/credentials';
@@ -205,19 +206,60 @@ export const serializeCredentials = async (credentials: Credentials): Promise<Cr
   return { type, data };
 };
 
-const credentialsRegistrySchema = z.object({
+const activeCredentialsIdsSchema = z.object({
+  widevine: z.string().nullable(),
+  playready: z.string().nullable(),
+});
+export type ActiveCredentialsIds = z.infer<typeof activeCredentialsIdsSchema>;
+export const getKeySystemSlot = (keySystem: string) =>
+  normalizeKeySystem(keySystem) === CLIENT_KEY_SYSTEMS.widevine ? 'widevine' : 'playready';
+
+export const getCredentialsSystem = (credentials: Credentials) => {
+  if (credentials instanceof RemoteCredentials) return getKeySystemSlot(credentials.keySystem);
+  return credentials instanceof WidevineClientCredentials ? 'widevine' : 'playready';
+};
+
+const previousCredentialsRegistrySchema = z.object({
   credentials: z.array(z.object({ id: z.string(), info: z.unknown() })),
   activeCredentialsId: z.string().nullable(),
 });
+const credentialsRegistrySchema = previousCredentialsRegistrySchema
+  .omit({ activeCredentialsId: true })
+  .extend({
+    activeCredentialsIds: activeCredentialsIdsSchema,
+  });
 type CredentialsRegistry = z.infer<typeof credentialsRegistrySchema>;
+
+const migrateCredentialsRegistry = (
+  previous: z.infer<typeof previousCredentialsRegistrySchema>,
+): CredentialsRegistry => {
+  const activeCredentialsIds: ActiveCredentialsIds = { widevine: null, playready: null };
+  const entry = previous.credentials.find((entry) => entry.id === previous.activeCredentialsId);
+  // Preserve the selected slot even if its payload needs re-importing.
+  const info = z
+    .object({ type: z.string(), config: z.object({ keySystem: z.string() }).optional() })
+    .safeParse(entry?.info);
+  if (entry && info.success) {
+    if (info.data.type === 'wvd') activeCredentialsIds.widevine = entry.id;
+    else if (info.data.type === 'prd') activeCredentialsIds.playready = entry.id;
+    else if (info.data.type === 'remote' && info.data.config) {
+      try {
+        activeCredentialsIds[getKeySystemSlot(info.data.config.keySystem)] = entry.id;
+      } catch {
+        /* An unknown system cannot seed either slot. */
+      }
+    }
+  }
+  return { credentials: previous.credentials, activeCredentialsIds };
+};
 export type StoredCredentials = { id: string; credentials: Credentials };
 export type FailedCredentials = { id: string; error: string };
 export type CredentialsSnapshot = {
   credentials: StoredCredentials[];
   failedCredentials: FailedCredentials[];
-  activeCredentialsId: string | null;
+  activeCredentialsIds: ActiveCredentialsIds;
 };
-const credentialsRegistry = storage.defineItem<CredentialsRegistry>('local:credentials-registry');
+const credentialsRegistry = storage.defineItem<unknown>('local:credentials-registry');
 const legacyRegistry = storage.defineItem<unknown>('local:client-registry');
 const legacyRegistrySchema = z.object({
   clients: z.array(z.object({ id: z.string(), info: z.unknown() })),
@@ -239,13 +281,23 @@ const sameCredentialsInfo = (left: unknown, right: unknown) => {
 // Keep legacy data as a backup. Once written, the registry is the only source of truth.
 const readCredentialsRegistry = async (): Promise<CredentialsRegistry> => {
   const stored = await credentialsRegistry.getValue();
-  if (stored) return credentialsRegistrySchema.parse(stored);
+  if (stored) {
+    if (typeof stored === 'object' && 'activeCredentialsIds' in stored)
+      return credentialsRegistrySchema.parse(stored);
+    return migrateCredentialsRegistry(previousCredentialsRegistrySchema.parse(stored));
+  }
   const previous = await legacyRegistry.getValue();
   if (previous) {
     const legacy = legacyRegistrySchema.parse(previous);
-    return { credentials: legacy.clients, activeCredentialsId: legacy.activeClientId };
+    return migrateCredentialsRegistry({
+      credentials: legacy.clients,
+      activeCredentialsId: legacy.activeClientId,
+    });
   }
-  const registry: CredentialsRegistry = { credentials: [], activeCredentialsId: null };
+  const registry: z.infer<typeof previousCredentialsRegistrySchema> = {
+    credentials: [],
+    activeCredentialsId: null,
+  };
   const normalizeLegacy = async (value: string | CredentialsInfo) => {
     const info = typeof value === 'string' ? { type: 'wvd' as const, data: value } : value;
     try {
@@ -274,7 +326,7 @@ const readCredentialsRegistry = async (): Promise<CredentialsRegistry> => {
   } else {
     registry.activeCredentialsId = registry.credentials[0]?.id ?? null;
   }
-  return registry;
+  return migrateCredentialsRegistry(registry);
 };
 
 const decodeCredentialsRegistry = async (
@@ -283,7 +335,7 @@ const decodeCredentialsRegistry = async (
   const snapshot: CredentialsSnapshot = {
     credentials: [],
     failedCredentials: [],
-    activeCredentialsId: registry.activeCredentialsId,
+    activeCredentialsIds: registry.activeCredentialsIds,
   };
   for (const entry of registry.credentials) {
     try {
@@ -320,7 +372,7 @@ const addCredentials = (credentials: Credentials, enablePlayback = false) =>
     const isFirstCredentials = registry.credentials.length === 0;
     const entry = { id: crypto.randomUUID(), info };
     registry.credentials.push(entry);
-    registry.activeCredentialsId ??= entry.id;
+    registry.activeCredentialsIds[getCredentialsSystem(credentials)] ??= entry.id;
     const settings =
       enablePlayback && isFirstCredentials
         ? {
@@ -339,7 +391,9 @@ const credentialsStorage = {
   getSnapshot: () =>
     withCredentialsLock(async () => {
       const registry = await readCredentialsRegistry();
-      if (!(await credentialsRegistry.getValue())) return saveCredentialsRegistry(registry);
+      const stored = await credentialsRegistry.getValue();
+      if (!stored || typeof stored !== 'object' || !('activeCredentialsIds' in stored))
+        return saveCredentialsRegistry(registry);
       return decodeCredentialsRegistry(registry);
     }),
   getValue: async () =>
@@ -362,19 +416,24 @@ const credentialsStorage = {
         )
       )
         throw new Error('These credentials are already imported');
+      const system = getCredentialsSystem(credentials);
+      const otherSystem = system === 'widevine' ? 'playready' : 'widevine';
+      if (registry.activeCredentialsIds[otherSystem] === id) {
+        registry.activeCredentialsIds[otherSystem] = null;
+        registry.activeCredentialsIds[system] ??= id;
+      }
       entry.info = info;
       return saveCredentialsRegistry(registry);
     }),
-  select: (id: string | null) =>
+  select: (id: string) =>
     withCredentialsLock(async () => {
       const registry = await readCredentialsRegistry();
-      if (
-        id !== null &&
-        !(await decodeCredentialsRegistry(registry)).credentials.some((entry) => entry.id === id)
-      ) {
-        throw new Error('Credentials are no longer available');
-      }
-      return saveCredentialsRegistry({ ...registry, activeCredentialsId: id });
+      const entry = (await decodeCredentialsRegistry(registry)).credentials.find(
+        (entry) => entry.id === id,
+      );
+      if (!entry) throw new Error('Credentials are no longer available');
+      registry.activeCredentialsIds[getCredentialsSystem(entry.credentials)] = id;
+      return saveCredentialsRegistry(registry);
     }),
   remove: (credentials: string | Credentials) =>
     withCredentialsLock(async () => {
@@ -385,30 +444,43 @@ const credentialsStorage = {
           ? credentials
           : registry.credentials.find((entry) => info && sameCredentialsInfo(entry.info, info))?.id;
       const remainingCredentials = registry.credentials.filter((entry) => entry.id !== id);
-      const activeCredentialsId =
-        registry.activeCredentialsId === id
-          ? ((await decodeCredentialsRegistry({ ...registry, credentials: remainingCredentials }))
-              .credentials[0]?.id ?? null)
-          : registry.activeCredentialsId;
-      return saveCredentialsRegistry({ credentials: remainingCredentials, activeCredentialsId });
+      const snapshot = await decodeCredentialsRegistry({
+        ...registry,
+        credentials: remainingCredentials,
+      });
+      for (const system of ['widevine', 'playready'] as const) {
+        if (registry.activeCredentialsIds[system] === id)
+          registry.activeCredentialsIds[system] =
+            snapshot.credentials.find((entry) => getCredentialsSystem(entry.credentials) === system)
+              ?.id ?? null;
+      }
+      return saveCredentialsRegistry({ ...registry, credentials: remainingCredentials });
     }),
   active: {
-    getInfo: () =>
+    getInfo: (keySystem: string) =>
       withCredentialsLock(async () => {
         try {
           const registry = await readCredentialsRegistry();
           const entry = registry.credentials.find(
-            (entry) => entry.id === registry.activeCredentialsId,
+            (entry) => entry.id === registry.activeCredentialsIds[getKeySystemSlot(keySystem)],
           );
-          return entry ? credentialsInfoSchema.parse(entry.info) : null;
+          if (!entry) return null;
+          const info = credentialsInfoSchema.parse(entry.info);
+          const selectedSystem =
+            info.type === 'remote'
+              ? info.config.keySystem
+              : CLIENT_KEY_SYSTEMS[info.type === 'wvd' ? 'widevine' : 'playready'];
+          if (normalizeKeySystem(selectedSystem) !== normalizeKeySystem(keySystem))
+            throw new Error('Credential system does not match its slot');
+          return info;
         } catch {
           // Background diagnostics persist these errors, so omit parser details and causes.
           throw new Error('Unable to read active credentials');
         }
       }),
-    getValue: async (): Promise<Credentials | null> => {
+    getValue: async (keySystem: string): Promise<Credentials | null> => {
       try {
-        const info = await credentialsStorage.active.getInfo();
+        const info = await credentialsStorage.active.getInfo(keySystem);
         return info ? await deserializeCredentials(info) : null;
       } catch {
         throw new Error('Unable to read active credentials');
@@ -419,7 +491,10 @@ const credentialsStorage = {
       withCredentialsLock(async () => {
         const registry = await readCredentialsRegistry();
         if (!credentials)
-          return saveCredentialsRegistry({ ...registry, activeCredentialsId: null });
+          return saveCredentialsRegistry({
+            ...registry,
+            activeCredentialsIds: { widevine: null, playready: null },
+          });
         const info = await serializeCredentials(credentials);
         await deserializeCredentials(credentialsInfoSchema.parse(info));
         let entry = registry.credentials.find((entry) => sameCredentialsInfo(entry.info, info));
@@ -427,7 +502,8 @@ const credentialsStorage = {
           entry = { id: crypto.randomUUID(), info };
           registry.credentials.push(entry);
         }
-        return saveCredentialsRegistry({ ...registry, activeCredentialsId: entry.id });
+        registry.activeCredentialsIds[getCredentialsSystem(credentials)] = entry.id;
+        return saveCredentialsRegistry(registry);
       }),
   },
 };

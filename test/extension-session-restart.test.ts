@@ -326,7 +326,7 @@ test('capture diagnostics retain identity and successful stages after worker res
   await send('license-request');
   const after = (await getCaptureDiagnosticsStorage(tab.id!).getValue())![0]!;
   expect(after.captureId).toBe(before.captureId);
-  expect(before.credential?.name).toBe((await appStorage.credentials.active.getValue())?.label);
+  expect(before.credential?.name).toBe((await appStorage.credentials.active.getValue('com.widevine.alpha'))?.label);
   expect(before.credential?.name).toBeTruthy();
   expect(after.credential).toEqual(before.credential);
   expect(after.sessionId).toBe(before.sessionId);
