@@ -358,3 +358,27 @@ test('duplicate detection normalizes remote fields after storage reorders them',
   });
   await expect(appStorage.credentials.import(credentials)).rejects.toThrow('already imported');
 });
+
+test.each([
+  { type: 'wvd', data: 'AAAA' },
+  { type: 'prd', data: 'AAAA' },
+  { type: 'remote', config: { protocol: 'private-remote-value', secret: 'private-secret' } },
+])('active credential decoding exposes only a safe error: %j', async (info) => {
+  const registry = {
+    credentials: [{ id: 'broken', info }],
+    activeCredentialsId: 'broken',
+  };
+  await browser.storage.local.set({ 'credentials-registry': registry });
+  await expect(appStorage.credentials.active.getValue()).rejects.toThrowError(
+    /^Unable to read active credentials$/,
+  );
+  if (info.type === 'remote') {
+    // Playback configuration reads metadata without going through getValue.
+    await expect(appStorage.credentials.active.getInfo()).rejects.toThrowError(
+      /^Unable to read active credentials$/,
+    );
+  }
+  expect((await browser.storage.local.get('credentials-registry'))['credentials-registry']).toEqual(
+    registry,
+  );
+});

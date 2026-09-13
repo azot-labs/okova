@@ -356,15 +356,24 @@ const credentialsStorage = {
   active: {
     getInfo: () =>
       withCredentialsLock(async () => {
-        const registry = await readCredentialsRegistry();
-        const entry = registry.credentials.find(
-          (entry) => entry.id === registry.activeCredentialsId,
-        );
-        return entry ? credentialsInfoSchema.parse(entry.info) : null;
+        try {
+          const registry = await readCredentialsRegistry();
+          const entry = registry.credentials.find(
+            (entry) => entry.id === registry.activeCredentialsId,
+          );
+          return entry ? credentialsInfoSchema.parse(entry.info) : null;
+        } catch {
+          // Background diagnostics persist these errors, so omit parser details and causes.
+          throw new Error('Unable to read active credentials');
+        }
       }),
     getValue: async (): Promise<Credentials | null> => {
-      const info = await credentialsStorage.active.getInfo();
-      return info ? deserializeCredentials(info) : null;
+      try {
+        const info = await credentialsStorage.active.getInfo();
+        return info ? await deserializeCredentials(info) : null;
+      } catch {
+        throw new Error('Unable to read active credentials');
+      }
     },
     // Library-side callers may supply credentials before adding it to the popup list.
     setValue: (credentials: Credentials | null) =>
