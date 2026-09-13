@@ -1,3 +1,15 @@
+import { z } from 'zod';
+import { drmStages, DrmRequestError, type DrmErrorData, type DrmStage } from './drm-error';
+
+const drmErrorSchema = z.object({
+  kind: z.enum(['request', 'timeout', 'transport']),
+  stage: z.union([
+    z.enum(Object.keys(drmStages) as [DrmStage, ...DrmStage[]]),
+    z.literal('bridge'),
+  ]),
+  message: z.string(),
+}) satisfies z.ZodType<DrmErrorData>;
+
 export const sendDrmMessage = (
   data: Record<string, unknown>,
   timeoutMs = 30_000,
@@ -28,15 +40,31 @@ export const sendDrmMessage = (
         return;
 
       cleanup();
-      if ('error' in response && typeof response.error === 'string') {
+      const body = 'body' in response ? response.body : undefined;
+      const failure = drmErrorSchema.safeParse(
+        'error' in response
+          ? response.error
+          : typeof body === 'object' && body !== null && 'error' in body
+            ? body.error
+            : undefined,
+      );
+      if (failure.success) {
+        reject(new DrmRequestError(failure.data));
+      } else if ('error' in response && typeof response.error === 'string') {
         reject(new Error(response.error));
       } else {
-        resolve('body' in response ? response.body : undefined);
+        resolve(body);
       }
     };
     const timer = setTimeout(() => {
       cleanup();
-      reject(new Error(`Timed out waiting for DRM response to "${data.action}" (${requestId})`));
+      reject(
+        new DrmRequestError({
+          kind: 'timeout',
+          stage: 'bridge',
+          message: `Timed out waiting for DRM response to "${data.action}" (${requestId})`,
+        }),
+      );
     }, timeoutMs);
 
     window.addEventListener('drm-message-response', onResponse);
