@@ -209,6 +209,7 @@ test.each([
   ['credentials', 'pack', '--format', 'okova'],
   ['credentials', 'info', '--format', 'wvd'],
   ['license', '--port', '4000'],
+  ['license', '--custom-data'],
   ['serve', '--port', '4000oops'],
   ['--debug'],
   ['--unknown'],
@@ -228,6 +229,25 @@ test.each([
   expect(result.stderr.trim()).not.toBe('');
   expect(result.stderr).not.toContain('UnhandledPromiseRejection');
 });
+
+test.each(['application data', ''])(
+  'license parses custom data and rejects Widevine: %j',
+  (customData) => {
+    const result = run([
+      'license',
+      'https://example.test',
+      '--pssh',
+      encodedPssh,
+      '--credentials',
+      input,
+      '--custom-data',
+      customData,
+    ]);
+    expect(result.status).toBe(1);
+    expect(result.stderr.trim()).toBe('--custom-data is supported only for PlayReady');
+    expect(result.stdout).toBe('');
+  },
+);
 
 test.each([[], ['--format', 'wvd'], ['-f', 'wvd']])(
   'packs with the correct default extension %j',

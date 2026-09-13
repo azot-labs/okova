@@ -110,6 +110,7 @@ const main = async () => {
         pssh: { type: 'string', short: 'p' },
         credentials: { type: 'string', short: 'c' },
         encrypt: { type: 'boolean', short: 'e', default: false },
+        'custom-data': { type: 'string' },
         header: { type: 'string', short: 'H', multiple: true },
       });
       if (values.help) return license.help();
@@ -122,6 +123,7 @@ const main = async () => {
         pssh: values.pssh,
         credentialsPath: values.credentials,
         encrypt: values.encrypt,
+        customData: values['custom-data'],
         headers: values.header,
       });
       return;
