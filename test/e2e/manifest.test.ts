@@ -341,6 +341,52 @@ test('captures HLS/MSS choices through real EME and builds commands in the popup
     await mkdir(resolve('output/playwright/manifest'), { recursive: true });
     await copy.scrollIntoViewIfNeeded();
     await popup.screenshot({ path: resolve('output/playwright/manifest/selected.png') });
+    // Hold an actual header response until the settings watcher has cleared the popup.
+    await popup.evaluate(() => {
+      const sendMessage = browser.runtime.sendMessage.bind(browser.runtime);
+      browser.runtime.sendMessage = new Proxy(sendMessage, {
+        async apply(target, thisArg, args: unknown[]) {
+          const result: unknown = await Reflect.apply(target, thisArg, args);
+          const message: unknown = args[0];
+          if (
+            typeof message === 'object' &&
+            message !== null &&
+            'action' in message &&
+            message.action === 'download-headers'
+          ) {
+            browser.runtime.sendMessage = sendMessage;
+            document.documentElement.dataset.headerResponsePending = JSON.stringify(result);
+            await new Promise<void>((resolve) =>
+              window.addEventListener('release-header-response', () => resolve(), { once: true }),
+            );
+          }
+          return result;
+        },
+      });
+    });
+    await choices.filter({ hasText: media }).click();
+    await expect
+      .poll(() => popup.evaluate(() => document.documentElement.dataset.headerResponsePending))
+      .toContain('test-only-cookie');
+    await command.fill('pending command to clear');
+    await worker.evaluate(async () => {
+      const stored = (await browser.storage.local.get('settings')).settings;
+      if (typeof stored !== 'string') throw new Error('Missing settings');
+      const settings = JSON.parse(stored);
+      await browser.storage.local.set({
+        settings: JSON.stringify({ ...settings, requestInterception: false }),
+      });
+    });
+    await expect.poll(() => command.inputValue()).not.toBe('pending command to clear');
+    await popup.evaluate(async () => {
+      window.dispatchEvent(new Event('release-header-response'));
+      await new Promise(requestAnimationFrame);
+    });
+    expect(await cookie.count()).toBe(0);
+    expect(await popup.getByRole('button', { name: 'Select All', exact: true }).isDisabled()).toBe(
+      true,
+    );
+    expect(await command.inputValue()).not.toContain('test-only-cookie');
     const input = popup.getByRole('textbox', { name: 'Manifest URL', exact: true });
     await input.fill('javascript:alert(1)');
     expect(await copy.isDisabled()).toBe(true);

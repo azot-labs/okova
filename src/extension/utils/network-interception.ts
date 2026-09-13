@@ -162,6 +162,20 @@ export const installNetworkInterception = () => {
       setRequestHeader(name: string, value: string) {
         super.setRequestHeader(name, value);
         try {
+          // XHR silently ignores forbidden request headers. Do not export those attempts.
+          // https://fetch.spec.whatwg.org/#forbidden-request-header
+          if (
+            /^(accept-charset|accept-encoding|access-control-request-headers|access-control-request-method|connection|content-length|cookie2?|date|dnt|expect|host|keep-alive|origin|referer|set-cookie|te|trailer|transfer-encoding|upgrade|via)$/i.test(
+              name,
+            ) ||
+            /^(proxy-|sec-)/i.test(name)
+          )
+            return;
+          if (
+            /^(x-http-method|x-http-method-override|x-method-override)$/i.test(name) &&
+            value.split(',').some((method) => /^(CONNECT|TRACE|TRACK)$/i.test(method.trim()))
+          )
+            return;
           this.#requestHeaders.append(name, value);
         } catch {
           /* Native XHR decides validity. */

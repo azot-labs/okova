@@ -47,16 +47,18 @@ export const KeySettings: Component<KeySettingsProps> = (props) => {
   const [headers, setHeaders] = createSignal<RequestHeader[]>([]);
   const [headerError, setHeaderError] = createSignal<string>();
   const [selectedHeaders, setSelectedHeaders] = createSignal<RequestHeader[]>([]);
+  let headerRequestGeneration = 0;
   createEffect(() => {
     const token = keyRecordToken(props.key);
     const url = manifestUrl();
-    let isCurrent = true;
+    const requestGeneration = ++headerRequestGeneration;
     setHeaders([]);
     setHeaderError(undefined);
     setSelectedHeaders([]);
     void browser.windows
       .getCurrent()
       .then(async (window) => {
+        if (requestGeneration !== headerRequestGeneration) return;
         if (window.id === undefined) throw new Error('Current window has no ID');
         const result: unknown = await browser.runtime.sendMessage({
           action: 'download-headers',
@@ -64,19 +66,21 @@ export const KeySettings: Component<KeySettingsProps> = (props) => {
           url,
           windowId: window.id,
         });
-        if (isCurrent) setHeaders(getDownloadHeaders(result));
+        if (requestGeneration === headerRequestGeneration) setHeaders(getDownloadHeaders(result));
       })
       .catch(() => {
-        if (isCurrent)
+        if (requestGeneration === headerRequestGeneration)
           setHeaderError('Unable to load request headers. Reopen the popup to try again.');
       });
     onCleanup(() => {
-      isCurrent = false;
+      headerRequestGeneration++;
     });
   });
   onMount(() => {
     const unwatch = appStorage.settings.watch((settings) => {
       if (settings?.requestInterception === false) {
+        headerRequestGeneration++;
+        setHeaderError(undefined);
         setHeaders([]);
         setSelectedHeaders([]);
         setCommand(buildDownloadCommand(props.key, manifestUrl()) ?? '');

@@ -1,3 +1,5 @@
+import { buildDownloadCommand } from '../src/extension/entrypoints/popup/utils/command';
+import { pageRequestHeadersSchema } from '../src/extension/utils/request-headers';
 import { DOMParser, XMLSerializer } from '@xmldom/xmldom';
 import { afterEach, beforeEach, expect, test, vi } from 'vitest';
 import { installNetworkInterception } from '../src/extension/utils/network-interception';
@@ -468,4 +470,37 @@ test('normalization preserves POST bodies, credentials and abort signals', async
   await fetch(original);
   expect(original.bodyUsed).toBe(true);
   expect(postMessage).not.toHaveBeenCalled();
+});
+
+test.each([
+  ['Cookie', 'ignored-cookie'],
+  ['cOoKiE', 'ignored-cookie'],
+  ['Origin', 'https://ignored.example'],
+  ['Referer', 'https://ignored.example'],
+  ['Sec-Custom', 'ignored'],
+  ['Proxy-Custom', 'ignored'],
+  ['X-HTTP-Method-Override', 'GET, TRACE'],
+])('does not export ignored XHR header %s', async (name, value) => {
+  const native = vi.spyOn(NativeXHR.prototype, 'setRequestHeader');
+  const xhr = new XMLHttpRequest();
+  xhr.open('GET', url);
+  xhr.setRequestHeader(name, value);
+  xhr.setRequestHeader('Authorization', 'Bearer permitted');
+  xhr.setRequestHeader('X-HTTP-Method', 'PATCH');
+  xhr.send();
+  Object.assign(xhr, { response: manifest });
+  xhr.dispatchEvent(new Event('load'));
+  await vi.waitFor(() => expect(postMessage).toHaveBeenCalledTimes(2));
+  expect(native).toHaveBeenCalledWith(name, value);
+  const message = postMessage.mock.calls.find(
+    ([message]) => message.namespace === 'okova:request-headers',
+  )?.[0];
+  const observed = pageRequestHeadersSchema.parse(message);
+  expect(observed.headers).toEqual([
+    { name: 'authorization', value: 'Bearer permitted' },
+    { name: 'x-http-method', value: 'PATCH' },
+  ]);
+  const command = buildDownloadCommand({ id: 'id', value: 'key', mpd: url }, url, observed.headers);
+  expect(command).not.toContain(value);
+  expect(command).toContain('authorization: Bearer permitted');
 });
