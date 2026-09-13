@@ -1,3 +1,4 @@
+import { DrmRequestError } from '../src/extension/utils/drm-error';
 import { beforeEach, afterEach, expect, test, vi } from 'vitest';
 import { installEmeInterception } from '../src/extension/utils/eme-interception';
 import { sendDrmMessage } from '../src/extension/utils/drm-bridge';
@@ -54,6 +55,7 @@ test.each(
     vi.stubGlobal('MediaKeys', NativeKeys);
     // A page-owned cache entry must not block the bridge or native CDM update.
     vi.stubGlobal('window', { MPD_LIST: new Map(), MANIFEST_LIST: new Map([['page-entry', {}]]) });
+    const warning = vi.spyOn(console, 'warn').mockImplementation(() => {});
     const capture = Promise.withResolvers<unknown>();
     vi.mocked(sendDrmMessage).mockReturnValue(capture.promise);
     installEmeInterception();
@@ -83,12 +85,28 @@ test.each(
     } else if (result === 'service certificate') {
       capture.resolve({ challenge: btoa('private challenge') });
     } else if (result === 'bridge failure') {
-      capture.reject(new Error('DRM bridge failed'));
+      capture.reject(
+        new DrmRequestError({
+          kind: 'request',
+          stage: 'license',
+          message: 'Invalid license signature',
+        }),
+      );
     } else {
       capture.resolve(undefined);
     }
 
     await expect(updating).resolves.toBeUndefined();
+    if (result === 'bridge failure')
+      expect(warning).toHaveBeenCalledWith(
+        '[okova] DRM bridge request failed',
+        expect.objectContaining({
+          kind: 'request',
+          stage: 'license',
+          message: 'Invalid license signature',
+        }),
+      );
+    warning.mockRestore();
     expect(nativeUpdate).toHaveBeenCalledExactlyOnceWith(response);
     expect(nativeUpdate.mock.calls[0]?.[0]).toBe(response);
     expect(nativeUpdate.mock.contexts[0]).toBe(session);

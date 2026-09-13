@@ -1,3 +1,5 @@
+import { drmErrorResponse } from '@/utils/drm-error';
+
 export default defineContentScript({
   matches: ['https://*/*', 'http://*/*'],
   matchOriginAsFallback: true,
@@ -39,7 +41,7 @@ export default defineContentScript({
             new CustomEvent('drm-message-response', {
               detail: JSON.stringify({
                 requestId,
-                error: error instanceof Error ? error.message : String(error),
+                ...drmErrorResponse(error, 'bridge', 'transport'),
               }),
             }),
           );

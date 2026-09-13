@@ -69,7 +69,9 @@ test.each([
   { keySystem: 'com.widevine.alpha', initData: 'A'.repeat(1024 * 1024 + 1) },
 ])('rejects invalid playback initialization data', async (request) => {
   const send = start();
-  await expect(send({ action: 'playback-keyids', ...request })).resolves.toBeUndefined();
+  await expect(send({ action: 'playback-keyids', ...request })).resolves.toMatchObject({
+    error: { kind: 'request', stage: 'setup', message: expect.any(String) },
+  });
 });
 
 test('loads only the requesting frame and requires an installation acknowledgement', async () => {
@@ -98,7 +100,9 @@ test('loads only the requesting frame and requires an installation acknowledgeme
 test('does not inject for requests without a tab/frame', async () => {
   const execute = vi.spyOn(browser.scripting, 'executeScript');
   const send = start();
-  await expect(send({ action: 'load-eme', token: crypto.randomUUID() })).resolves.toBeUndefined();
+  await expect(send({ action: 'load-eme', token: crypto.randomUUID() })).resolves.toMatchObject({
+    error: { kind: 'request', stage: 'setup', message: expect.any(String) },
+  });
   expect(execute).not.toHaveBeenCalled();
 });
 
@@ -109,7 +113,9 @@ test('reports injection failures without proceeding to installation', async () =
   const send = start();
   await expect(
     send({ action: 'load-eme', token: crypto.randomUUID() }, { tab, frameId: 3 }),
-  ).resolves.toBeUndefined();
+  ).resolves.toMatchObject({
+    error: { kind: 'request', stage: 'setup', message: expect.any(String) },
+  });
   expect(execute).toHaveBeenCalledOnce();
 });
 

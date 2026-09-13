@@ -1,3 +1,4 @@
+import { drmErrorResponse, type DrmErrorResponse } from '@/utils/drm-error';
 import { getManifestMetadata } from '@/utils/manifest';
 import { getCredentialFingerprint } from '@/utils/credential-fingerprint';
 import {
@@ -436,6 +437,7 @@ export default defineBackground({
       }
       const controller = new AbortController();
       let hasResponded = false;
+      let failure: DrmErrorResponse | undefined;
       const respond = (response?: unknown) => {
         if (hasResponded) return;
         hasResponded = true;
@@ -444,8 +446,9 @@ export default defineBackground({
       };
       // Include time spent queued behind session work or worker restoration.
       const timer = setTimeout(() => {
-        controller.abort(new Error(`DRM request timed out after ${REQUEST_TIMEOUT_MS}ms`));
-        respond();
+        const error = new Error(`DRM request timed out after ${REQUEST_TIMEOUT_MS}ms`);
+        controller.abort(error);
+        respond(failure ?? drmErrorResponse(error, stage, 'timeout'));
       }, REQUEST_TIMEOUT_MS);
       const run = <T>(operation: T | Promise<T>) =>
         withAbort(Promise.resolve(operation), controller.signal);
@@ -915,6 +918,7 @@ export default defineBackground({
                     ? 'timed-out'
                     : 'failed';
           }
+          failure = drmErrorResponse(error, stage);
           const isExplicitClose = controller.signal.reason === EXPLICIT_CLOSE_REASON;
           if (!isExplicitClose) console.warn('[okova] DRM request failed at', stage, error);
           try {
@@ -943,7 +947,7 @@ export default defineBackground({
           } catch (cleanupError) {
             console.warn('[okova] Unable to clean up failed DRM session', cleanupError);
           }
-          respond();
+          respond(failure);
         } finally {
           await saveDiagnostic();
           clearTimeout(timer);
@@ -955,7 +959,7 @@ export default defineBackground({
         sessionKey ? runForSession(sessionKey, handleSafely) : restored.then(handleSafely)
       ).catch((error: unknown) => {
         console.warn('[okova] DRM session storage failed', error);
-        respond();
+        respond(drmErrorResponse(error, 'storage'));
       });
       return true;
     });

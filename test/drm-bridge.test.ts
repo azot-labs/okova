@@ -1,3 +1,4 @@
+import { DrmRequestError } from '../src/extension/utils/drm-error';
 import { afterEach, beforeEach, expect, test, vi } from 'vitest';
 import { browser } from 'wxt/browser';
 import type { ContentScriptContext } from 'wxt/utils/content-script-context';
@@ -75,7 +76,12 @@ test('times out and removes the listener without affecting a later request', asy
   const removeListener = vi.spyOn(window, 'removeEventListener');
   const request = sendDrmMessage({ action: 'license-request' });
   const timedOutId = postMessage.mock.calls[0]![0].requestId;
-  const rejected = expect(request).rejects.toThrow('Timed out waiting for DRM response');
+  const rejected = expect(request).rejects.toMatchObject({
+    name: 'DrmRequestError',
+    kind: 'timeout',
+    stage: 'bridge',
+    message: expect.stringContaining('Timed out waiting for DRM response'),
+  });
   await vi.advanceTimersByTimeAsync(30_000);
   await rejected;
   expect(removeListener).toHaveBeenCalledTimes(1);
@@ -138,9 +144,12 @@ test('content bridge correlates runtime errors and the request cleans up', async
   window.addEventListener('drm-message-response', onResponse);
   const removeListener = vi.spyOn(window, 'removeEventListener');
   sendMessage.mockRejectedValueOnce(new Error('Extension context invalidated'));
-  await expect(sendDrmMessage({ action: 'update' })).rejects.toThrow(
-    'Extension context invalidated',
-  );
+  await expect(sendDrmMessage({ action: 'update' })).rejects.toMatchObject({
+    name: 'DrmRequestError',
+    kind: 'transport',
+    stage: 'bridge',
+    message: 'Extension context invalidated',
+  });
   const response = onResponse.mock.calls[0]![0] as CustomEvent<unknown>;
   expect(typeof response.detail).toBe('string');
   expect(removeListener).toHaveBeenCalledTimes(1);
@@ -173,4 +182,17 @@ test.each(['load-eme'])('keeps %s off page responses', async (action) => {
   await Promise.resolve();
   expect(sendMessage).toHaveBeenCalledExactlyOnceWith({ action, token });
   expect(response).not.toHaveBeenCalled();
+});
+
+test.each([
+  { kind: 'request', stage: 'credentials', message: 'Select matching DRM credentials' },
+  { kind: 'request', stage: 'license', message: 'Invalid license signature' },
+  { kind: 'timeout', stage: 'license', message: 'DRM request timed out after 25000ms' },
+])('carries a background $stage failure through the content script to the page', async (error) => {
+  await startContentBridge();
+  sendMessage.mockResolvedValueOnce({ error });
+  const request = sendDrmMessage({ action: 'update' });
+  await expect(request).rejects.toBeInstanceOf(DrmRequestError);
+  await expect(request).rejects.toMatchObject(error);
+  expect(vi.getTimerCount()).toBe(0);
 });
