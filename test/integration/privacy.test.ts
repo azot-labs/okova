@@ -24,7 +24,6 @@ beforeEach(async () => {
   config.credentials = ['test.wvd'];
   config.users = {};
   config.public = true;
-  config.forcePrivacyMode = true;
   credentialCache.set(resolve('test.wvd'), await loadWidevineClientCredentials());
 });
 
@@ -46,6 +45,7 @@ const decodeChallenge = (message: Uint8Array) =>
   LicenseRequest.decode(SignedMessage.decode(message).msg);
 
 test('forced privacy rejects a challenge before signing without a certificate', async () => {
+  config.forcePrivacyMode = true;
   const remote = connect();
   const session = await remote.createSession();
   await expect(session.generateRequest(initData)).rejects.toThrow(
@@ -53,9 +53,15 @@ test('forced privacy rejects a challenge before signing without a certificate', 
   );
 });
 
-test.each([true, false])(
-  'certificate transport encrypts client ID, set before session: %s',
-  async (beforeSession) => {
+test.each([
+  [false, true],
+  [false, false],
+  [true, true],
+  [true, false],
+])(
+  'certificate transport encrypts client ID, forced privacy: %s, set before session: %s',
+  async (forcePrivacyMode, beforeSession) => {
+    config.forcePrivacyMode = forcePrivacyMode;
     const remote = connect();
     if (beforeSession) await remote.setServerCertificate(certificate);
     const session = await remote.createSession();
@@ -68,8 +74,8 @@ test.each([true, false])(
   },
 );
 
-test('privacy can be disabled explicitly for plaintext requests', async () => {
-  config.forcePrivacyMode = false;
+test('default config allows plaintext requests without a certificate', async () => {
+  expect(config.forcePrivacyMode).toBe(false);
   const remote = connect();
   const session = await remote.createSession();
   const message = new Session('temporary', remote, session).waitForLicenseRequest();
@@ -80,6 +86,7 @@ test('privacy can be disabled explicitly for plaintext requests', async () => {
 });
 
 test('server validates certificates independently of the remote credentials', async () => {
+  config.forcePrivacyMode = true;
   const session = await connect().createSession();
   const response = await app.request(`/sessions/${session.sessionId}/generate-request`, {
     method: 'POST',
@@ -142,6 +149,7 @@ test.each([200, 500])(
 );
 
 test('certificates do not carry over to another remote engine', async () => {
+  config.forcePrivacyMode = true;
   const remote = connect();
   await remote.setServerCertificate(certificate);
   const session = await remote.createSession();
@@ -150,18 +158,39 @@ test('certificates do not carry over to another remote engine', async () => {
   await expect(otherSession.generateRequest(initData)).rejects.toThrow('Privacy mode requires');
 });
 
-test('PlayReady rejects server certificates, forced privacy, and CLI encrypt', async () => {
+test.each([
+  [false, false],
+  [false, true],
+  [true, false],
+  [true, true],
+])(
+  'PlayReady generates requests, forced privacy: %s, mixed credentials: %s',
+  async (forcePrivacyMode, mixed) => {
+    config.forcePrivacyMode = forcePrivacyMode;
+    config.credentials = mixed ? ['test.wvd', 'test.prd'] : ['test.prd'];
+    credentialCache.set(
+      resolve('test.prd'),
+      await PlayReadyClientCredentials.from({
+        prd: await readFile(process.env.VITEST_PRD_PATH!),
+      }),
+    );
+    const remote = connect('com.microsoft.playready');
+    const session = await remote.createSession();
+    const message = new Session('temporary', remote, session).waitForLicenseRequest();
+    const header =
+      '<WRMHEADER xmlns="http://schemas.microsoft.com/DRM/2007/03/PlayReadyHeader" version="4.0.0.0"><DATA></DATA></WRMHEADER>';
+    await session.generateRequest(Buffer.from(header, 'utf16le'));
+    expect(new TextDecoder().decode(await message)).toContain('<AcquireLicense');
+  },
+);
+
+test('PlayReady rejects server certificates and CLI encrypt', async () => {
   const credentialsPath = process.env.VITEST_PRD_PATH!;
   const clientCredentials = await PlayReadyClientCredentials.from({
     prd: await readFile(credentialsPath),
   });
   const engine = new PlayReady({ clientCredentials });
   await expect(engine.setServerCertificate()).rejects.toThrow('unsupported');
-  credentialCache.set(resolve('test.wvd'), clientCredentials);
-  const session = await connect('com.microsoft.playready').createSession();
-  await expect(session.generateRequest(initData)).rejects.toThrow(
-    'Forced privacy mode is unsupported',
-  );
   const fetch = vi.fn();
   vi.stubGlobal('fetch', fetch);
   await expect(
