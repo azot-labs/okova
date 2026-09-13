@@ -70,21 +70,19 @@ export const Dashboard = () => {
           header={RECENT_CAPTURES_LABEL}
           controls={
             <CaptureSearch search={filters.search}>
+              <Show when={activeDomain()}>
+                {(domain) => (
+                  <DeleteKeys
+                    class="w-fit ml-auto"
+                    label={DELETE_SITE_CAPTURES_LABEL}
+                    scope={{ kind: 'site', domain: domain() }}
+                    size="xs"
+                  />
+                )}
+              </Show>
               <CaptureDrmFilter {...filters.drm} />
               <CaptureOrder {...filters.order} />
             </CaptureSearch>
-          }
-          headerActions={
-            <Show when={activeDomain()}>
-              {(domain) => (
-                <DeleteKeys
-                  class="w-fit ml-auto"
-                  label={DELETE_SITE_CAPTURES_LABEL}
-                  scope={{ kind: 'site', domain: domain() }}
-                  size="xs"
-                />
-              )}
-            </Show>
           }
           footer={
             <Show when={!settings.spoofing}>
