@@ -9,6 +9,7 @@ import { parseCredentialsFiles } from '../utils/credential-import';
 
 export const CellImportCredentials: Component<{
   disabled?: boolean;
+  replaceId?: string;
   onChange?: (credentials: Credentials) => void;
 }> = (props) => {
   const [, setSettings] = useSettings();
@@ -27,9 +28,11 @@ export const CellImportCredentials: Component<{
     setIsImporting(true);
     try {
       const { credentials, warning } = await parseCredentialsFiles(files);
-      const snapshot = await appStorage.credentials.import(credentials);
+      const snapshot = props.replaceId
+        ? await appStorage.credentials.replace(props.replaceId, credentials)
+        : await appStorage.credentials.import(credentials);
       syncCredentials(snapshot);
-      if (snapshot.settings) setSettings(snapshot.settings);
+      if ('settings' in snapshot && snapshot.settings) setSettings(snapshot.settings);
       setImportWarning(warning);
       props.onChange?.(credentials);
     } catch (error) {
@@ -54,11 +57,22 @@ export const CellImportCredentials: Component<{
   return (
     <>
       <Section>
-        <Cell before={<TbOutlineFilePlus />} variant="warning" component="label">
-          {isImporting() ? 'Importing credentials…' : 'Import credentials'}
+        <Cell
+          before={<TbOutlineFilePlus />}
+          variant="warning"
+          component="label"
+          disabled={props.disabled || isImporting()}
+        >
+          {isImporting()
+            ? 'Importing credentials…'
+            : props.replaceId
+              ? 'Re-import'
+              : 'Import credentials'}
           <input
             class="hidden"
-            id="file"
+            aria-label={
+              props.replaceId ? `Re-import credentials ${props.replaceId}` : 'Import credentials'
+            }
             name="credentials"
             multiple
             type="file"

@@ -3,6 +3,7 @@ import { popupHistory } from './history';
 import {
   appStorage,
   StoredCredentials,
+  FailedCredentials,
   CredentialsSnapshot,
   defaultSettings,
   KeyInfo,
@@ -19,11 +20,15 @@ export const useCredentialsImportWarning = () => credentialsImportWarningSignal;
 const credentialsSignal = createSignal<StoredCredentials[]>([]);
 export const useCredentials = () => credentialsSignal;
 
+const failedCredentialsSignal = createSignal<FailedCredentials[]>([]);
+export const useFailedCredentials = () => failedCredentialsSignal;
+
 const activeCredentialsSignal = createSignal<StoredCredentials | null>(null);
 export const useActiveCredentials = () => activeCredentialsSignal;
 
 export const syncCredentials = (snapshot: CredentialsSnapshot) => {
   credentialsSignal[1](snapshot.credentials);
+  failedCredentialsSignal[1](snapshot.failedCredentials);
   activeCredentialsSignal[1](
     snapshot.credentials.find((entry) => entry.id === snapshot.activeCredentialsId) ?? null,
   );
