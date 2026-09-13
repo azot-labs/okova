@@ -82,3 +82,19 @@ test.each(['headers', 'body'])('aborts a stalled certificate response %s', async
   expect(AbortSignal.timeout).toHaveBeenCalledWith(30_000);
   expect(fetchDecryptionKeys).not.toHaveBeenCalled();
 });
+
+test.each(['application data', ''])(
+  'rejects Widevine custom data before network requests: %j',
+  async (customData) => {
+    vi.mocked(importClientCredentials).mockResolvedValue(
+      new WidevineClientCredentials(ClientIdentification.create({})),
+    );
+    const fetch = vi.fn();
+    vi.stubGlobal('fetch', fetch);
+    await expect(
+      license({ url: 'https://example.test', pssh: 'AQ==', encrypt: true, customData }),
+    ).rejects.toThrow('--custom-data is supported only for PlayReady');
+    expect(fetch).not.toHaveBeenCalled();
+    expect(fetchDecryptionKeys).not.toHaveBeenCalled();
+  },
+);

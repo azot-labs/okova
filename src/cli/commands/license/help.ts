@@ -14,6 +14,7 @@ export const help = () => {
       'unique HTTP headers to send with the license request (e.g. -H "Authorization: Bearer ...")',
   );
   console.log(col(`-p, --pssh`) + 'Widevine or PlayReady PSSH data in Base64');
+  console.log(col(`--custom-data <string>`) + 'application data for PlayReady license requests');
   console.log(
     col(`-c, --credentials`) +
       'path to credentials (.wvd/.prd file or directory with credential files)',

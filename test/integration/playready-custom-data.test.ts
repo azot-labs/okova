@@ -14,6 +14,7 @@ import { PlayReadySession } from '../../src/lib/playready/session';
 import { createSha256, ecc256Verify } from '../../src/lib/crypto/common';
 import sessionApi from '../../src/cli/commands/serve/api/session';
 import { credentialCache, config, sessions } from '../../src/cli/commands/serve/state';
+import { license } from '../../src/cli/commands/license/license';
 
 beforeEach(({ skip }) => {
   if (!process.env.VITEST_PRD_PATH) skip('Set VITEST_PRD_PATH to enable this fixture suite');
@@ -105,6 +106,27 @@ test('helper sends the configured custom data in the license request', async () 
   expect(fetchLicense).toHaveBeenCalledOnce();
   expect(engine.sessions.size).toBe(0);
 });
+
+test.each([undefined, '', applicationData])(
+  'CLI sends signed custom data: %j',
+  async (customData) => {
+    const fetchLicense = vi.fn<typeof fetch>(async (input) => {
+      assert(input instanceof Request);
+      await checkChallenge(await input.text(), customData);
+      throw new Error('Stop after inspecting challenge');
+    });
+    vi.stubGlobal('fetch', fetchLicense);
+    await expect(
+      license({
+        url: 'https://license.test',
+        pssh: Buffer.from(initData).toString('base64'),
+        credentialsPath: process.env.VITEST_PRD_PATH,
+        customData,
+      }),
+    ).rejects.toThrow('Stop after inspecting challenge');
+    expect(fetchLicense).toHaveBeenCalledOnce();
+  },
+);
 
 test('remote API keeps custom data separate for sessions sharing credentials', async () => {
   config.credentials = ['custom-data.prd'];

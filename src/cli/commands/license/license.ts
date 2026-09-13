@@ -9,6 +9,7 @@ type LicenseCommandParams = {
   pssh: string;
   credentialsPath?: string;
   encrypt?: boolean;
+  customData?: string;
   headers?: string[];
 };
 
@@ -33,10 +34,13 @@ export const license = async (params: LicenseCommandParams) => {
   }
   const headers = Object.fromEntries(parsedHeaders);
   const credentials = await importClientCredentials(params.credentialsPath || process.cwd());
+  if (params.customData !== undefined && credentials instanceof WidevineClientCredentials) {
+    throw new Error('--custom-data is supported only for PlayReady');
+  }
   const cdm =
     credentials instanceof WidevineClientCredentials
       ? new Widevine({ clientCredentials: credentials })
-      : new PlayReady({ clientCredentials: credentials });
+      : new PlayReady({ clientCredentials: credentials, customData: params.customData });
   const signal = AbortSignal.timeout(30_000);
   if (params.encrypt) {
     if (!(cdm instanceof Widevine)) {
