@@ -63,15 +63,56 @@ export type RecentKeysByDomain = Record<string, KeyInfo[]>;
 
 export const MAX_HISTORY_RECORDS = 1_000;
 
-// Keep input order for the UI; timestamps decide which records survive overflow.
-const retainNewest = <T>(records: T[], createdAt: (record: T) => number): T[] => {
-  if (records.length <= MAX_HISTORY_RECORDS) return records;
-  const oldest = records
-    .map((record, index) => ({ index, createdAt: createdAt(record) }))
-    .sort((left, right) => left.createdAt - right.createdAt || left.index - right.index);
-  const removed = new Set(
-    oldest.slice(0, records.length - MAX_HISTORY_RECORDS).map((record) => record.index),
+// History is duplicated in three stores. Keep their combined budget at 6 MiB.
+export const MAX_HISTORY_BYTES = 2 * 1024 * 1024;
+const encoder = new TextEncoder();
+// asJson stores a JSON string, so count its escaped representation too.
+const storedBytes = (value: unknown) =>
+  encoder.encode(JSON.stringify(JSON.stringify(value))).byteLength;
+
+// Keep UI order. Evict whole captures by timestamp, leaving the newest intact.
+const retainNewest = <T>(
+  records: T[],
+  getKey: (record: T) => KeyInfo | null,
+  sizeBytes: (record: T) => number,
+): T[] => {
+  const entries = records.map((record, index) => ({
+    index,
+    key: getKey(record),
+    sizeBytes: sizeBytes(record),
+  }));
+  // Reserve space for the storage key, outer string, and collection delimiters.
+  let bytes = 256 + entries.reduce((total, entry) => total + entry.sizeBytes, 0);
+  if (records.length <= MAX_HISTORY_RECORDS && bytes <= MAX_HISTORY_BYTES) return records;
+  const oldest = entries.toSorted(
+    (left, right) =>
+      (left.key?.createdAt ?? 0) - (right.key?.createdAt ?? 0) || left.index - right.index,
   );
+  const newest = oldest.at(-1);
+  const removed = new Set<number>();
+  for (const entry of oldest) {
+    if (records.length - removed.size <= MAX_HISTORY_RECORDS && bytes <= MAX_HISTORY_BYTES) break;
+    if (removed.has(entry.index)) continue;
+    if (
+      entry === newest ||
+      (entry.key?.captureId && entry.key.captureId === newest?.key?.captureId)
+    )
+      continue;
+    for (const candidate of entries) {
+      if (
+        !removed.has(candidate.index) &&
+        (candidate.index === entry.index ||
+          (entry.key?.captureId && candidate.key?.captureId === entry.key.captureId))
+      ) {
+        removed.add(candidate.index);
+        bytes -= candidate.sizeBytes;
+      }
+    }
+  }
+  if (bytes > MAX_HISTORY_BYTES || records.length - removed.size > MAX_HISTORY_RECORDS)
+    throw new Error(
+      'The newest capture exceeds the history budget; it was not saved. PSSH was kept intact.',
+    );
   return records.filter((_, index) => !removed.has(index));
 };
 
@@ -80,19 +121,29 @@ const sanitizeManifestMetadata = (key: KeyInfo): KeyInfo => {
   return { ...key, ...metadata, manifests: metadata.manifests };
 };
 const retainKeys = (keys: KeyInfo[]) =>
-  retainNewest(keys, (key) => key.createdAt).map(sanitizeManifestMetadata);
+  retainNewest(
+    keys.map(sanitizeManifestMetadata),
+    (key) => key,
+    (key) => storedBytes(key) + 1,
+  );
 
-// The domain cache has one shared record budget, not 1,000 records per domain.
+// Charge domain names and delimiters per entry, conservatively including empty domains.
 const retainDomains = (domains: RecentKeysByDomain): RecentKeysByDomain => {
   const entries = Object.entries(domains).flatMap(
     ([domain, keys]): { domain: string; key: KeyInfo | null }[] =>
-      keys.length ? keys.map((key) => ({ domain, key })) : [{ domain, key: null }],
+      keys.length
+        ? keys.map((key) => ({ domain, key: sanitizeManifestMetadata(key) }))
+        : [{ domain, key: null }],
   );
-  const retained = retainNewest(entries, (entry) => entry.key?.createdAt ?? 0);
+  const retained = retainNewest(
+    entries,
+    (entry) => entry.key,
+    (entry) => storedBytes(entry.domain) + storedBytes(entry.key) + 8,
+  );
   const result: RecentKeysByDomain = Object.create(null);
   for (const { domain, key } of retained) {
     const keys = (result[domain] ??= []);
-    if (key) keys.push(sanitizeManifestMetadata(key));
+    if (key) keys.push(key);
   }
   return result;
 };
@@ -421,16 +472,24 @@ const createKeyHistory = (isIncognito: boolean, generation?: string) => {
         keyHistory.recentKeysByDomain.getValue(),
       ]);
       await storage.setItems([
-        { key: keyHistory.allKeys.raw.key, value: JSON.stringify((history ?? []).filter(keep)) },
-        { key: keyHistory.recentKeys.key, value: JSON.stringify((recent ?? []).filter(keep)) },
+        {
+          key: keyHistory.allKeys.raw.key,
+          value: JSON.stringify(retainKeys((history ?? []).filter(keep))),
+        },
+        {
+          key: keyHistory.recentKeys.key,
+          value: JSON.stringify(retainKeys((recent ?? []).filter(keep))),
+        },
         {
           key: keyHistory.recentKeysByDomain.raw.key,
           value: JSON.stringify(
-            Object.fromEntries(
-              Object.entries(domains ?? {}).map(([domain, records]) => [
-                domain,
-                records.filter(keep),
-              ]),
+            retainDomains(
+              Object.fromEntries(
+                Object.entries(domains ?? {}).map(([domain, records]) => [
+                  domain,
+                  records.filter(keep),
+                ]),
+              ),
             ),
           ),
         },
@@ -540,17 +599,22 @@ const createKeyHistory = (isIncognito: boolean, generation?: string) => {
           await storage.setItems([
             {
               key: keyHistory.allKeys.raw.key,
-              value: JSON.stringify((keys ?? []).filter(keepRecord)),
+              value: JSON.stringify(retainKeys((keys ?? []).filter(keepRecord))),
             },
-            { key: recentKeys.key, value: JSON.stringify((recent ?? []).filter(keepRecord)) },
+            {
+              key: recentKeys.key,
+              value: JSON.stringify(retainKeys((recent ?? []).filter(keepRecord))),
+            },
             {
               key: keyHistory.recentKeysByDomain.raw.key,
               value: JSON.stringify(
-                Object.fromEntries(
-                  Object.entries(domains ?? {}).map(([domain, records]) => [
-                    domain,
-                    records.filter(keepRecord),
-                  ]),
+                retainDomains(
+                  Object.fromEntries(
+                    Object.entries(domains ?? {}).map(([domain, records]) => [
+                      domain,
+                      records.filter(keepRecord),
+                    ]),
+                  ),
                 ),
               ),
             },

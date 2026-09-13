@@ -4,10 +4,13 @@ import { fakeBrowser } from 'wxt/testing/fake-browser';
 import background from '../src/extension/entrypoints/background';
 import {
   appStorage,
+  MAX_HISTORY_BYTES,
+  getDrmFailureStorage,
   prepareKeyDeletion,
   deleteKeySnapshot,
   type KeyInfo,
 } from '../src/extension/utils/storage';
+import { getCaptureDiagnosticsStorage } from '../src/extension/utils/session-diagnostics';
 import { fromHex, Widevine } from '../src/lib';
 import { Session, setSupportedEngines } from '../src/lib/api';
 import { WidevineClientCredentials } from '../src/lib/widevine/client-credentials';
@@ -201,7 +204,9 @@ test('releases the lock after a failed write and reports the failure', async () 
   expect(await appStorage.allKeys.getValue()).toEqual([key]);
 });
 
-const startBackground = () => {
+const startBackground = (
+  sender: Parameters<Parameters<typeof browser.runtime.onMessage.addListener>[0]>[1] = {},
+) => {
   const addListener = vi.spyOn(browser.runtime.onMessage, 'addListener');
   vi.spyOn(browser.tabs, 'query').mockImplementation(async () => []);
   background.main();
@@ -218,7 +223,7 @@ const startBackground = () => {
           initData: key.pssh,
           ...message,
         },
-        {},
+        sender,
         resolve,
       );
     });
@@ -612,3 +617,175 @@ test('bounds manifest metadata when persisting a multi-key capture to all histor
     }
   }
 });
+
+test('keeps 1,000 large records within the byte budget in all three stores', async () => {
+  const keys = Array.from({ length: 1_000 }, (_, index) => ({
+    ...key,
+    id: String(index),
+    createdAt: index,
+    pssh: 'A'.repeat(16 * 1024),
+    url: `https://example.com/${'界"\\'.repeat(200)}/${index}`,
+    manifests: [
+      { url: `https://example.com/${'x'.repeat(8000)}.mpd`, kind: 'dash' as const, matched: true },
+    ],
+  }));
+  await appStorage.allKeys.raw.setValue(keys);
+  await appStorage.allKeys.add({ ...key, id: 'latest', createdAt: 1_001 });
+  await appStorage.recentKeys.setValue(keys);
+  await appStorage.recentKeysByDomain.setValue(
+    Object.fromEntries(keys.map((record) => [`${record.id}.example`, [record]])),
+  );
+  const stored = await browser.storage.local.get([
+    'all-keys',
+    'recent-keys',
+    'recent-keys-by-domain',
+  ]);
+  for (const [name, value] of Object.entries(stored)) {
+    expect(Buffer.byteLength(name) + Buffer.byteLength(JSON.stringify(value))).toBeLessThanOrEqual(
+      MAX_HISTORY_BYTES,
+    );
+  }
+  const history = (await appStorage.allKeys.getValue()) ?? [];
+  expect(history.length).toBeLessThan(1_000);
+  expect(history[0]?.createdAt).toBeGreaterThan(0);
+  expect(history.at(-1)?.id).toBe('latest');
+  expect(history.slice(0, -1).every((record) => record.pssh === keys[0]?.pssh)).toBe(true);
+  expect((await appStorage.recentKeys.getValue())?.at(-1)?.id).toBe('999');
+  expect((await appStorage.recentKeysByDomain.getValue())?.['999.example']?.[0]?.pssh).toBe(
+    keys[999]?.pssh,
+  );
+});
+
+test('evicts complete older captures while preserving all keys and PSSH in the newest capture', async () => {
+  const pssh = 'A'.repeat(600_000);
+  const old = [0, 1].map((index) => ({ ...key, id: String(index), captureId: 'old', pssh }));
+  const latest = [2, 3].map((index) => ({
+    ...key,
+    id: String(index),
+    captureId: 'latest',
+    createdAt: 2,
+    pssh,
+  }));
+  await appStorage.allKeys.add(...old);
+  await appStorage.allKeys.add(...latest);
+  expect(await appStorage.allKeys.getValue()).toEqual(latest);
+});
+
+test('rejects an oversized newest capture without truncating PSSH or destroying saved history', async () => {
+  await appStorage.allKeys.add(key);
+  await expect(
+    appStorage.allKeys.add({
+      ...key,
+      id: 'huge',
+      createdAt: 2,
+      pssh: 'A'.repeat(MAX_HISTORY_BYTES),
+    }),
+  ).rejects.toThrow('newest capture exceeds the history budget');
+  expect(await appStorage.allKeys.getValue()).toEqual([key]);
+});
+
+test.each(['all-keys', 'recent-keys', 'all-storage'])(
+  'reports %s persistence failures and still returns extracted keys',
+  async (failedStore) => {
+    await appStorage.settings.setValue({
+      spoofing: false,
+      emeInterception: true,
+      requestInterception: false,
+      theme: 'auto',
+    });
+    const originalSet = browser.storage.local.set.bind(browser.storage.local);
+    vi.spyOn(browser.storage.local, 'set').mockImplementation(async (items) => {
+      if (failedStore === 'all-storage' || failedStore in items)
+        throw new Error('QUOTA_BYTES exceeded');
+      return originalSet(items);
+    });
+    if (failedStore === 'all-storage')
+      vi.spyOn(browser.storage.session, 'set').mockRejectedValue(
+        new Error('Session quota exceeded'),
+      );
+    vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const setTitle = vi.spyOn(browser.action, 'setTitle');
+    const tab = await browser.tabs.create({ url: key.url });
+    const sendMessage = startBackground({ tab });
+    const license = Buffer.from(
+      JSON.stringify({
+        keys: [
+          {
+            kty: 'oct',
+            kid: Buffer.from(key.id, 'hex').toString('base64url'),
+            k: Buffer.from(key.value, 'hex').toString('base64url'),
+          },
+        ],
+      }),
+    ).toString('base64');
+    const response = await sendMessage({
+      action: 'update',
+      keySystem: 'org.w3.clearkey',
+      message: [...Buffer.from(license, 'base64')],
+    });
+    expect(response).toMatchObject({ keys: [{ id: key.id, value: key.value, pssh: key.pssh }] });
+    if (failedStore !== 'all-storage')
+      expect(await getDrmFailureStorage(tab.id!).getValue()).toMatchObject({
+        stage: 'history',
+        error: 'Unable to save key history: QUOTA_BYTES exceeded',
+      });
+    expect(setTitle).toHaveBeenCalledWith({
+      tabId: tab.id,
+      title: expect.stringContaining('Unable to save key history: QUOTA_BYTES exceeded'),
+    });
+    if (failedStore !== 'all-storage') {
+      await vi.waitFor(async () => {
+        const captures = await getCaptureDiagnosticsStorage(tab.id!).getValue();
+        expect(captures?.at(-1)).toMatchObject({
+          outcome: 'keys-returned',
+          events: expect.arrayContaining([
+            expect.objectContaining({ stage: 'history', status: 'failed' }),
+          ]),
+        });
+      });
+    }
+  },
+);
+
+test.each(['snapshot', 'record'])(
+  'bounds oversized legacy stores when deleting a %s',
+  async (mode) => {
+    const records = Array.from({ length: 20 }, (_, index) => ({
+      ...key,
+      id: String(index),
+      createdAt: index,
+      pssh: 'A'.repeat(200_000),
+    }));
+    const target = records[0]!;
+    await browser.storage.local.set({
+      'all-keys': JSON.stringify(records),
+      'recent-keys': JSON.stringify(records),
+      'recent-keys-by-domain': JSON.stringify({ 'example.com': records }),
+    });
+    if (mode === 'snapshot') {
+      const snapshot = await prepareKeyDeletion({ kind: 'selected', records: [target] });
+      await deleteKeySnapshot(snapshot.tokens);
+    } else {
+      await appStorage.allKeys.remove(target);
+    }
+    const stored = await browser.storage.local.get([
+      'all-keys',
+      'recent-keys',
+      'recent-keys-by-domain',
+    ]);
+    for (const [name, value] of Object.entries(stored)) {
+      expect(
+        Buffer.byteLength(name) + Buffer.byteLength(JSON.stringify(value)),
+      ).toBeLessThanOrEqual(MAX_HISTORY_BYTES);
+    }
+    for (const retained of [
+      await appStorage.allKeys.getValue(),
+      await appStorage.recentKeys.getValue(),
+      (await appStorage.recentKeysByDomain.getValue())?.['example.com'],
+    ]) {
+      expect(retained?.some((record) => record.id === target.id)).toBe(false);
+      expect(retained?.at(-1)).toEqual(records.at(-1));
+      expect(retained?.every((record) => record.pssh === records[0]?.pssh)).toBe(true);
+    }
+  },
+);
