@@ -123,20 +123,14 @@ export const installNetworkInterception = () => {
       const originalFetch = fetch;
       const cachedFetch = async function fetch(resource: URL | RequestInfo, options?: RequestInit) {
         const startedAt = Date.now();
-        const requestUrl = getRequestUrl(resource);
-        let requestHeaders: RequestHeader[] = [];
-        try {
-          const method = options?.method ?? (resource instanceof Request ? resource.method : 'GET');
-          if (method.toUpperCase() === 'GET') {
-            const headers = new Headers(
-              options?.headers ?? (resource instanceof Request ? resource.headers : undefined),
-            );
-            requestHeaders = Array.from(headers, ([name, value]) => ({ name, value }));
-          }
-        } catch {
-          // Inspection must not turn a valid page request into a failed request.
-        }
-        const response = await originalFetch(resource, options);
+        // Normalize once so native fetch never reconsumes page-owned header iterables/getters.
+        const request = new Request(resource, options);
+        const requestUrl = request.url;
+        const requestHeaders =
+          request.method === 'GET'
+            ? Array.from(request.headers, ([name, value]) => ({ name, value }))
+            : [];
+        const response = await originalFetch(request);
         void inspectFetchResponse(response, requestUrl, requestHeaders, startedAt).catch(
           (error) => {
             console.warn('[okova] Fetch response inspection failed', error);

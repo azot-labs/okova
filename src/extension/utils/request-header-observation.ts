@@ -5,22 +5,31 @@ import { getManifestMetadata } from './manifest';
 
 export const installRequestHeaderObservation = () => {
   const cache = createRequestHeaderCache();
-  let isEnabled = false;
+  // Unknown settings use the same bounded cache, but nothing is returned until enabled.
+  let isEnabled: boolean | undefined;
   let revision = 0;
   appStorage.settings.watch((settings) => {
     revision++;
     isEnabled = (settings ?? defaultSettings).requestInterception;
     if (!isEnabled) cache.clear();
   });
-  void appStorage.settings
+  const settingsReady = appStorage.settings
     .getValue()
     .then((settings) => {
-      if (revision === 0) isEnabled = (settings ?? defaultSettings).requestInterception;
+      if (revision === 0) {
+        isEnabled = (settings ?? defaultSettings).requestInterception;
+        if (!isEnabled) cache.clear();
+      }
     })
-    .catch(() => {});
+    .catch(() => {
+      if (revision === 0) {
+        isEnabled = false;
+        cache.clear();
+      }
+    });
   browser.webRequest.onSendHeaders.addListener(
     (details) => {
-      if (!isEnabled || details.tabId < 0 || details.method !== 'GET') return;
+      if (isEnabled === false || details.tabId < 0 || details.method !== 'GET') return;
       scheduleExpiry();
       cache.observe(
         {
@@ -59,10 +68,10 @@ export const installRequestHeaderObservation = () => {
   };
   return {
     observePage: (value: unknown, tabId: number, frameId: number) => {
-      if (isEnabled) cache.observePage(value, tabId, frameId);
+      if (isEnabled !== false) cache.observePage(value, tabId, frameId);
     },
     capture: (keys: KeyInfo[], tabId: number, frameId: number, incognito: boolean) => {
-      if (!isEnabled) return;
+      if (isEnabled === false) return;
       for (const key of keys) {
         const metadata = getManifestMetadata(key);
         const urls = [
@@ -75,7 +84,9 @@ export const installRequestHeaderObservation = () => {
         cache.capture({ token: keyRecordToken(key), tabId, frameId, incognito }, urls);
       }
     },
-    read: (token: string, url: string, incognito: boolean) =>
-      isEnabled ? cache.read(token, url, incognito) : [],
+    read: async (token: string, url: string, incognito: boolean) => {
+      if (isEnabled === undefined) await settingsReady;
+      return isEnabled ? cache.read(token, url, incognito) : [];
+    },
   };
 };

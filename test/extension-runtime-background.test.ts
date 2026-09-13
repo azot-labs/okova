@@ -4,6 +4,7 @@ import { fakeBrowser } from 'wxt/testing/fake-browser';
 import { getCaptureUrl } from '../src/extension/utils/capture-url';
 import {
   appStorage,
+  keyRecordToken,
   defaultSettings,
   getRecentKeysForUrl,
   privateHistory,
@@ -298,4 +299,64 @@ test('does not show ordinary same-site keys on a private tab badge', async () =>
   const setBadgeText = vi.spyOn(browser.action, 'setBadgeText');
   start();
   await expect.poll(() => setBadgeText.mock.calls).toContainEqual([{ tabId: tab.id, text: '' }]);
+});
+
+test('header lookups accept routed popup URLs and large stored capture tokens only from this extension', async () => {
+  await appStorage.settings.setValue(defaultSettings);
+  const send = start();
+  const listener = vi.mocked(browser.webRequest.onSendHeaders.addListener).mock.calls[0]?.[0];
+  if (!listener) throw new Error('Missing request header listener');
+  const mpd = 'https://example.com/manifest';
+  const headers = [{ name: 'Cookie', value: 'session=test' }];
+  listener({
+    documentLifecycle: 'active',
+    frameType: 'outermost_frame',
+    requestId: 'lookup',
+    tabId: 12,
+    frameId: 0,
+    parentFrameId: -1,
+    timeStamp: Date.now(),
+    method: 'GET',
+    url: mpd,
+    type: 'xmlhttprequest',
+    requestHeaders: headers,
+  });
+  const license = new TextEncoder().encode(
+    JSON.stringify({
+      keys: [{ kty: 'oct', kid: 'AAAAAAAAAAAAAAAAAAAAAA', k: 'AQEBAQEBAQEBAQEBAQEBAQ' }],
+    }),
+  );
+  await send(
+    {
+      action: 'update',
+      keySystem: 'org.w3.clearkey',
+      initData: 'a'.repeat(70 * 1024),
+      mpd,
+      message: Object.fromEntries(license.entries()),
+    },
+    { tab, frameId: 0, url: 'https://example.com/watch' },
+  );
+  const key = (await appStorage.allKeys.getValue())?.[0];
+  if (!key) throw new Error('Missing captured key');
+  const token = keyRecordToken(key);
+  expect(token.length).toBeGreaterThan(64 * 1024);
+  const window = await browser.windows.create({ incognito: false });
+  if (!window) throw new Error('Missing test window');
+  const request = { action: 'download-headers', token, url: mpd, windowId: window.id };
+  for (const path of [
+    '/popup.html',
+    '/popup.html/captures',
+    '/popup.html/captures?filter=recent#details',
+  ]) {
+    expect(await send(request, { url: browser.runtime.getURL('/') + path.slice(1) })).toEqual(
+      headers,
+    );
+  }
+  for (const url of [
+    'https://example.com/popup.html/captures',
+    browser.runtime.getURL('/popup.html-evil'),
+    browser.runtime.getURL('/') + 'background.html',
+  ]) {
+    expect(await send(request, { url })).toEqual([]);
+  }
 });

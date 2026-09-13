@@ -322,6 +322,19 @@ test('captures HLS/MSS choices through real EME and builds commands in the popup
     ).not.toContain('test-only');
     await cookie.click();
     expect(await command.inputValue()).not.toContain('test-only-cookie');
+    const editedCommand = `${await command.inputValue()} --save-name custom`;
+    await command.fill(editedCommand);
+    await cookie.click();
+    expect(await command.inputValue()).toBe(editedCommand);
+    await cookie.click();
+    expect(await command.inputValue()).toBe(editedCommand);
+    await popup.getByRole('button', { name: 'Select All', exact: true }).click();
+    expect(await command.inputValue()).toBe(editedCommand);
+    await popup.getByRole('button', { name: 'Reset', exact: true }).click();
+    expect(await command.inputValue()).toContain('session=test-only-cookie');
+    expect(await command.inputValue()).not.toContain('--save-name custom');
+    await cookie.click();
+    expect(await command.inputValue()).not.toContain('test-only-cookie');
     await command.fill('edited command');
     await choices.filter({ hasText: master }).click();
     expect(await command.inputValue()).toContain(master);
@@ -337,6 +350,20 @@ test('captures HLS/MSS choices through real EME and builds commands in the popup
     expect(await command.inputValue()).toContain('https://okova.test/manual.m3u8');
     await input.fill('');
     await popup.screenshot({ path: resolve('output/playwright/manifest/missing.png') });
+    await popup.evaluate(() => {
+      const getCurrent = browser.windows.getCurrent.bind(browser.windows);
+      browser.windows.getCurrent = async () => ({ ...(await getCurrent()), id: undefined });
+    });
+    await choices.filter({ hasText: master }).click();
+    await expect
+      .poll(() =>
+        popup
+          .getByText('Unable to load request headers. Reopen the popup to try again.', {
+            exact: true,
+          })
+          .count(),
+      )
+      .toBe(1);
   } finally {
     await context.close();
     server.closeAllConnections();

@@ -19,6 +19,7 @@ import {
 } from '@/utils/badge';
 import {
   appStorage,
+  MAX_HISTORY_BYTES,
   getKeyHistory,
   privateHistory,
   clearClosedPrivateHistory,
@@ -450,20 +451,32 @@ export default defineBackground({
       if (incoming?.action === 'download-headers') {
         const request = z
           .object({
-            token: z.string().max(64 * 1024),
+            token: z.string().max(MAX_HISTORY_BYTES),
             url: z.string().max(8192),
             windowId: z.number().int(),
           })
           .safeParse(incoming);
-        if (sender.url !== browser.runtime.getURL('/popup.html') || !request.success) {
+        let isPopup = false;
+        try {
+          const popupUrl = new URL(browser.runtime.getURL('/popup.html'));
+          const senderUrl = new URL(sender.url ?? '');
+          isPopup =
+            senderUrl.protocol === popupUrl.protocol &&
+            senderUrl.host === popupUrl.host &&
+            (senderUrl.pathname === popupUrl.pathname ||
+              senderUrl.pathname.startsWith(`${popupUrl.pathname}/`));
+        } catch {
+          // Missing or malformed sender URLs cannot retrieve sensitive headers.
+        }
+        if (!isPopup || !request.success) {
           sendResponse([]);
           return;
         }
         void browser.windows
           .get(request.data.windowId)
-          .then((window) => {
+          .then(async (window) => {
             sendResponse(
-              requestHeaders.read(request.data.token, request.data.url, window.incognito),
+              await requestHeaders.read(request.data.token, request.data.url, window.incognito),
             );
           })
           .catch(() => sendResponse([]));

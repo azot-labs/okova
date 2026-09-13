@@ -16,16 +16,30 @@ export const pageRequestHeadersSchema = z.object({
 });
 export type RequestHeader = z.infer<typeof requestHeaderSchema>;
 
+const headerEncoder = new TextEncoder();
+
 // Transport, compression, conditional and partial-response headers interfere with a fresh download.
 export const getDownloadHeaders = (headers: unknown): RequestHeader[] => {
-  const parsed = requestHeadersSchema.safeParse(headers);
-  if (!parsed.success) return [];
-  return parsed.data.filter(
-    ({ name }) =>
-      !/^(host|connection|content-length|transfer-encoding|accept-encoding|range|if-.*|proxy-.*|sec-.*|upgrade|te|trailer)$/i.test(
-        name,
-      ),
-  );
+  if (!Array.isArray(headers)) return [];
+  const valid: RequestHeader[] = [];
+  let sizeBytes = 2;
+  for (const header of headers) {
+    const parsed = requestHeaderSchema.safeParse(header);
+    if (!parsed.success) continue;
+    if (
+      /^(host|connection|content-length|transfer-encoding|accept-encoding|range|if-.*|proxy-.*|sec-.*|upgrade|te|trailer)$/i.test(
+        parsed.data.name,
+      )
+    )
+      continue;
+    const addedBytes =
+      headerEncoder.encode(JSON.stringify(parsed.data)).byteLength + (valid.length ? 1 : 0);
+    if (sizeBytes + addedBytes > 32 * 1024) continue;
+    valid.push(parsed.data);
+    sizeBytes += addedBytes;
+    if (valid.length === 100) break;
+  }
+  return valid;
 };
 
 export const isSensitiveHeader = (name: string) =>
@@ -128,13 +142,14 @@ export const createRequestHeaderCache = (now = Date.now) => {
         at: now(),
         manifests: urls.map((url) => ({
           url,
-          headers:
+          headers: (
             requests.findLast(
               (request) =>
                 request.tabId === capture.tabId &&
                 request.frameId === capture.frameId &&
                 request.url === url,
-            )?.headers ?? [],
+            )?.headers ?? []
+          ).map((header) => ({ ...header })),
         })),
       });
       if (captures.length > 100) captures.shift();
@@ -145,7 +160,7 @@ export const createRequestHeaderCache = (now = Date.now) => {
         captures
           .findLast((entry) => entry.token === token && entry.incognito === incognito)
           ?.manifests.find((manifest) => manifest.url === url)?.headers ?? []
-      );
+      ).map((header) => ({ ...header }));
     },
     clear: (tabId?: number, frameId?: number) => {
       for (const entries of [requests, captures]) {

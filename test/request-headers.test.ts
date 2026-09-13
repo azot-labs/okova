@@ -105,3 +105,35 @@ test('discards failed requests and never supplements redirect-hop headers from p
   cache.capture(capture, [url]);
   expect(cache.read('key', url, false)).toEqual([]);
 });
+
+test('retains supported headers alongside binary and malformed browser entries', () => {
+  expect(
+    getDownloadHeaders([
+      { name: 'X-Binary', binaryValue: [255] },
+      { name: 'X-Broken', value: 'bad\r\nvalue' },
+      ...headers,
+      { name: 'Authorization', value: 'Bearer token' },
+    ]),
+  ).toEqual([...headers, { name: 'Authorization', value: 'Bearer token' }]);
+});
+
+test('captures independent snapshots and does not expose mutable cache entries', () => {
+  const cache = createRequestHeaderCache(() => 1000);
+  cache.observe(observation);
+  cache.capture(capture, [url]);
+  cache.observePage(
+    {
+      url,
+      headers: [{ name: 'Authorization', value: 'Bearer later' }],
+      startedAt: 999,
+      completedAt: 1000,
+    },
+    1,
+    2,
+  );
+  expect(cache.read('key', url, false)).toEqual(headers);
+  const result = cache.read('key', url, false);
+  if (result[0]) result[0].value = 'mutated';
+  result.push({ name: 'X-Extra', value: 'mutated' });
+  expect(cache.read('key', url, false)).toEqual(headers);
+});

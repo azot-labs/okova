@@ -45,16 +45,19 @@ export const KeySettings: Component<KeySettingsProps> = (props) => {
     return options;
   });
   const [headers, setHeaders] = createSignal<RequestHeader[]>([]);
+  const [headerError, setHeaderError] = createSignal<string>();
   const [selectedHeaders, setSelectedHeaders] = createSignal<RequestHeader[]>([]);
   createEffect(() => {
     const token = keyRecordToken(props.key);
     const url = manifestUrl();
     let isCurrent = true;
     setHeaders([]);
+    setHeaderError(undefined);
     setSelectedHeaders([]);
     void browser.windows
       .getCurrent()
       .then(async (window) => {
+        if (window.id === undefined) throw new Error('Current window has no ID');
         const result: unknown = await browser.runtime.sendMessage({
           action: 'download-headers',
           token,
@@ -63,7 +66,10 @@ export const KeySettings: Component<KeySettingsProps> = (props) => {
         });
         if (isCurrent) setHeaders(getDownloadHeaders(result));
       })
-      .catch(() => {});
+      .catch(() => {
+        if (isCurrent)
+          setHeaderError('Unable to load request headers. Reopen the popup to try again.');
+      });
     onCleanup(() => {
       isCurrent = false;
     });
@@ -82,9 +88,11 @@ export const KeySettings: Component<KeySettingsProps> = (props) => {
     () => buildDownloadCommand(props.key, manifestUrl(), selectedHeaders()) ?? '',
   );
   const [command, setCommand] = createSignal(generatedCommand());
+  let previousCommand = generatedCommand();
   createEffect(() => {
     const nextCommand = generatedCommand();
-    setCommand(nextCommand);
+    setCommand((current) => (current === previousCommand ? nextCommand : current));
+    previousCommand = nextCommand;
   });
 
   const chooseManifest = (url: string) => {
@@ -239,7 +247,8 @@ export const KeySettings: Component<KeySettingsProps> = (props) => {
             when={headers().length}
             fallback={
               <Cell>
-                No recent request headers available. Reload the player to capture a new request.
+                {headerError() ??
+                  'No recent request headers available. Reload the player to capture a new request.'}
               </Cell>
             }
           >
@@ -271,7 +280,25 @@ export const KeySettings: Component<KeySettingsProps> = (props) => {
             </For>
           </Show>
         </Section>
-        <Section header="Command builder (Bash / Zsh)">
+        <Section
+          header="Command builder (Bash / Zsh)"
+          headerControls={
+            <Cell
+              component="button"
+              size="xs"
+              class="w-auto"
+              disabled={command() === generatedCommand()}
+              onClick={() => setCommand(generatedCommand())}
+            >
+              Reset
+            </Cell>
+          }
+          footer={
+            command() !== generatedCommand()
+              ? 'Command edited manually. Reset to apply the selected headers.'
+              : undefined
+          }
+        >
           <Cell class="w-full">
             <textarea
               class="font-mono outline-none bg-transparent border-none w-full"
