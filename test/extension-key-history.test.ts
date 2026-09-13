@@ -746,3 +746,46 @@ test.each(['all-keys', 'recent-keys', 'all-storage'])(
     }
   },
 );
+
+test.each(['snapshot', 'record'])(
+  'bounds oversized legacy stores when deleting a %s',
+  async (mode) => {
+    const records = Array.from({ length: 20 }, (_, index) => ({
+      ...key,
+      id: String(index),
+      createdAt: index,
+      pssh: 'A'.repeat(200_000),
+    }));
+    const target = records[0]!;
+    await browser.storage.local.set({
+      'all-keys': JSON.stringify(records),
+      'recent-keys': JSON.stringify(records),
+      'recent-keys-by-domain': JSON.stringify({ 'example.com': records }),
+    });
+    if (mode === 'snapshot') {
+      const snapshot = await prepareKeyDeletion({ kind: 'selected', records: [target] });
+      await deleteKeySnapshot(snapshot.tokens);
+    } else {
+      await appStorage.allKeys.remove(target);
+    }
+    const stored = await browser.storage.local.get([
+      'all-keys',
+      'recent-keys',
+      'recent-keys-by-domain',
+    ]);
+    for (const [name, value] of Object.entries(stored)) {
+      expect(
+        Buffer.byteLength(name) + Buffer.byteLength(JSON.stringify(value)),
+      ).toBeLessThanOrEqual(MAX_HISTORY_BYTES);
+    }
+    for (const retained of [
+      await appStorage.allKeys.getValue(),
+      await appStorage.recentKeys.getValue(),
+      (await appStorage.recentKeysByDomain.getValue())?.['example.com'],
+    ]) {
+      expect(retained?.some((record) => record.id === target.id)).toBe(false);
+      expect(retained?.at(-1)).toEqual(records.at(-1));
+      expect(retained?.every((record) => record.pssh === records[0]?.pssh)).toBe(true);
+    }
+  },
+);

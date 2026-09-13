@@ -472,16 +472,24 @@ const createKeyHistory = (isIncognito: boolean, generation?: string) => {
         keyHistory.recentKeysByDomain.getValue(),
       ]);
       await storage.setItems([
-        { key: keyHistory.allKeys.raw.key, value: JSON.stringify((history ?? []).filter(keep)) },
-        { key: keyHistory.recentKeys.key, value: JSON.stringify((recent ?? []).filter(keep)) },
+        {
+          key: keyHistory.allKeys.raw.key,
+          value: JSON.stringify(retainKeys((history ?? []).filter(keep))),
+        },
+        {
+          key: keyHistory.recentKeys.key,
+          value: JSON.stringify(retainKeys((recent ?? []).filter(keep))),
+        },
         {
           key: keyHistory.recentKeysByDomain.raw.key,
           value: JSON.stringify(
-            Object.fromEntries(
-              Object.entries(domains ?? {}).map(([domain, records]) => [
-                domain,
-                records.filter(keep),
-              ]),
+            retainDomains(
+              Object.fromEntries(
+                Object.entries(domains ?? {}).map(([domain, records]) => [
+                  domain,
+                  records.filter(keep),
+                ]),
+              ),
             ),
           ),
         },
@@ -591,17 +599,22 @@ const createKeyHistory = (isIncognito: boolean, generation?: string) => {
           await storage.setItems([
             {
               key: keyHistory.allKeys.raw.key,
-              value: JSON.stringify((keys ?? []).filter(keepRecord)),
+              value: JSON.stringify(retainKeys((keys ?? []).filter(keepRecord))),
             },
-            { key: recentKeys.key, value: JSON.stringify((recent ?? []).filter(keepRecord)) },
+            {
+              key: recentKeys.key,
+              value: JSON.stringify(retainKeys((recent ?? []).filter(keepRecord))),
+            },
             {
               key: keyHistory.recentKeysByDomain.raw.key,
               value: JSON.stringify(
-                Object.fromEntries(
-                  Object.entries(domains ?? {}).map(([domain, records]) => [
-                    domain,
-                    records.filter(keepRecord),
-                  ]),
+                retainDomains(
+                  Object.fromEntries(
+                    Object.entries(domains ?? {}).map(([domain, records]) => [
+                      domain,
+                      records.filter(keepRecord),
+                    ]),
+                  ),
                 ),
               ),
             },
