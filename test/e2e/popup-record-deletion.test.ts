@@ -70,7 +70,8 @@ test('deletes individual records and confirms frozen selected, site, and all-rec
       });
       await dashboard.locator('code').click();
       await dashboard.getByRole('button', { name: 'Delete', exact: true }).click();
-      await expect.poll(() => popup.getByRole('status').innerText()).toBe('(0)');
+      await expect.poll(() => popup.locator('code').count()).toBe(0);
+      expect(await popup.getByRole('status').isVisible()).toBe(false);
       expect(await popup.locator('#root > main').isVisible()).toBe(true);
       expect(await readRecords()).toEqual({
         'all-keys': '[]',

@@ -16,6 +16,10 @@ import { Header } from '../components/header';
 import { CellImportCredentials } from '../components/cell-import-credentials';
 import { NoKeys } from '../components/no-keys';
 import { KeysList } from '../components/keys-list';
+import { CaptureDrmFilter, CaptureOrder } from '../components/capture-filters';
+import { CaptureSearch } from '../components/capture-search';
+import { NoMatchingCaptures } from '../components/no-matching-captures';
+import { createCaptureFilters } from '../utils/capture-filters';
 import { getRecentKeysForUrl, getWebsiteDomain, drmStages } from '@/utils/storage';
 import { DELETE_SITE_CAPTURES_LABEL, RECENT_CAPTURES_LABEL } from '../utils/captures';
 
@@ -32,6 +36,8 @@ export const Dashboard = () => {
   const activeDomainRecentKeys = createMemo(() => {
     return getRecentKeysForUrl(activeTabUrl(), recentKeysByDomain(), recentKeys());
   });
+
+  const filters = createCaptureFilters(activeDomainRecentKeys);
 
   return (
     <Layout>
@@ -59,9 +65,16 @@ export const Dashboard = () => {
         <SessionDiagnostics />
 
         <KeysList
-          keys={activeDomainRecentKeys}
+          keys={filters.keys}
+          allKeys={activeDomainRecentKeys}
           header={RECENT_CAPTURES_LABEL}
           controls={
+            <CaptureSearch search={filters.search}>
+              <CaptureDrmFilter {...filters.drm} />
+              <CaptureOrder {...filters.order} />
+            </CaptureSearch>
+          }
+          headerActions={
             <Show when={activeDomain()}>
               {(domain) => (
                 <DeleteKeys
@@ -86,6 +99,10 @@ export const Dashboard = () => {
             </Show>
           }
         />
+
+        <Show when={activeDomainRecentKeys().length > 0 && !filters.keys().length}>
+          <NoMatchingCaptures onClear={filters.clear} />
+        </Show>
 
         <Show when={activeDomainRecentKeys().length === 0 && !activeFailure()}>
           <footer class="w-full flex flex-col items-center justify-center text-center gap-1 mt-auto py-2">

@@ -7,25 +7,18 @@ import { Cell } from '../components/cell';
 import { KeyInfo, keyRecordToken } from '@/utils/storage';
 import { KeysList } from '../components/keys-list';
 import { NoKeys } from '../components/no-keys';
-import { Select } from '../components/select';
+import { CaptureSiteFilter, CaptureDrmFilter, CaptureOrder } from '../components/capture-filters';
+import { CaptureSearch } from '../components/capture-search';
+import { NoMatchingCaptures } from '../components/no-matching-captures';
 import { serializeHistory, type HistoryExportFormat } from '../utils/history-export';
 import { saveFile } from '../utils/file';
-import { filterHistory, getHistorySites, type HistoryFilters } from '../utils/history-filters';
+import { createCaptureFilters } from '../utils/capture-filters';
 import { CAPTURES_LABEL } from '../utils/captures';
 
 export const Captures = () => {
   const [keys, setKeys] = createSignal<KeyInfo[]>([]);
-  const [search, setSearch] = createSignal('');
-  const [site, setSite] = createSignal('');
-  const sites = createMemo(() => getHistorySites(keys()));
-  createEffect(() => {
-    if (site() && !sites().includes(site())) setSite('');
-  });
-  const [drm, setDrm] = createSignal<HistoryFilters['drm']>('all');
-  const [order, setOrder] = createSignal<HistoryFilters['order']>('newest');
-  const filteredKeys = createMemo(() =>
-    filterHistory(keys(), { search: search(), site: site(), drm: drm(), order: order() }),
-  );
+  const filters = createCaptureFilters(keys);
+  const filteredKeys = filters.keys;
   const [selected, setSelected] = createSignal<string[]>([]);
   const selectedRecords = createMemo(() =>
     filteredKeys().filter((key) => selected().includes(keyRecordToken(key))),
@@ -37,11 +30,6 @@ export const Captures = () => {
     const visible = new Set(filteredKeys().map(keyRecordToken));
     setSelected((tokens) => tokens.filter((token) => visible.has(token)));
   });
-  const clearFilters = () => {
-    setSearch('');
-    setSite('');
-    setDrm('all');
-  };
   const [isExporting, setIsExporting] = createSignal(false);
   const [exportError, setExportError] = createSignal<string>();
 
@@ -152,70 +140,18 @@ export const Captures = () => {
               <span role="alert">{exportError()}</span>
             </Show>
           }
-          search={{ value: search(), onChange: setSearch }}
           controls={
-            <>
-              <Select
-                aria-label="Site"
-                class="max-w-[90px] truncate"
-                title={site() || 'All sites'}
-                value={site()}
-                onChange={(event) => setSite(event.currentTarget.value)}
-              >
-                <option value="">All sites</option>
-                <For each={sites()}>{(site) => <option value={site}>{site}</option>}</For>
-              </Select>
-              <Select
-                aria-label="DRM"
-                value={drm()}
-                onChange={(event) => {
-                  const value = event.currentTarget.value;
-                  if (
-                    value === 'all' ||
-                    value === 'W' ||
-                    value === 'P' ||
-                    value === 'C' ||
-                    value === 'unknown'
-                  )
-                    setDrm(value);
-                }}
-              >
-                <option value="all">All DRM systems</option>
-                <option value="W">Widevine</option>
-                <option value="P">PlayReady</option>
-                <option value="C">ClearKey</option>
-                <option value="unknown">Unknown</option>
-              </Select>
-              <Select
-                aria-label="Order"
-                value={order()}
-                onChange={(event) => {
-                  const value = event.currentTarget.value;
-                  if (value === 'newest' || value === 'oldest') setOrder(value);
-                }}
-              >
-                <option value="newest">Newest first</option>
-                <option value="oldest">Oldest first</option>
-              </Select>
-            </>
+            <CaptureSearch search={filters.search}>
+              <CaptureSiteFilter {...filters.site} />
+              <CaptureDrmFilter {...filters.drm} />
+              <CaptureOrder {...filters.order} />
+            </CaptureSearch>
           }
           selection={{ tokens: selectedRecords().map(keyRecordToken), onChange: setSelected }}
         />
         <Show when={!filteredKeys().length}>
           <Show when={keys().length} fallback={<NoKeys />}>
-            <div class="flex flex-col items-center gap-1 py-4 text-center">
-              <h1 class="text-[16px] font-semibold">No matching keys</h1>
-              <p class="text-[13px] text-neutral-800 dark:text-neutral-300">
-                Try another search or adjust filters.
-              </p>
-              <button
-                type="button"
-                onClick={clearFilters}
-                class="rounded px-3 py-2 text-[13px] text-blue-600 hover:underline focus-visible:outline-2 dark:text-blue-400"
-              >
-                Clear filters
-              </button>
-            </div>
+            <NoMatchingCaptures onClear={filters.clear} />
           </Show>
         </Show>
       </div>
