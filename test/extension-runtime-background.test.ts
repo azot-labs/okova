@@ -13,6 +13,9 @@ import { createPsshBox, psshBoxToBase64, PSSH_SYSTEM_IDS } from '../src/lib/pssh
 
 beforeEach(() => {
   fakeBrowser.reset();
+  vi.spyOn(browser.webRequest.onSendHeaders, 'addListener').mockImplementation(() => {});
+  vi.spyOn(browser.webRequest.onBeforeRedirect, 'addListener').mockImplementation(() => {});
+  vi.spyOn(browser.webRequest.onErrorOccurred, 'addListener').mockImplementation(() => {});
   vi.spyOn(browser.tabs, 'query').mockImplementation(async () => []);
   vi.spyOn(console, 'log').mockImplementation(() => {});
   vi.spyOn(console, 'warn').mockImplementation(() => {});

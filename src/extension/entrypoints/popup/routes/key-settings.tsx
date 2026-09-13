@@ -1,3 +1,6 @@
+import { browser } from 'wxt/browser';
+import { getDownloadHeaders, isSensitiveHeader, type RequestHeader } from '@/utils/request-headers';
+import { appStorage, keyRecordToken } from '@/utils/storage';
 import { getManifestMetadata, isManifestUrl, manifestLabels } from '@/utils/manifest';
 import { CellCheckmark } from '../components/cell-checkmark';
 import { popupHistory } from '../utils/history';
@@ -41,16 +44,51 @@ export const KeySettings: Component<KeySettingsProps> = (props) => {
       options.unshift({ url: saved, label: 'Saved manifest' });
     return options;
   });
-  const generatedCommand = createMemo(() => buildDownloadCommand(props.key, manifestUrl()) ?? '');
+  const [headers, setHeaders] = createSignal<RequestHeader[]>([]);
+  const [selectedHeaders, setSelectedHeaders] = createSignal<RequestHeader[]>([]);
+  createEffect(() => {
+    const token = keyRecordToken(props.key);
+    const url = manifestUrl();
+    let isCurrent = true;
+    setHeaders([]);
+    setSelectedHeaders([]);
+    void browser.windows
+      .getCurrent()
+      .then(async (window) => {
+        const result: unknown = await browser.runtime.sendMessage({
+          action: 'download-headers',
+          token,
+          url,
+          windowId: window.id,
+        });
+        if (isCurrent) setHeaders(getDownloadHeaders(result));
+      })
+      .catch(() => {});
+    onCleanup(() => {
+      isCurrent = false;
+    });
+  });
+  onMount(() => {
+    const unwatch = appStorage.settings.watch((settings) => {
+      if (settings?.requestInterception === false) {
+        setHeaders([]);
+        setSelectedHeaders([]);
+        setCommand(buildDownloadCommand(props.key, manifestUrl()) ?? '');
+      }
+    });
+    onCleanup(unwatch);
+  });
+  const generatedCommand = createMemo(
+    () => buildDownloadCommand(props.key, manifestUrl(), selectedHeaders()) ?? '',
+  );
   const [command, setCommand] = createSignal(generatedCommand());
-  let previousCommand = generatedCommand();
   createEffect(() => {
     const nextCommand = generatedCommand();
-    setCommand((current) => (current === previousCommand ? nextCommand : current));
-    previousCommand = nextCommand;
+    setCommand(nextCommand);
   });
 
   const chooseManifest = (url: string) => {
+    setSelectedHeaders([]);
     setManifestUrl(url);
     setCommand(buildDownloadCommand(props.key, url) ?? '');
   };
@@ -181,6 +219,57 @@ export const KeySettings: Component<KeySettingsProps> = (props) => {
               aria-invalid={Boolean(manifestUrl()) && !isManifestUrl(manifestUrl())}
             />
           </Cell>
+        </Section>
+        <Section
+          header="Request headers"
+          headerControls={
+            <Cell
+              component="button"
+              size="xs"
+              class="w-auto"
+              disabled={!headers().length || selectedHeaders().length === headers().length}
+              onClick={() => setSelectedHeaders([...headers()])}
+            >
+              Select All
+            </Cell>
+          }
+          footer="Click on items to include necessary headers in the command."
+        >
+          <Show
+            when={headers().length}
+            fallback={
+              <Cell>
+                No recent request headers available. Reload the player to capture a new request.
+              </Cell>
+            }
+          >
+            <For each={headers()}>
+              {(header) => {
+                const isSelected = () => selectedHeaders().includes(header);
+                return (
+                  <Cell
+                    component="button"
+                    aria-pressed={isSelected()}
+                    subtitle={
+                      isSensitiveHeader(header.name) && !isSelected()
+                        ? 'Sensitive value hidden. Select to reveal and include.'
+                        : header.value
+                    }
+                    after={<CellCheckmark checked={isSelected()} />}
+                    onClick={() =>
+                      setSelectedHeaders((current) =>
+                        isSelected()
+                          ? current.filter((item) => item !== header)
+                          : [...current, header],
+                      )
+                    }
+                  >
+                    {header.name}
+                  </Cell>
+                );
+              }}
+            </For>
+          </Show>
         </Section>
         <Section header="Command builder (Bash / Zsh)">
           <Cell class="w-full">

@@ -36,6 +36,9 @@ const key: KeyInfo = {
 
 beforeEach(() => {
   fakeBrowser.reset();
+  vi.spyOn(browser.webRequest.onSendHeaders, 'addListener').mockImplementation(() => {});
+  vi.spyOn(browser.webRequest.onBeforeRedirect, 'addListener').mockImplementation(() => {});
+  vi.spyOn(browser.webRequest.onErrorOccurred, 'addListener').mockImplementation(() => {});
 });
 
 afterEach(() => {

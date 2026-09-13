@@ -24,6 +24,7 @@ class NativeXHR extends EventTarget {
     return this.headers;
   }
   overrideMimeType() {}
+  setRequestHeader() {}
   open() {}
   send() {
     this.response = '';
@@ -338,4 +339,61 @@ test('preserves the original XHR URL during redirects and reuse from load handle
     }),
     '*',
   );
+});
+
+test('captures fetch Request headers with init overrides without changing the request', async () => {
+  const response = new Response(manifest, { headers: { 'Content-Type': 'application/dash+xml' } });
+  Object.defineProperty(response, 'url', { value: url });
+  nativeFetch.mockResolvedValue(response);
+  const resource = new Request(url, { headers: { Authorization: 'Bearer old' } });
+  const options = { headers: new Headers({ Authorization: 'Bearer selected' }) };
+  expect(await fetch(resource, options)).toBe(response);
+  expect(nativeFetch).toHaveBeenCalledWith(resource, options);
+  await vi.waitFor(() =>
+    expect(postMessage).toHaveBeenCalledWith(
+      expect.objectContaining({
+        namespace: 'okova:request-headers',
+        url,
+        headers: [{ name: 'authorization', value: 'Bearer selected' }],
+      }),
+      '*',
+    ),
+  );
+});
+
+test('does not forward original fetch credentials after redirects', async () => {
+  const response = new Response(manifest, { headers: { 'Content-Type': 'application/dash+xml' } });
+  Object.defineProperties(response, { url: { value: url }, redirected: { value: true } });
+  nativeFetch.mockResolvedValue(response);
+  await fetch(url, { headers: { Authorization: 'Bearer original' } });
+  await vi.waitFor(() => expect(postMessage).toHaveBeenCalledTimes(1));
+  expect(postMessage.mock.calls[0]?.[0].namespace).toBe('okova:network');
+});
+
+test('captures repeated XHR headers and resets them when the XHR is reused', async () => {
+  const setRequestHeader = vi.spyOn(NativeXHR.prototype, 'setRequestHeader');
+  const xhr = new XMLHttpRequest();
+  xhr.open('GET', url);
+  xhr.setRequestHeader('X-Token', 'first');
+  xhr.setRequestHeader('X-Token', 'second');
+  xhr.send();
+  Object.assign(xhr, { response: manifest });
+  xhr.dispatchEvent(new Event('load'));
+  await vi.waitFor(() =>
+    expect(postMessage).toHaveBeenCalledWith(
+      expect.objectContaining({
+        namespace: 'okova:request-headers',
+        headers: [{ name: 'x-token', value: 'first, second' }],
+      }),
+      '*',
+    ),
+  );
+  expect(setRequestHeader).toHaveBeenCalledTimes(2);
+  postMessage.mockClear();
+  xhr.open('GET', url);
+  xhr.send();
+  Object.assign(xhr, { response: manifest });
+  xhr.dispatchEvent(new Event('load'));
+  await vi.waitFor(() => expect(postMessage).toHaveBeenCalledTimes(1));
+  expect(postMessage.mock.calls[0]?.[0].namespace).toBe('okova:network');
 });

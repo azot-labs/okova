@@ -1,3 +1,4 @@
+import { installRequestHeaderObservation } from '@/utils/request-header-observation';
 import { drmErrorResponse, type DrmErrorResponse } from '@/utils/drm-error';
 import { getManifestMetadata } from '@/utils/manifest';
 import { getCredentialFingerprint } from '@/utils/credential-fingerprint';
@@ -438,7 +439,36 @@ export default defineBackground({
 
     const parseBinary = (data: Record<string, number>) => new Uint8Array(Object.values(data));
 
+    const requestHeaders = installRequestHeaderObservation();
     browser.runtime.onMessage.addListener((incoming, sender, sendResponse) => {
+      if (incoming?.action === 'observed-request-headers') {
+        if (sender.tab?.id !== undefined)
+          requestHeaders.observePage(incoming, sender.tab.id, sender.frameId ?? 0);
+        sendResponse();
+        return;
+      }
+      if (incoming?.action === 'download-headers') {
+        const request = z
+          .object({
+            token: z.string().max(64 * 1024),
+            url: z.string().max(8192),
+            windowId: z.number().int(),
+          })
+          .safeParse(incoming);
+        if (sender.url !== browser.runtime.getURL('/popup.html') || !request.success) {
+          sendResponse([]);
+          return;
+        }
+        void browser.windows
+          .get(request.data.windowId)
+          .then((window) => {
+            sendResponse(
+              requestHeaders.read(request.data.token, request.data.url, window.incognito),
+            );
+          })
+          .catch(() => sendResponse([]));
+        return true;
+      }
       const message = { ...incoming, url: getCaptureUrl(sender) ?? incoming.url };
       const sessionKey =
         typeof message.sessionToken === 'string' && message.sessionToken
@@ -627,6 +657,14 @@ export default defineBackground({
         const settings = await run(appStorage.settings.getValue());
         const saveHistory = async (keys: KeyInfo[], recent = keys) => {
           try {
+            if (tabId !== undefined && tabGeneration === (tabGenerations.get(tabId) ?? 0)) {
+              requestHeaders.capture(
+                keys,
+                tabId,
+                sender.frameId ?? 0,
+                sender.tab?.incognito === true,
+              );
+            }
             await run(history.allKeys.add(...keys));
             await run(history.recentKeys.setForUrl(message.url, recent));
             updateBadgeForTabInBackground(sender.tab);

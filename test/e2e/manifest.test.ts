@@ -205,11 +205,19 @@ test('captures HLS/MSS choices through real EME and builds commands in the popup
         response.end('<!doctype html><title>Manifest workflow</title>');
       }
     });
+    await context.addCookies([
+      { name: 'session', value: 'test-only-cookie', url: origin, httpOnly: true },
+    ]);
     const page = await context.newPage();
     await page.goto(`${origin}/watch`);
     await page.evaluate(
       async ([master, media, mss]) => {
-        await fetch(master!);
+        await fetch(master!, {
+          headers: {
+            Authorization: 'Bearer test-only-token',
+            'X-Playback-Token': 'test-only-custom',
+          },
+        });
         await fetch(media!);
         await new Promise<void>((resolve, reject) => {
           const xhr = new XMLHttpRequest();
@@ -299,6 +307,21 @@ test('captures HLS/MSS choices through real EME and builds commands in the popup
       );
       expect(await copy.isEnabled()).toBe(true);
     }
+    await choices.filter({ hasText: master }).click();
+    const cookie = popup.getByRole('button', { name: /^Cookie/i });
+    const authorization = popup.getByRole('button', { name: /^Authorization/i });
+    await expect.poll(() => cookie.count()).toBe(1);
+    expect(await cookie.textContent()).not.toContain('test-only-cookie');
+    expect(await command.inputValue()).not.toContain('test-only');
+    await cookie.click();
+    await authorization.click();
+    await expect.poll(() => command.inputValue()).toContain('session=test-only-cookie');
+    expect(await command.inputValue()).toContain('Bearer test-only-token');
+    expect(
+      await worker.evaluate(async () => JSON.stringify(await browser.storage.local.get(null))),
+    ).not.toContain('test-only');
+    await cookie.click();
+    expect(await command.inputValue()).not.toContain('test-only-cookie');
     await command.fill('edited command');
     await choices.filter({ hasText: master }).click();
     expect(await command.inputValue()).toContain(master);

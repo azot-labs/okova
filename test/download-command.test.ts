@@ -48,3 +48,36 @@ test('uses the selected manifest instead of the saved default', () => {
     ),
   ).toBe("N_m3u8DL-RE 'https://example.com/new.m3u8' --key 'id:key'");
 });
+
+test.skipIf(process.platform === 'win32')(
+  'quotes selected request headers as literal downloader arguments',
+  () => {
+    const key = { mpd: 'https://example.com/playback', id: 'id', value: 'key' };
+    const headers = [
+      { name: 'Authorization', value: "Bearer it's $HOME `whoami` $(whoami)" },
+      { name: 'Cookie', value: 'session=one; other=two' },
+    ];
+    const command = buildDownloadCommand(key, key.mpd, headers);
+    const output = execFileSync(
+      'bash',
+      [
+        '--noprofile',
+        '--norc',
+        '-c',
+        `function N_m3u8DL-RE() { printf '%s\\0' "$@"; }\n${command}`,
+      ],
+      { encoding: 'utf8' },
+    );
+    expect(output.split('\0')).toEqual([
+      key.mpd,
+      '--key',
+      'id:key',
+      '-H',
+      `Authorization: ${headers[0]!.value}`,
+      '-H',
+      `Cookie: ${headers[1]!.value}`,
+      '',
+    ]);
+    expect(buildDownloadCommand(key)).not.toContain('-H');
+  },
+);

@@ -1,3 +1,4 @@
+import { pageRequestHeadersSchema } from '@/utils/request-headers';
 import { drmErrorResponse } from '@/utils/drm-error';
 
 export default defineContentScript({
@@ -12,6 +13,15 @@ export default defineContentScript({
       'message',
       async (event) => {
         if (event.source !== window) return;
+        if (event.data?.namespace === 'okova:request-headers') {
+          const parsed = pageRequestHeadersSchema.safeParse(event.data);
+          if (parsed.success) {
+            void browser.runtime
+              .sendMessage({ action: 'observed-request-headers', ...parsed.data })
+              .catch(() => {});
+          }
+          return;
+        }
         if (event.data?.type === 'drm-startup') {
           const { action, token } = event.data;
           if (action !== 'load-eme') return;

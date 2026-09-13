@@ -1,3 +1,5 @@
+import type { RequestHeader } from './request-headers';
+
 export const installNetworkInterception = () => {
   const MAX_SIZE = 1024 * 1024 * 1; // 1 MB
 
@@ -59,7 +61,32 @@ export const installNetworkInterception = () => {
     window.postMessage(message, '*');
   };
 
-  const inspectFetchResponse = async (response: Response, requestUrl: string | undefined) => {
+  const postRequestHeaders = (
+    url: string,
+    requestUrl: string | undefined,
+    headers: RequestHeader[],
+    startedAt: number,
+  ) => {
+    // Fetch/XHR may strip credentials on redirects. Never attach original headers to a redirect target.
+    if (!requestUrl || url !== requestUrl || !headers.length) return;
+    window.postMessage(
+      {
+        namespace: 'okova:request-headers',
+        url: requestUrl,
+        headers,
+        startedAt,
+        completedAt: Date.now(),
+      },
+      '*',
+    );
+  };
+
+  const inspectFetchResponse = async (
+    response: Response,
+    requestUrl: string | undefined,
+    requestHeaders: RequestHeader[],
+    startedAt: number,
+  ) => {
     const url = response.url;
     const headers = Object.fromEntries(response.headers.entries());
     if (!filterHead(url, headers)) return;
@@ -85,18 +112,36 @@ export const installNetworkInterception = () => {
     } finally {
       reader.releaseLock();
     }
-    if (filterData(url, text)) postMessage(url, headers, text, requestUrl);
+    if (filterData(url, text)) {
+      if (!response.redirected) postRequestHeaders(url, requestUrl, requestHeaders, startedAt);
+      postMessage(url, headers, text, requestUrl);
+    }
   };
 
   const patchFetch = () => {
     if (typeof fetch === 'function') {
       const originalFetch = fetch;
       const cachedFetch = async function fetch(resource: URL | RequestInfo, options?: RequestInit) {
+        const startedAt = Date.now();
         const requestUrl = getRequestUrl(resource);
+        let requestHeaders: RequestHeader[] = [];
+        try {
+          const method = options?.method ?? (resource instanceof Request ? resource.method : 'GET');
+          if (method.toUpperCase() === 'GET') {
+            const headers = new Headers(
+              options?.headers ?? (resource instanceof Request ? resource.headers : undefined),
+            );
+            requestHeaders = Array.from(headers, ([name, value]) => ({ name, value }));
+          }
+        } catch {
+          // Inspection must not turn a valid page request into a failed request.
+        }
         const response = await originalFetch(resource, options);
-        void inspectFetchResponse(response, requestUrl).catch((error) => {
-          console.warn('[okova] Fetch response inspection failed', error);
-        });
+        void inspectFetchResponse(response, requestUrl, requestHeaders, startedAt).catch(
+          (error) => {
+            console.warn('[okova] Fetch response inspection failed', error);
+          },
+        );
         return response;
       };
       Object.assign(cachedFetch, originalFetch);
@@ -116,6 +161,23 @@ export const installNetworkInterception = () => {
   const patchXmlHttpRequest = () => {
     class PatchedXHR extends XMLHttpRequest {
       #requestUrl: string | undefined;
+      #requestHeaders = new Headers();
+      #isGet = false;
+      #startedAt = 0;
+
+      setRequestHeader(name: string, value: string) {
+        super.setRequestHeader(name, value);
+        try {
+          this.#requestHeaders.append(name, value);
+        } catch {
+          /* Native XHR decides validity. */
+        }
+      }
+
+      send(body?: Document | XMLHttpRequestBodyInit | null) {
+        this.#startedAt = Date.now();
+        super.send(body);
+      }
 
       open(method: string, url: string | URL): void;
       open(
@@ -132,8 +194,10 @@ export const installNetworkInterception = () => {
         username?: string | null,
         password?: string | null,
       ) {
-        this.#requestUrl = getRequestUrl(url);
         super.open(method, url, async, username, password);
+        this.#requestUrl = getRequestUrl(url);
+        this.#requestHeaders = new Headers();
+        this.#isGet = method.toUpperCase() === 'GET';
       }
 
       constructor() {
@@ -148,6 +212,10 @@ export const installNetworkInterception = () => {
       async #handleResponse() {
         const url = this.responseURL;
         const requestUrl = this.#requestUrl;
+        const startedAt = this.#startedAt;
+        const requestHeaders = this.#isGet
+          ? Array.from(this.#requestHeaders, ([name, value]) => ({ name, value }))
+          : [];
         const headersString = this.getAllResponseHeaders();
         const headersArray = headersString.trim().split(/[\r\n]+/);
         const headers: Record<string, string> = {};
@@ -187,7 +255,10 @@ export const installNetworkInterception = () => {
         // Reject long strings before allocating a UTF-8 copy for the byte check.
         if (text.length >= MAX_SIZE || new TextEncoder().encode(text).byteLength >= MAX_SIZE)
           return;
-        if (filterData(url, text)) postMessage(url, headers, text, requestUrl);
+        if (filterData(url, text)) {
+          postRequestHeaders(url, requestUrl, requestHeaders, startedAt);
+          postMessage(url, headers, text, requestUrl);
+        }
       }
     }
     window.XMLHttpRequest = PatchedXHR;

@@ -40,6 +40,9 @@ export const startWorker = (messageSender = sender) => {
 export const setupWorkerTests = () => {
   beforeEach(async () => {
     fakeBrowser.reset();
+    vi.spyOn(browser.webRequest.onSendHeaders, 'addListener').mockImplementation(() => {});
+    vi.spyOn(browser.webRequest.onBeforeRedirect, 'addListener').mockImplementation(() => {});
+    vi.spyOn(browser.webRequest.onErrorOccurred, 'addListener').mockImplementation(() => {});
     vi.useFakeTimers();
     vi.spyOn(browser.tabs, 'query').mockImplementation(async () => []);
     await appStorage.settings.setValue({
