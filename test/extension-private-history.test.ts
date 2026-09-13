@@ -3,6 +3,7 @@ import { browser, type Browser } from 'wxt/browser';
 import { fakeBrowser } from 'wxt/testing/fake-browser';
 import {
   appStorage,
+  MAX_HISTORY_BYTES,
   privateHistory,
   clearClosedPrivateHistory,
   getKeyHistory,
@@ -181,4 +182,31 @@ test('does not apply an old cleanup snapshot after another context advances the 
   await capture(history, replacementKey);
   expect(await history.allKeys.getValue()).toEqual([replacementKey]);
   expect(await history.recentKeys.getValue()).toEqual([replacementKey]);
+});
+
+test('applies the byte budget to private history and recent caches without changing PSSH', async () => {
+  const records = Array.from({ length: 20 }, (_, index) => ({
+    ...key,
+    id: String(index),
+    createdAt: index,
+    pssh: 'A'.repeat(200_000),
+  }));
+  await privateHistory.allKeys.setValue(records);
+  await privateHistory.recentKeys.setForUrl(key.url, records);
+  const stored = await browser.storage.session.get(null);
+  for (const name of [
+    'incognito:all-keys',
+    'incognito:recent-keys',
+    'incognito:recent-keys-by-domain',
+  ]) {
+    expect(
+      Buffer.byteLength(name) + Buffer.byteLength(JSON.stringify(stored[name])),
+    ).toBeLessThanOrEqual(MAX_HISTORY_BYTES);
+  }
+  const history = (await privateHistory.allKeys.getValue()) ?? [];
+  expect(history.length).toBeGreaterThan(0);
+  expect(history.length).toBeLessThan(records.length);
+  expect(history.at(-1)).toEqual(records.at(-1));
+  expect(history.every((record) => record.pssh === records[0]?.pssh)).toBe(true);
+  expect(await appStorage.allKeys.getValue()).toBeNull();
 });

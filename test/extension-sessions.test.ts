@@ -592,7 +592,7 @@ test('a recovered key-status history write clears the previous failure', async (
   await send('keystatuseschange', 'one', sender, message);
   expect(await getDrmFailureStorage(1).getValue()).toMatchObject({
     stage: 'history',
-    error: 'History write failed',
+    error: 'Unable to save key history: History write failed',
   });
   await send('keystatuseschange', 'one', sender, message);
   expect(await appStorage.allKeys.getValue()).toMatchObject([{ value: 'usable' }]);
@@ -702,10 +702,12 @@ test('a recovered ClearKey history write clears its diagnostic', async () => {
     ),
   };
   vi.spyOn(appStorage.allKeys, 'add').mockRejectedValueOnce(new Error('History write failed'));
-  await send('update', 'clear', sender, context);
+  await expect(send('update', 'clear', sender, context)).resolves.toMatchObject({
+    keys: [{ id: '00', value: 'b50d1b25559be9bd0a3cbe8ab59232fc' }],
+  });
   expect(await getDrmFailureStorage(1).getValue()).toMatchObject({
     stage: 'history',
-    error: 'History write failed',
+    error: 'Unable to save key history: History write failed',
   });
   await expect(send('update', 'clear', sender, context)).resolves.toMatchObject({
     keys: [{ id: '00', value: 'b50d1b25559be9bd0a3cbe8ab59232fc' }],

@@ -491,6 +491,17 @@ export default defineBackground({
           await updateBadgeForTab(sender.tab, result);
         } catch (error) {
           console.warn('[okova] Unable to update badge result', error);
+          // Session storage may be full too. The action API can still report the failure.
+          if (result.kind === 'failure') {
+            try {
+              const badge = getBadgeAppearance([], [result]);
+              await browser.action.setBadgeBackgroundColor({ tabId, color: badge.color });
+              await browser.action.setTitle({ tabId, title: badge.title });
+              await browser.action.setBadgeText({ tabId, text: badge.text });
+            } catch (badgeError) {
+              console.warn('[okova] Unable to display failure badge', badgeError);
+            }
+          }
         }
       };
       const clearFailure = async () => {
@@ -593,9 +604,37 @@ export default defineBackground({
 
         await advance('setup');
         const settings = await run(appStorage.settings.getValue());
-        const setRecentKeys = async (keys: KeyInfo[]) => {
-          await run(history.recentKeys.setForUrl(message.url, keys));
-          updateBadgeForTabInBackground(sender.tab);
+        const saveHistory = async (keys: KeyInfo[], recent = keys) => {
+          try {
+            await run(history.allKeys.add(...keys));
+            await run(history.recentKeys.setForUrl(message.url, recent));
+            updateBadgeForTabInBackground(sender.tab);
+            await run(clearFailure());
+            return true;
+          } catch (error) {
+            if (controller.signal.aborted) throw error;
+            const message = `Unable to save key history: ${error instanceof Error ? error.message : String(error)}`;
+            console.warn('[okova]', message);
+            const last = diagnostic?.events.at(-1);
+            if (last) {
+              last.status = 'failed';
+              last.completedAt = Date.now();
+            }
+            if (tabId !== undefined && tabGeneration === (tabGenerations.get(tabId) ?? 0)) {
+              try {
+                await getDrmFailureStorage(tabId).setValue({
+                  stage: 'history',
+                  error: message,
+                  url: sender.tab?.url ?? keys[0]?.url ?? '',
+                  createdAt: Date.now(),
+                });
+              } catch (diagnosticError) {
+                console.warn('[okova] Unable to store history diagnostic', diagnosticError);
+              }
+              await recordBadgeResult({ kind: 'failure', system, error: message });
+            }
+            return false;
+          }
         };
 
         // Inspect each response so repeated initialization data can yield new keys.
@@ -621,10 +660,8 @@ export default defineBackground({
               diagnostic.outcome = 'keys-returned';
               diagnostic.keyCount = results.length;
             }
-            await setRecentKeys(results);
-            await run(history.allKeys.add(...results));
-            await run(clearFailure());
-            await recordBadgeResult({ kind: 'success', system, keys: results.map(getBadgeKey) });
+            if (await saveHistory(results))
+              await recordBadgeResult({ kind: 'success', system, keys: results.map(getBadgeKey) });
             await advance('close');
             if (sessionKey) await closeSession(sessionKey);
             respond({ keys: results });
@@ -666,9 +703,10 @@ export default defineBackground({
             (key) => isCapturedKey(key) && key.url === message.url && key.pssh === initData,
           );
           const capturedIds = new Set(capturedKeys.map((key) => key.id));
-          await setRecentKeys([...capturedKeys, ...keys.filter((key) => !capturedIds.has(key.id))]);
-          await run(history.allKeys.add(...keys));
-          await run(clearFailure());
+          await saveHistory(keys, [
+            ...capturedKeys,
+            ...keys.filter((key) => !capturedIds.has(key.id)),
+          ]);
           respond();
           return;
         }
@@ -831,10 +869,8 @@ export default defineBackground({
             diagnostic.outcome = 'keys-returned';
             diagnostic.keyCount = results.length;
           }
-          await setRecentKeys(results);
-          await run(history.allKeys.add(...results));
-          await run(clearFailure());
-          await recordBadgeResult({ kind: 'success', system, keys: results.map(getBadgeKey) });
+          if (await saveHistory(results))
+            await recordBadgeResult({ kind: 'success', system, keys: results.map(getBadgeKey) });
           await advance('close');
           await closeSession(sessionKey);
           respond({ keys: results });
