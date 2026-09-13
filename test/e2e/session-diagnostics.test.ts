@@ -36,7 +36,7 @@ test('popup displays session progress and copies a trace without bridge tokens',
           }),
         ),
       });
-      await popup.getByText('Test device', { exact: true }).waitFor();
+      await popup.getByText('Widevine: Test device', { exact: true }).waitFor();
       const registry = z
         .object({
           credentials: z
