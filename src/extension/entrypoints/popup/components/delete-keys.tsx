@@ -1,16 +1,19 @@
-import { popupHistory } from '../utils/history';
+import {
+  prepareCaptureDeletion,
+  deleteCaptureSnapshot,
+  type CaptureDeletionScope,
+} from '../utils/capture-deletion';
 import { createSignal, onMount, Show } from 'solid-js';
 import { TbOutlineTrash } from 'solid-icons/tb';
-import { type KeyDeletionScope } from '@/utils/storage';
 import { Portal } from 'solid-js/web';
 import { Cell } from './cell';
 
-type Deletion = Awaited<ReturnType<typeof popupHistory.prepareKeyDeletion>> & {
+type Deletion = Awaited<ReturnType<typeof prepareCaptureDeletion>> & {
   description: string;
 };
 
 export const DeleteKeys = (props: {
-  scope: KeyDeletionScope;
+  scope: CaptureDeletionScope;
   label: string;
   class?: string;
   size?: 'xs' | 'sm' | 'md';
@@ -26,13 +29,13 @@ export const DeleteKeys = (props: {
     setError(undefined);
     const scope = props.scope;
     try {
-      const snapshot = await popupHistory.prepareKeyDeletion(scope);
+      const snapshot = await prepareCaptureDeletion(scope);
       const description =
         scope.kind === 'site'
-          ? `All records for ${scope.domain}, including www.${scope.domain}. Other subdomains are excluded.`
+          ? `All captures for ${scope.domain}, including www.${scope.domain}. Other subdomains are excluded.`
           : scope.kind === 'all'
             ? 'All sites, regardless of the current search or selection.'
-            : 'Only the selected records, including their copies in recent captures.';
+            : 'Only the selected captures, including their manifests, sessions, diagnostics, and keys.';
       setIsBusy(false);
       setPending({ ...snapshot, description });
     } catch {
@@ -47,7 +50,7 @@ export const DeleteKeys = (props: {
     setIsBusy(true);
     setError(undefined);
     try {
-      await popupHistory.deleteKeySnapshot(snapshot.tokens);
+      await deleteCaptureSnapshot(snapshot);
       setPending(null);
       props.onDeleted?.();
     } catch {
@@ -59,6 +62,7 @@ export const DeleteKeys = (props: {
   return (
     <Cell
       component="button"
+      title={props.size === 'xs' ? props.label : undefined}
       class={props.class}
       before={props.size === 'xs' || props.size === 'sm' ? undefined : <TbOutlineTrash />}
       variant="danger"
@@ -71,7 +75,10 @@ export const DeleteKeys = (props: {
         </Show>
       }
     >
-      {props.label}
+      <Show when={props.size === 'xs'} fallback={props.label}>
+        <TbOutlineTrash aria-hidden="true" class="size-3" />
+      </Show>
+
       <Portal>
         <Show when={pending()}>
           {(snapshot) => {
@@ -97,14 +104,15 @@ export const DeleteKeys = (props: {
               >
                 <div class="min-h-0 overflow-y-auto p-4">
                   <h2 id="delete-title" class="text-[14px] font-semibold">
-                    Delete {snapshot().count} {snapshot().count === 1 ? 'record' : 'records'}?
+                    Delete {snapshot().count} {snapshot().count === 1 ? 'capture' : 'captures'}?
                   </h2>
                   <p id="delete-description" class="mt-2 text-[12px] break-words">
                     {snapshot().description}
                   </p>
                   <p class="mt-2 text-[11px] text-neutral-500 dark:text-neutral-400">
-                    Removes records from history and recent captures. This cannot be undone. New
-                    captures arriving after this confirmation opened will be kept.
+                    Removes captures from history, recent captures, and detected manifests. This
+                    cannot be undone. New captures arriving after this confirmation opened will be
+                    kept.
                   </p>
                   <Show when={error()}>
                     <p role="alert" class="mt-2 text-xs text-red-600">
@@ -121,7 +129,7 @@ export const DeleteKeys = (props: {
                   >
                     {isBusy()
                       ? 'Deleting…'
-                      : `Delete ${snapshot().count} ${snapshot().count === 1 ? 'record' : 'records'}`}
+                      : `Delete ${snapshot().count} ${snapshot().count === 1 ? 'capture' : 'captures'}`}
                   </button>
                   <button
                     autofocus
@@ -131,7 +139,7 @@ export const DeleteKeys = (props: {
                       setPending(null);
                       setError(undefined);
                     }}
-                    class="min-h-10 w-full cursor-pointer border-t border-neutral-300 px-4 py-2 text-[13px] font-semibold text-[#007AFF] hover:bg-black/5 focus-visible:outline-2 focus-visible:-outline-offset-2 disabled:cursor-default disabled:opacity-50 dark:border-neutral-600 dark:text-blue-400 dark:hover:bg-white/5"
+                    class="min-h-10 w-full cursor-pointer border-t border-neutral-300 px-4 py-2 text-[13px] font-semibold text-[#007AFF] hover:bg-black/5 focus-visible:outline-2 focus-visible:-outline-offset-2 disabled:cursor-default disabled:opacity-50 dark:border-neutral-600 dark:text-emerald-400 dark:hover:bg-white/5"
                   >
                     Cancel
                   </button>

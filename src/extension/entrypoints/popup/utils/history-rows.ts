@@ -14,6 +14,7 @@ export const reconcileHistoryRows = (
   const matches = records.map((key) => {
     const match = [...remaining].find(
       (row) =>
+        row.key.captureId === key.captureId &&
         row.key.id === key.id &&
         row.key.value === key.value &&
         row.key.url === key.url &&
@@ -25,8 +26,13 @@ export const reconcileHistoryRows = (
   return records.map((key, index) => {
     let match = matches[index];
     if (!match) {
-      const candidates = [...remaining].filter((row) => row.key.id === key.id);
-      const unmatched = records.filter((record, index) => !matches[index] && record.id === key.id);
+      const candidates = [...remaining].filter(
+        (row) => row.key.id === key.id && row.key.captureId === key.captureId,
+      );
+      const unmatched = records.filter(
+        (record, index) =>
+          !matches[index] && record.id === key.id && record.captureId === key.captureId,
+      );
       if (candidates.length === 1 && unmatched.length === 1) {
         match = candidates[0];
         if (match) remaining.delete(match);

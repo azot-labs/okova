@@ -88,4 +88,12 @@
   ::-webkit-scrollbar-corner {
     border-radius: 10px;
   }
+
+  ::selection {
+    background: var(--color-emerald-300);
+  }
+
+  .dark ::selection {
+    background: var(--color-emerald-700);
+  }
 }

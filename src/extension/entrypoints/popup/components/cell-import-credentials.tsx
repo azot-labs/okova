@@ -59,7 +59,7 @@ export const CellImportCredentials: Component<{
       <Section>
         <Cell
           before={<TbOutlineFilePlus />}
-          variant="warning"
+          variant="primary"
           component="label"
           disabled={props.disabled || isImporting()}
         >

@@ -10,7 +10,11 @@ import {
   deleteKeySnapshot,
   type KeyInfo,
 } from '../src/extension/utils/storage';
-import { getCaptureDiagnosticsStorage } from '../src/extension/utils/session-diagnostics';
+import {
+  getCaptureDiagnosticsStorage,
+  isRetiredCaptureOwner,
+  saveCaptureDiagnostic,
+} from '../src/extension/utils/session-diagnostics';
 import { fromHex, Widevine } from '../src/lib';
 import { Session, setSupportedEngines } from '../src/lib/api';
 import { WidevineClientCredentials } from '../src/lib/widevine/client-credentials';
@@ -50,7 +54,7 @@ test.each(['usable', 'expired', 'output-restricted', 'status-pending'])(
   'replaces a stored %s status with a captured key and its metadata',
   async (value) => {
     await appStorage.allKeys.setValue([{ ...key, value }]);
-    const capturedKey = { ...key, url: 'https://example.com/replay', createdAt: 2 };
+    const capturedKey = { ...key, createdAt: 2 };
 
     await appStorage.allKeys.add(capturedKey);
 
@@ -58,13 +62,16 @@ test.each(['usable', 'expired', 'output-restricted', 'status-pending'])(
   },
 );
 
-test('refreshes capture correlation for newer duplicates without downgrading to statuses or older captures', async () => {
+test('preserves separate sessions before completion without downgrading keys to statuses', async () => {
   const older = { ...key, captureId: 'first' };
   const newer = { ...key, createdAt: 2, captureId: 'second' };
   await appStorage.allKeys.add(older);
   await appStorage.allKeys.add(newer);
-  await appStorage.allKeys.add({ ...key, createdAt: 3, value: 'usable' }, older);
-  expect(await appStorage.allKeys.getValue()).toEqual([newer]);
+  await appStorage.allKeys.add(
+    { ...key, captureId: 'first', createdAt: 3, value: 'usable' },
+    older,
+  );
+  expect(await appStorage.allKeys.getValue()).toEqual([older, newer]);
 });
 
 test('upgrades a status within the same batch while retaining distinct key IDs', async () => {
@@ -152,6 +159,7 @@ test('bounds combined recent writes and preserves empty and unscoped results', a
   const keys = Array.from({ length: 1_005 }, (_, index) => ({
     ...key,
     id: String(index),
+    mpd: undefined,
     createdAt: index,
   }));
   await appStorage.recentKeys.setForUrl(key.url, keys);
@@ -352,6 +360,7 @@ test('evicts the oldest timestamps at 1,001 records, preserving newer captures',
   const keys = Array.from({ length: 1_000 }, (_, index) => ({
     ...key,
     id: String(index),
+    mpd: undefined,
     createdAt: 1_000 - index,
   }));
   await appStorage.allKeys.setValue(keys);
@@ -366,6 +375,7 @@ test('bounds legacy oversized history and concurrent additions', async () => {
   const keys = Array.from({ length: 1_050 }, (_, index) => ({
     ...key,
     id: String(index),
+    mpd: undefined,
     createdAt: index,
   }));
   await appStorage.allKeys.raw.setValue(keys);
@@ -383,6 +393,7 @@ test('bounds direct and recent writes, including the shared domain cache budget'
   const keys = Array.from({ length: 1_005 }, (_, index) => ({
     ...key,
     id: String(index),
+    mpd: undefined,
     createdAt: index,
   }));
   await appStorage.allKeys.setValue(keys);
@@ -418,6 +429,7 @@ test('merges a whole capture batch before eviction so a late status cannot repla
   const keys = Array.from({ length: 1_000 }, (_, index) => ({
     ...key,
     id: String(index),
+    mpd: undefined,
     createdAt: index,
   }));
   await appStorage.allKeys.setValue(keys);
@@ -625,6 +637,7 @@ test('keeps 1,000 large records within the byte budget in all three stores', asy
   const keys = Array.from({ length: 1_000 }, (_, index) => ({
     ...key,
     id: String(index),
+    mpd: undefined,
     createdAt: index,
     pssh: 'A'.repeat(16 * 1024),
     url: `https://example.com/${'界"\\'.repeat(200)}/${index}`,
@@ -661,11 +674,18 @@ test('keeps 1,000 large records within the byte budget in all three stores', asy
 
 test('evicts complete older captures while preserving all keys and PSSH in the newest capture', async () => {
   const pssh = 'A'.repeat(600_000);
-  const old = [0, 1].map((index) => ({ ...key, id: String(index), captureId: 'old', pssh }));
+  const old = [0, 1].map((index) => ({
+    ...key,
+    mpd: 'https://example.com/old.mpd',
+    id: String(index),
+    captureId: `old-${index}`,
+    pssh,
+  }));
   const latest = [2, 3].map((index) => ({
     ...key,
     id: String(index),
-    captureId: 'latest',
+    captureId: `latest-${index}`,
+    mpd: 'https://example.com/latest.mpd',
     createdAt: 2,
     pssh,
   }));
@@ -756,6 +776,7 @@ test.each(['snapshot', 'record'])(
     const records = Array.from({ length: 20 }, (_, index) => ({
       ...key,
       id: String(index),
+      mpd: undefined,
       createdAt: index,
       pssh: 'A'.repeat(200_000),
     }));
@@ -792,3 +813,87 @@ test.each(['snapshot', 'record'])(
     }
   },
 );
+
+test('recent captures retain sibling sessions of the same manifest', async () => {
+  const first = { ...key, captureId: 'first' };
+  const second = { ...key, captureId: 'second', id: 'c'.repeat(32) };
+  await appStorage.allKeys.add(first, second);
+  await appStorage.recentKeys.setForUrl(key.url, [second]);
+  expect(await appStorage.recentKeys.getValue()).toEqual([first, second]);
+  expect((await appStorage.recentKeysByDomain.getValue())?.['example.com']).toEqual([
+    first,
+    second,
+  ]);
+});
+
+test('completed duplicate sessions replace older records in every history cache and diagnostics', async () => {
+  const old = [
+    { ...key, captureId: 'old' },
+    { ...key, id: '1'.repeat(32), captureId: 'old' },
+  ];
+  const latest = old.map((record) => ({ ...record, captureId: 'latest', createdAt: 2 }));
+  const different = { ...key, captureId: 'different', pssh: 'different', createdAt: 3 };
+  await appStorage.allKeys.setValue([...old, ...latest, different]);
+  await appStorage.recentKeys.setValue([...old, ...latest]);
+  await appStorage.recentKeysByDomain.setValue({ 'example.com': [...old, ...latest] });
+  const diagnostic = {
+    captureId: 'old',
+    owner: 'old-owner',
+    createdAt: 1,
+    origin: key.url,
+    frameOrigin: key.url,
+    frameId: 0,
+    documentId: null,
+    keySystem: 'com.widevine.alpha',
+    credential: null,
+    sessionId: 'eme-old',
+    outcome: 'keys-returned' as const,
+    keyCount: 2,
+    events: [],
+  };
+  await getCaptureDiagnosticsStorage(1).setValue([
+    diagnostic,
+    { ...diagnostic, captureId: 'latest', owner: 'latest-owner' },
+  ]);
+  await appStorage.replaceDuplicateSessions('latest');
+  expect(await appStorage.allKeys.getValue()).toEqual([...latest, different]);
+  expect(await appStorage.recentKeys.getValue()).toEqual(latest);
+  expect(await appStorage.recentKeysByDomain.getValue()).toEqual({ 'example.com': latest });
+  expect(
+    (await getCaptureDiagnosticsStorage(1).getValue())?.map((record) => record.captureId),
+  ).toEqual(['latest']);
+  expect(await isRetiredCaptureOwner(1, 'old-owner')).toBe(true);
+  await saveCaptureDiagnostic(1, diagnostic, () => true, true);
+  expect(
+    (await getCaptureDiagnosticsStorage(1).getValue())?.map((record) => record.captureId),
+  ).toEqual(['latest']);
+});
+
+test.each([
+  { value: '1'.repeat(32) },
+  { pssh: 'different' },
+  { drmSystem: 'P' as const },
+  { mpd: 'https://example.com/other.mpd' },
+  { url: 'https://example.com/other' },
+  { mpd: undefined },
+  { value: 'usable' },
+])('completed sessions preserve different results or capture identities: %j', async (change) => {
+  const old = { ...key, captureId: 'old' };
+  const latest = { ...key, captureId: 'latest', createdAt: 2, ...change };
+  await appStorage.allKeys.setValue([old, latest]);
+  await appStorage.replaceDuplicateSessions('latest');
+  expect(await appStorage.allKeys.getValue()).toEqual([old, latest]);
+});
+
+test('completed sessions compare full key sets regardless of ordering and retain the newest result', async () => {
+  const first = { ...key, captureId: 'first', createdAt: 1 };
+  const extra = { ...first, id: '1'.repeat(32) };
+  const second = { ...key, captureId: 'second', createdAt: 2 };
+  await appStorage.allKeys.setValue([first, extra, second]);
+  await appStorage.replaceDuplicateSessions('second');
+  expect(await appStorage.allKeys.getValue()).toEqual([first, extra, second]);
+  const secondExtra = { ...extra, captureId: 'second', createdAt: 2 };
+  await appStorage.allKeys.setValue([secondExtra, second, first, extra]);
+  await appStorage.replaceDuplicateSessions('first');
+  expect(await appStorage.allKeys.getValue()).toEqual([secondExtra, second]);
+});

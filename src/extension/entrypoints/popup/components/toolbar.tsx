@@ -3,18 +3,24 @@ import { A } from '@solidjs/router';
 import { TbOutlineDevices, TbOutlineSettings, TbOutlineLayersDifference } from 'solid-icons/tb';
 import { CardButton } from './card-button';
 import { Section } from './section';
-import { isCapturedKey } from '@/utils/storage';
-import { useCredentials } from '../utils/state';
+import type { KeyInfo } from '@/utils/storage';
+import type { StreamRecord } from '@/utils/streams';
+import { groupCaptureRecords } from '@/utils/capture-groups';
+import { useCredentials, useCaptureDiagnostics } from '../utils/state';
 import { CAPTURES_LABEL, CAPTURES_PATH } from '../utils/captures';
 
-export const Toolbar = () => {
+export const Toolbar = (props: { streams?: StreamRecord[] }) => {
   const [credentials] = useCredentials();
-  const [capturedKeyCount, setCapturedKeyCount] = createSignal(0);
+  const [diagnostics] = useCaptureDiagnostics();
+  const [records, setRecords] = createSignal<KeyInfo[]>([]);
+  const captureCount = createMemo(
+    () => groupCaptureRecords(records(), props.streams, diagnostics()).length,
+  );
   let hasUpdate = false;
   let isDisposed = false;
   const unwatch = popupHistory.allKeys.raw.watch((keys) => {
     hasUpdate = true;
-    setCapturedKeyCount(keys?.filter(isCapturedKey).length ?? 0);
+    setRecords(keys ?? []);
   });
   onCleanup(() => {
     isDisposed = true;
@@ -22,7 +28,7 @@ export const Toolbar = () => {
   });
   onMount(async () => {
     const keys = await popupHistory.allKeys.getValue();
-    if (!isDisposed && !hasUpdate) setCapturedKeyCount(keys?.filter(isCapturedKey).length ?? 0);
+    if (!isDisposed && !hasUpdate) setRecords(keys ?? []);
   });
 
   return (
@@ -37,7 +43,7 @@ export const Toolbar = () => {
       </A>
       <A href={CAPTURES_PATH} aria-label={CAPTURES_LABEL}>
         <Section>
-          <CardButton badge={capturedKeyCount()}>
+          <CardButton badge={captureCount()}>
             <TbOutlineLayersDifference />
             {CAPTURES_LABEL}
           </CardButton>

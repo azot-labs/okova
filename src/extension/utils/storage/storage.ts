@@ -1,3 +1,5 @@
+import { groupCaptureRecords } from '../capture-groups';
+import { retireCaptureDiagnostics } from '../session-diagnostics';
 import { CLIENT_KEY_SYSTEMS, normalizeKeySystem } from '../../../lib/key-system';
 import type { DrmStage } from '../drm-error';
 import { getManifestMetadata, type Manifest } from '../manifest';
@@ -40,6 +42,7 @@ export const keyRecordToken = (key: KeyInfo) =>
     key.mpd,
     key.drmSystem,
     key.manifests,
+    key.captureId,
   ]);
 
 export type KeyDeletionScope =
@@ -49,6 +52,7 @@ export type KeyDeletionScope =
 
 const sameKeyRecord = (left: KeyInfo, right: KeyInfo) =>
   left.id === right.id &&
+  left.captureId === right.captureId &&
   left.url === right.url &&
   left.pssh === right.pssh &&
   ((!isCapturedKey(left) && !isCapturedKey(right)) || left.value === right.value);
@@ -85,29 +89,15 @@ const retainNewest = <T>(
   // Reserve space for the storage key, outer string, and collection delimiters.
   let bytes = 256 + entries.reduce((total, entry) => total + entry.sizeBytes, 0);
   if (records.length <= MAX_HISTORY_RECORDS && bytes <= MAX_HISTORY_BYTES) return records;
-  const oldest = entries.toSorted(
-    (left, right) =>
-      (left.key?.createdAt ?? 0) - (right.key?.createdAt ?? 0) || left.index - right.index,
-  );
-  const newest = oldest.at(-1);
+  const captures = groupCaptureRecords(
+    entries.map((entry) => entry.key ?? { id: '', url: '', createdAt: 0 }),
+  ).toSorted((left, right) => left.createdAt - right.createdAt);
   const removed = new Set<number>();
-  for (const entry of oldest) {
+  for (const capture of captures.slice(0, -1)) {
     if (records.length - removed.size <= MAX_HISTORY_RECORDS && bytes <= MAX_HISTORY_BYTES) break;
-    if (removed.has(entry.index)) continue;
-    if (
-      entry === newest ||
-      (entry.key?.captureId && entry.key.captureId === newest?.key?.captureId)
-    )
-      continue;
-    for (const candidate of entries) {
-      if (
-        !removed.has(candidate.index) &&
-        (candidate.index === entry.index ||
-          (entry.key?.captureId && candidate.key?.captureId === entry.key.captureId))
-      ) {
-        removed.add(candidate.index);
-        bytes -= candidate.sizeBytes;
-      }
+    for (const index of capture.recordIndexes) {
+      removed.add(index);
+      bytes -= entries[index]?.sizeBytes ?? 0;
     }
   }
   if (bytes > MAX_HISTORY_BYTES || records.length - removed.size > MAX_HISTORY_RECORDS)
@@ -632,18 +622,107 @@ const createKeyHistory = (isIncognito: boolean, generation?: string) => {
     prepareKeyDeletion,
     deleteKeySnapshot,
 
+    // Only call after a complete key response has been saved, never for status events.
+    replaceDuplicateSessions: (captureId: string) =>
+      mutateKeyHistory(async () => {
+        const [history, recent, domains] = await Promise.all([
+          keyHistory.allKeys.getValue(),
+          recentKeys.getValue(),
+          keyHistory.recentKeysByDomain.getValue(),
+        ]);
+        const records = history ?? [];
+        const retired = new Set<string>();
+        for (const capture of groupCaptureRecords(records)) {
+          if (!capture.manifestUrl || !capture.sessionIds.includes(captureId)) continue;
+          const signatures = new Map<string, { id: string; createdAt: number }>();
+          for (const id of capture.sessionIds) {
+            const entries = capture.recordIndexes
+              .map((index) => records[index]!)
+              .filter((record) => record.captureId === id);
+            if (
+              entries.some(
+                (record) => !record.pssh.trim() || !record.drmSystem || !isCapturedKey(record),
+              )
+            )
+              continue;
+            const signature = JSON.stringify(
+              [
+                ...new Set(
+                  entries.map((record) =>
+                    JSON.stringify([
+                      record.drmSystem,
+                      record.pssh.trim(),
+                      record.id.toLowerCase(),
+                      record.value.toLowerCase(),
+                    ]),
+                  ),
+                ),
+              ].sort(),
+            );
+            const createdAt = Math.max(...entries.map((record) => record.createdAt));
+            const previous = signatures.get(signature);
+            if (!previous) signatures.set(signature, { id, createdAt });
+            else if (createdAt >= previous.createdAt) {
+              retired.add(previous.id);
+              signatures.set(signature, { id, createdAt });
+            } else retired.add(id);
+          }
+        }
+        if (!retired.size) return;
+        // A session associated with several captures must not disappear from its other captures.
+        const captures = groupCaptureRecords(records);
+        for (const id of retired) {
+          if (captures.filter((capture) => capture.sessionIds.includes(id)).length !== 1)
+            retired.delete(id);
+        }
+        const keep = (record: KeyInfo) => !record.captureId || !retired.has(record.captureId);
+        await storage.setItems([
+          { key: keyHistory.allKeys.raw.key, value: JSON.stringify(records.filter(keep)) },
+          { key: recentKeys.key, value: JSON.stringify((recent ?? []).filter(keep)) },
+          {
+            key: keyHistory.recentKeysByDomain.raw.key,
+            value: JSON.stringify(
+              Object.fromEntries(
+                Object.entries(domains ?? {}).map(([domain, keys]) => [domain, keys.filter(keep)]),
+              ),
+            ),
+          },
+        ]);
+        await retireCaptureDiagnostics([...retired]);
+      }),
+
     recentKeys: {
       ...recentKeys,
       setValue: (keys: KeyInfo[]) => mutateKeyHistory(() => recentKeys.setValue(retainKeys(keys))),
       setForUrl: (url: string | undefined, keys: KeyInfo[]) =>
         mutateKeyHistory(async () => {
           const domain = getWebsiteDomain(url);
-          const items = [{ key: recentKeys.key, value: JSON.stringify(retainKeys(keys)) }];
+          const history = (await keyHistory.allKeys.getValue()) ?? [];
+          const combined = [...history, ...keys];
+          const captures = groupCaptureRecords(combined).filter((capture) =>
+            capture.recordIndexes.some((index) => index >= history.length),
+          );
+          const siblings = captures.flatMap((capture) =>
+            capture.recordIndexes.flatMap((index) => {
+              const record = history[index];
+              return record &&
+                !keys.some(
+                  (key) =>
+                    key.id === record.id &&
+                    key.captureId === record.captureId &&
+                    key.url === record.url,
+                )
+                ? [record]
+                : [];
+            }),
+          );
+          const recentCapture = [...siblings, ...keys];
+          const items = [{ key: recentKeys.key, value: JSON.stringify(retainKeys(recentCapture)) }];
           if (domain) {
             const domains = (await keyHistory.recentKeysByDomain.getValue()) ?? {};
             items.push({
               key: keyHistory.recentKeysByDomain.raw.key,
-              value: JSON.stringify(retainDomains({ ...domains, [domain]: keys })),
+              value: JSON.stringify(retainDomains({ ...domains, [domain]: recentCapture })),
             });
           }
           await storage.setItems(items);
@@ -697,6 +776,8 @@ const createKeyHistory = (isIncognito: boolean, generation?: string) => {
             const index = keys.findIndex(
               (key) =>
                 key.id === newKey.id &&
+                key.captureId === newKey.captureId &&
+                key.url === newKey.url &&
                 (!isCapturedKey(key) ||
                   !isCapturedKey(newKey) ||
                   (key.value === newKey.value &&
@@ -719,6 +800,7 @@ const createKeyHistory = (isIncognito: boolean, generation?: string) => {
           // Status values can change in recent caches while history retains the original.
           // Captured keys still require an exact value match; timestamps may differ.
           const keepRecord = (storedKey: KeyInfo) =>
+            storedKey.captureId !== key.captureId ||
             storedKey.id !== key.id ||
             ((isCapturedKey(storedKey) || isCapturedKey(key)) && storedKey.value !== key.value) ||
             storedKey.pssh !== key.pssh ||

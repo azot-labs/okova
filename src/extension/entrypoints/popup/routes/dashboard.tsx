@@ -1,5 +1,6 @@
+import { useCaptureDiagnostics } from '../utils/state';
 import { getCredentialsSystem } from '@/utils/storage';
-import { SessionDiagnostics } from '../components/session-diagnostics';
+
 import { DeleteKeys } from '../components/delete-keys';
 import { A } from '@solidjs/router';
 import {
@@ -12,17 +13,21 @@ import {
   useSettings,
 } from '../utils/state';
 import { Toolbar } from '../components/toolbar';
+import { Cell } from '../components/cell';
 import { Layout } from '../components/layout';
 import { Header } from '../components/header';
 import { CellImportCredentials } from '../components/cell-import-credentials';
-import { NoKeys } from '../components/no-keys';
-import { KeysList } from '../components/keys-list';
+import { CaptureList } from '../components/capture-list';
+import { createPageStreams } from '../utils/page-streams';
+import { CaptureObservationStatus } from '../components/capture-observation-status';
 import { CaptureDrmFilter, CaptureOrder } from '../components/capture-filters';
 import { CaptureSearch } from '../components/capture-search';
 import { NoMatchingCaptures } from '../components/no-matching-captures';
 import { createCaptureFilters } from '../utils/capture-filters';
 import { getRecentKeysForUrl, getWebsiteDomain, drmStages } from '@/utils/storage';
 import { DELETE_SITE_CAPTURES_LABEL, RECENT_CAPTURES_LABEL } from '../utils/captures';
+import { TbOutlineRefresh } from 'solid-icons/tb';
+import { NoKeys } from '../components/no-keys';
 
 export const Dashboard = () => {
   const [failure] = useDrmFailure();
@@ -38,7 +43,9 @@ export const Dashboard = () => {
     return getRecentKeysForUrl(activeTabUrl(), recentKeysByDomain(), recentKeys());
   });
 
-  const filters = createCaptureFilters(activeDomainRecentKeys);
+  const pageStreams = createPageStreams();
+  const [diagnostics] = useCaptureDiagnostics();
+  const filters = createCaptureFilters(activeDomainRecentKeys, pageStreams.records, diagnostics);
 
   return (
     <Layout>
@@ -56,8 +63,9 @@ export const Dashboard = () => {
       >
         Dashboard
       </Header>
-      <div class="flex flex-col gap-3">
-        <Toolbar />
+      <div class="flex flex-col gap-1">
+        <Toolbar streams={pageStreams.records()} />
+        <CaptureObservationStatus observation={pageStreams} />
 
         <Show when={credentials().length === 0}>
           <CellImportCredentials />
@@ -76,11 +84,10 @@ export const Dashboard = () => {
           )}
         </Show>
 
-        <SessionDiagnostics />
-
-        <KeysList
-          keys={filters.keys}
-          allKeys={activeDomainRecentKeys}
+        <CaptureList
+          captures={filters.captures}
+          total={filters.allCaptures().length}
+          records={activeDomainRecentKeys}
           header={RECENT_CAPTURES_LABEL}
           controls={
             <CaptureSearch search={filters.search}>
@@ -94,6 +101,16 @@ export const Dashboard = () => {
                   />
                 )}
               </Show>
+              <Cell
+                title="Refresh"
+                class="w-fit"
+                component="button"
+                size="xs"
+                disabled={pageStreams.isLoading()}
+                onClick={() => void pageStreams.refresh()}
+              >
+                <TbOutlineRefresh aria-hidden="true" class="size-3 opacity-50" />
+              </Cell>
               <CaptureDrmFilter {...filters.drm} />
               <CaptureOrder {...filters.order} />
             </CaptureSearch>
@@ -103,7 +120,7 @@ export const Dashboard = () => {
               Enable Spoofing in{' '}
               <A
                 href="/settings"
-                class="w-fit truncate text-blue-600 hover:underline hover:text-blue-500 dark:text-blue-400 dark:hover:text-blue-300"
+                class="w-fit truncate text-emerald-600 hover:underline hover:text-emerald-500 dark:text-emerald-400 dark:hover:text-emerald-300"
               >
                 Settings
               </A>{' '}
@@ -112,11 +129,11 @@ export const Dashboard = () => {
           }
         />
 
-        <Show when={activeDomainRecentKeys().length > 0 && !filters.keys().length}>
+        <Show when={filters.allCaptures().length > 0 && !filters.captures().length}>
           <NoMatchingCaptures onClear={filters.clear} />
         </Show>
 
-        <Show when={activeDomainRecentKeys().length === 0 && !activeFailure()}>
+        <Show when={filters.allCaptures().length === 0 && !activeFailure()}>
           <footer class="w-full flex flex-col items-center justify-center text-center gap-1 mt-auto py-2">
             <NoKeys />
           </footer>

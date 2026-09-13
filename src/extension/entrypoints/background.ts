@@ -8,6 +8,7 @@ import {
   diagnosticOrigin,
   getCaptureDiagnosticsStorage,
   saveCaptureDiagnostic,
+  isRetiredCaptureOwner,
   type CaptureDiagnostic,
 } from '@/utils/session-diagnostics';
 import {
@@ -670,6 +671,12 @@ export default defineBackground({
         const settings = await run(appStorage.settings.getValue());
         const saveHistory = async (keys: KeyInfo[], recent = keys) => {
           try {
+            if (
+              tabId !== undefined &&
+              sessionKey &&
+              (await isRetiredCaptureOwner(tabId, sessionKey))
+            )
+              return true;
             if (tabId !== undefined && tabGeneration === (tabGenerations.get(tabId) ?? 0)) {
               requestHeaders.capture(
                 keys,
@@ -680,6 +687,14 @@ export default defineBackground({
             }
             await run(history.allKeys.add(...keys));
             await run(history.recentKeys.setForUrl(message.url, recent));
+            const captureId = keys[0]?.captureId;
+            if (
+              message.action === 'update' &&
+              captureId &&
+              keys.length &&
+              keys.every(isCapturedKey)
+            )
+              await run(history.replaceDuplicateSessions(captureId));
             updateBadgeForTabInBackground(sender.tab);
             await run(clearFailure());
             return true;
@@ -972,6 +987,7 @@ export default defineBackground({
               diagnostic = records?.find((record) => record.owner === sessionKey);
               if (
                 !diagnostic &&
+                !(await isRetiredCaptureOwner(tabId, sessionKey)) &&
                 !state.sessions.get(sessionKey)?.captureId &&
                 ['generateRequest', 'update', 'keystatuseschange'].includes(message.action)
               ) {

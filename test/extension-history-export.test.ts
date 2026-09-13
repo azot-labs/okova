@@ -1,5 +1,9 @@
+import { groupCaptureRecords } from '../src/extension/utils/capture-groups';
 import { expect, test } from 'vitest';
-import { serializeHistory } from '../src/extension/entrypoints/popup/utils/history-export';
+import {
+  serializeHistory,
+  serializeCaptures,
+} from '../src/extension/entrypoints/popup/utils/history-export';
 import type { KeyInfo } from '../src/extension/utils/storage';
 
 const key: KeyInfo = {
@@ -50,4 +54,18 @@ test('empty history produces an empty JSON collection or empty text', () => {
   expect(JSON.parse(serializeHistory([], 'json'))).toEqual({ version: 1, records: [] });
   expect(serializeHistory([], 'txt')).toBe('');
   expect(serializeHistory([{ ...key, value: 'usable' }], 'txt')).toBe('');
+});
+
+test('capture JSON preserves the manifest and separate sessions with their records', () => {
+  const records = [
+    { ...key, captureId: 'a' },
+    { ...key, captureId: 'b' },
+  ];
+  const exported = JSON.parse(serializeCaptures(groupCaptureRecords(records), records));
+  expect(exported.version).toBe(2);
+  expect(exported.captures).toHaveLength(1);
+  expect(exported.captures[0].manifestUrl).toBe(key.mpd);
+  expect(
+    exported.captures[0].sessions.map((session: { captureId: string }) => session.captureId),
+  ).toEqual(['a', 'b']);
 });

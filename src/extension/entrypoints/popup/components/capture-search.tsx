@@ -25,10 +25,10 @@ export const CaptureSearch = (props: CaptureSearchProps) => {
         aria-expanded={isSearchExpanded()}
         title={props.search.value.trim() ? `Search: ${props.search.value}` : 'Search'}
         class={cn(
-          'size-4 items-center justify-center rounded-md cursor-pointer hover:bg-slate-200/80 dark:hover:bg-neutral-800 focus-visible:outline-2',
+          'size-4 items-center justify-center rounded-md cursor-pointer hover:bg-emerald-200/80 dark:hover:bg-neutral-800 focus-visible:outline-2',
           isSearchExpanded() ? 'hidden' : 'inline-flex',
           props.search.value.trim() &&
-            'bg-blue-100 text-blue-600 dark:bg-blue-500/20 dark:text-blue-400',
+            'bg-emerald-100 text-emerald-600 dark:bg-emerald-500/20 dark:text-emerald-400',
         )}
         onClick={() => {
           setIsSearchExpanded(true);
@@ -43,7 +43,7 @@ export const CaptureSearch = (props: CaptureSearchProps) => {
           ref={searchInput}
           type="search"
           aria-label="Search"
-          class="min-h-4 w-56 rounded-md pl-5 pr-1 font-normal outline-none bg-slate-200/80 dark:bg-neutral-800 focus-visible:outline-2"
+          class="min-h-4 w-56 rounded-md pl-5 pr-1 font-normal outline-none bg-emerald-200/80 dark:bg-neutral-800 focus-visible:outline-2"
           placeholder="Search..."
           value={props.search.value}
           onInput={(event) => props.search.onChange(event.currentTarget.value)}

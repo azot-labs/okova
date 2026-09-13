@@ -5,197 +5,209 @@ import { chromium } from 'playwright';
 import { expect, test } from 'vitest';
 import type { KeyInfo } from '../../src/extension/utils/storage';
 
-test('deletes individual records and confirms frozen selected, site, and all-record scopes', async () => {
-  const profile = await mkdtemp(join(tmpdir(), 'okova-record-deletion-'));
+test('deletes whole captures across history, sessions, and page manifests', async () => {
+  const profile = await mkdtemp(join(tmpdir(), 'okova-capture-deletion-'));
   const extension = resolve('.output/chrome-mv3');
+  const context = await chromium.launchPersistentContext(profile, {
+    channel: 'chromium',
+    headless: true,
+    viewport: { width: 500, height: 600 },
+    args: [`--disable-extensions-except=${extension}`, `--load-extension=${extension}`],
+  });
   try {
-    const context = await chromium.launchPersistentContext(profile, {
-      channel: 'chromium',
-      headless: true,
-      viewport: { width: 500, height: 650 },
-      args: [`--disable-extensions-except=${extension}`, `--load-extension=${extension}`],
+    const worker = context.serviceWorkers()[0] ?? (await context.waitForEvent('serviceworker'));
+    await context.route('https://example.test/**', (route) =>
+      route.fulfill({ contentType: 'text/html', body: '<title>Capture deletion</title>' }),
+    );
+    const source = await context.newPage();
+    await source.goto('https://example.test/watch');
+    await source.evaluate(() => {
+      window.MANIFEST_LIST = new Map([
+        [
+          'https://example.test/movie.mpd',
+          { url: 'https://example.test/movie.mpd', kind: 'dash', children: [], requestUrls: [] },
+        ],
+        [
+          'https://example.test/master.m3u8',
+          {
+            url: 'https://example.test/master.m3u8',
+            kind: 'hls-master',
+            children: ['https://example.test/audio.m3u8'],
+            requestUrls: [],
+          },
+        ],
+        [
+          'https://example.test/audio.m3u8',
+          {
+            url: 'https://example.test/audio.m3u8',
+            kind: 'hls-media',
+            children: [],
+            requestUrls: [],
+          },
+        ],
+      ]);
     });
-    try {
-      const worker = context.serviceWorkers()[0] ?? (await context.waitForEvent('serviceworker'));
-      const key: KeyInfo = {
-        id: '00112233445566778899aabbccddeeff',
-        value: 'ffeeddccbbaa99887766554433221100',
-        url: 'https://example.com/first',
-        pssh: 'cHNzaA==',
-        createdAt: Date.now(),
-      };
-      const otherPage = { ...key, url: 'https://example.com/second' };
-      await worker.evaluate(
-        async (records) => {
-          await browser.storage.local.set({
-            'all-keys': JSON.stringify(records),
-            'recent-keys': JSON.stringify(records),
-            'recent-keys-by-domain': JSON.stringify({ 'example.com': records }),
-          });
-        },
-        [key, otherPage],
-      );
-      const popup = await context.newPage();
-      const errors: string[] = [];
-      popup.on('pageerror', (error) => errors.push(error.message));
-      popup.on('dialog', async (dialog) => {
-        errors.push(`Unexpected ${dialog.type()} dialog`);
-        await dialog.dismiss();
-      });
-      await popup.goto(`chrome-extension://${new URL(worker.url()).hostname}/popup.html`);
-      const dashboard = await context.newPage();
-      await dashboard.addInitScript(() => {
-        const query = browser.tabs.query.bind(browser.tabs);
-        browser.tabs.query = async (options) =>
-          (await query(options)).map((tab) => ({ ...tab, url: 'https://example.com/first' }));
-      });
-      await dashboard.goto(`chrome-extension://${new URL(worker.url()).hostname}/popup.html`);
-      await expect.poll(() => dashboard.locator('code').count()).toBe(2);
-      await popup.getByRole('link', { name: 'Captures', exact: true }).click();
-      await expect.poll(() => popup.locator('code').count()).toBe(2);
-      await popup.locator('code').first().click();
-      await popup.getByRole('button', { name: 'Delete', exact: true }).click();
-      await expect.poll(() => popup.locator('code').count()).toBe(1);
-      expect(await popup.getByRole('status').innerText()).toBe('(1)');
-      await expect.poll(() => dashboard.locator('code').count()).toBe(1);
-      expect(await popup.locator('#root > main').isVisible()).toBe(true);
-      const readRecords = () =>
-        worker.evaluate(async () =>
-          browser.storage.local.get(['all-keys', 'recent-keys', 'recent-keys-by-domain']),
-        );
-      expect(await readRecords()).toEqual({
-        'all-keys': JSON.stringify([otherPage]),
-        'recent-keys': JSON.stringify([otherPage]),
-        'recent-keys-by-domain': JSON.stringify({ 'example.com': [otherPage] }),
-      });
-      await dashboard.locator('code').click();
-      await dashboard.getByRole('button', { name: 'Delete', exact: true }).click();
-      await expect.poll(() => popup.locator('code').count()).toBe(0);
-      expect(await popup.getByRole('status').isVisible()).toBe(false);
-      expect(await popup.locator('#root > main').isVisible()).toBe(true);
-      expect(await readRecords()).toEqual({
-        'all-keys': '[]',
-        'recent-keys': '[]',
-        'recent-keys-by-domain': JSON.stringify({ 'example.com': [] }),
-      });
-      await expect.poll(() => dashboard.locator('code').count()).toBe(0);
-      expect(await dashboard.locator('#root > main').isVisible()).toBe(true);
-      const otherSite = { ...key, url: 'https://other.example/watch' };
-      const records = [key, otherPage, otherSite];
-      const seed = async (records: KeyInfo[]) =>
-        worker.evaluate(async (records) => {
-          await browser.storage.local.set({
-            'all-keys': JSON.stringify(records),
-            'recent-keys': JSON.stringify(records),
-            'recent-keys-by-domain': JSON.stringify({
-              'example.com': records.filter((key) => key.url.startsWith('https://example.com/')),
-              'other.example': records.filter((key) =>
-                key.url.startsWith('https://other.example/'),
-              ),
+    const tabId = await worker.evaluate(
+      async () => (await browser.tabs.query({ url: 'https://example.test/watch' }))[0]!.id!,
+    );
+    const base: KeyInfo = {
+      id: 'a'.repeat(32),
+      value: 'b'.repeat(32),
+      url: 'https://example.test/watch',
+      mpd: 'https://example.test/movie.mpd',
+      pssh: '',
+      captureId: 'session-a',
+      createdAt: 100,
+    };
+    const other = {
+      ...base,
+      captureId: 'other-session',
+      mpd: 'https://other.test/other.mpd',
+      url: 'https://other.test/watch',
+    };
+    const records = [base, { ...base, captureId: 'session-b', id: 'c'.repeat(32) }, other];
+    await worker.evaluate(
+      async ({ tabId, records }) => {
+        await browser.storage.local.set({
+          'all-keys': JSON.stringify(records),
+          'recent-keys': JSON.stringify(records),
+          'recent-keys-by-domain': JSON.stringify({
+            'example.test': records.slice(0, 2),
+            'other.test': records.slice(2),
+          }),
+        });
+        await browser.storage.session.set({
+          [`capture-diagnostics:${tabId}`]: ['session-a', 'session-b', 'failed-session'].map(
+            (captureId) => ({
+              captureId,
+              owner: 'test',
+              createdAt: 100,
+              origin: 'https://example.test',
+              frameOrigin: 'https://example.test',
+              frameId: 0,
+              documentId: 'test',
+              keySystem: 'com.widevine.alpha',
+              credential: null,
+              sessionId: null,
+              outcome: 'failed',
+              keyCount: 0,
+              events: [],
             }),
-          });
-        }, records);
-      await seed(records);
-      await expect.poll(() => popup.locator('code').count()).toBe(3);
-      const rowCheckboxes = popup.getByRole('checkbox', { name: /^Select record/ });
-      await rowCheckboxes.first().check();
-      expect(await popup.getByRole('button', { name: 'Select All', exact: true }).isVisible()).toBe(
-        true,
-      );
-      await expect.poll(() => popup.getByRole('status').innerText()).toBe('(1/3)');
-      expect(await popup.getByRole('heading', { name: 'Capture Details' }).count()).toBe(0);
-      if (!(await popup.getByRole('searchbox').isVisible()))
-        await popup.getByRole('button', { name: 'Search', exact: true }).click();
-      await popup.getByRole('searchbox').fill('other.example');
-      await expect.poll(() => popup.getByRole('status').innerText()).toBe('(3)');
-      if (!(await popup.getByRole('searchbox').isVisible()))
-        await popup.getByRole('button', { name: 'Search', exact: true }).click();
-      await popup.getByRole('searchbox').fill('example.com');
-      await popup.getByRole('button', { name: 'Select All', exact: true }).click();
-      expect(
-        await rowCheckboxes.evaluateAll((boxes) =>
-          boxes.every((box) => box instanceof HTMLInputElement && box.checked),
-        ),
-      ).toBe(true);
-      await popup.getByRole('button', { name: 'Deselect All', exact: true }).click();
-      expect(await popup.getByRole('button', { name: 'Delete All', exact: true }).isVisible()).toBe(
-        true,
-      );
-      await popup.getByRole('button', { name: 'Select All', exact: true }).click();
-      await popup.getByRole('button', { name: /^Delete Selected \(/ }).click();
-      const dialog = popup.getByRole('dialog');
-      await expect.poll(() => dialog.isVisible()).toBe(true);
-      expect(await dialog.getByRole('heading').innerText()).toBe('Delete 2 records?');
-      expect(
-        await dialog
-          .getByRole('button', { name: 'Cancel' })
-          .evaluate((element) => element === document.activeElement),
-      ).toBe(true);
-      expect(
-        await dialog
-          .getByRole('button')
-          .evaluateAll((buttons) =>
-            buttons.every((button) => getComputedStyle(button).cursor === 'pointer'),
           ),
-      ).toBe(true);
-      await dialog.getByRole('button', { name: 'Cancel' }).click();
-      // Let a mistakenly bubbled click finish preparing a second confirmation.
-      await popup.waitForTimeout(150);
-      expect(await dialog.count()).toBe(0);
-      await expect.poll(() => popup.getByRole('status').innerText()).toBe('(2/3)');
-      await popup.getByRole('button', { name: /^Delete Selected \(/ }).click();
-      await dialog.waitFor({ state: 'visible' });
-      await popup.keyboard.press('Escape');
-      expect(await dialog.count()).toBe(0);
-      await expect.poll(() => popup.getByRole('status').innerText()).toBe('(2/3)');
-      await popup.getByRole('button', { name: /^Delete Selected \(/ }).click();
-      const arriving = { ...key, url: 'https://example.com/new', createdAt: key.createdAt + 100 };
-      await seed([...records, arriving]);
-      expect(await dialog.getByRole('heading').innerText()).toBe('Delete 2 records?');
-      await mkdir(resolve('output/playwright/bulk-deletion'), { recursive: true });
-      await popup.screenshot({ path: resolve('output/playwright/bulk-deletion/confirmation.png') });
-      await popup.setViewportSize({ width: 500, height: 300 });
-      await popup.evaluate(() => document.documentElement.classList.add('dark'));
-      await popup.screenshot({
-        path: resolve('output/playwright/bulk-deletion/confirmation-dark-short.png'),
+        });
+      },
+      { tabId, records },
+    );
+    const popup = await context.newPage();
+    const errors: string[] = [];
+    popup.on('pageerror', (error) => errors.push(error.message));
+    await popup.goto(`chrome-extension://${new URL(worker.url()).hostname}/popup.html`);
+    await worker.evaluate((id) => browser.tabs.update(id, { active: true }), tabId);
+    await popup.getByRole('link', { name: 'Captures', exact: true }).click();
+    await expect.poll(() => popup.locator('[data-capture-row]').count()).toBe(4);
+    const movie = popup.locator('[data-capture-row]').filter({ hasText: 'movie.mpd' });
+    await movie.getByRole('checkbox').check();
+    await popup.getByRole('button', { name: 'Delete Selected (1)', exact: true }).click();
+    const dialog = popup.getByRole('dialog');
+    expect(await dialog.getByRole('heading').innerText()).toBe('Delete 1 capture?');
+    await dialog.getByRole('button', { name: 'Cancel', exact: true }).click();
+    expect(await popup.locator('[data-capture-row]').count()).toBe(4);
+    await popup.getByRole('button', { name: 'Delete Selected (1)', exact: true }).click();
+    const arriving = {
+      ...base,
+      captureId: 'new-session',
+      mpd: 'https://example.test/new.mpd',
+      createdAt: 200,
+    };
+    await worker.evaluate(async (record) => {
+      const stored = (await browser.storage.local.get('all-keys'))['all-keys'];
+      if (typeof stored !== 'string') throw new Error('Missing history');
+      await browser.storage.local.set({
+        'all-keys': JSON.stringify([
+          ...JSON.parse(stored),
+          {
+            ...record,
+            captureId: 'session-a',
+            mpd: 'https://example.test/movie.mpd',
+            id: 'f'.repeat(32),
+          },
+          record,
+        ]),
       });
-      expect(await dialog.evaluate((element) => element.scrollWidth <= element.clientWidth)).toBe(
-        true,
-      );
-      await dialog.getByRole('button', { name: 'Delete 2 records', exact: true }).click();
-      await popup.setViewportSize({ width: 500, height: 650 });
-      await popup.evaluate(() => document.documentElement.classList.remove('dark'));
-      await expect.poll(() => popup.locator('code').count()).toBe(1);
-      expect(JSON.parse(String((await readRecords())['all-keys']))).toEqual([otherSite, arriving]);
-      if (!(await popup.getByRole('searchbox').isVisible()))
-        await popup.getByRole('button', { name: 'Search', exact: true }).click();
-      await popup.getByRole('searchbox').fill('');
-      await popup.screenshot({ path: resolve('output/playwright/bulk-deletion/selection.png') });
-      await dashboard.getByRole('button', { name: 'Delete Site Captures', exact: true }).click();
-      const siteDialog = dashboard.getByRole('dialog');
-      await expect.poll(() => siteDialog.isVisible()).toBe(true);
-      expect(await siteDialog.innerText()).toContain('example.com');
-      await siteDialog.getByRole('button', { name: 'Delete 1 record', exact: true }).click();
-      await expect.poll(() => popup.locator('code').count()).toBe(1);
-      expect(JSON.parse(String((await readRecords())['all-keys']))).toEqual([otherSite]);
-      if (!(await popup.getByRole('searchbox').isVisible()))
-        await popup.getByRole('button', { name: 'Search', exact: true }).click();
-      await popup.getByRole('searchbox').fill('no-match');
-      await popup.getByRole('button', { name: 'Delete All', exact: true }).click();
-      await expect.poll(() => dialog.isVisible()).toBe(true);
-      expect(await dialog.innerText()).toContain(
-        'All sites, regardless of the current search or selection.',
-      );
-      await seed([otherSite, arriving]);
-      await dialog.getByRole('button', { name: 'Delete 1 record', exact: true }).click();
-      await expect
-        .poll(async () => JSON.parse(String((await readRecords())['all-keys'])))
-        .toEqual([arriving]);
-      expect(errors).toEqual([]);
-    } finally {
-      await context.close();
-    }
+    }, arriving);
+    await mkdir(resolve('output/playwright/capture-deletion'), { recursive: true });
+    await popup.screenshot({
+      path: resolve('output/playwright/capture-deletion/confirmation.png'),
+    });
+    await dialog.getByRole('button', { name: 'Delete 1 capture', exact: true }).click();
+    await expect.poll(() => movie.count()).toBe(0);
+    await expect.poll(() => popup.locator('[data-capture-row]').count()).toBe(4);
+    const saved = await worker.evaluate(async () =>
+      browser.storage.local.get(['all-keys', 'recent-keys', 'recent-keys-by-domain']),
+    );
+    if (
+      typeof saved['all-keys'] !== 'string' ||
+      typeof saved['recent-keys'] !== 'string' ||
+      typeof saved['recent-keys-by-domain'] !== 'string'
+    )
+      throw new Error('Missing history stores');
+    expect(JSON.parse(saved['all-keys'])).toEqual([other, arriving]);
+    expect(JSON.parse(saved['recent-keys'])).toEqual([other]);
+    expect(JSON.parse(saved['recent-keys-by-domain'])['example.test']).toEqual([]);
+    expect(
+      await worker.evaluate(async (tabId) => {
+        const records = (await browser.storage.session.get(`capture-diagnostics:${tabId}`))[
+          `capture-diagnostics:${tabId}`
+        ];
+        if (!Array.isArray(records)) throw new Error('Missing diagnostics');
+        return records.map((record: { captureId: string }) => record.captureId);
+      }, tabId),
+    ).toEqual(['failed-session']);
+    expect(
+      await source.evaluate(() => window.MANIFEST_LIST.has('https://example.test/movie.mpd')),
+    ).toBe(false);
+    await popup.getByRole('button', { name: 'Refresh', exact: true }).click();
+    await expect.poll(() => movie.count()).toBe(0);
+    const master = popup.locator('[data-capture-row]').filter({ hasText: 'master.m3u8' });
+    await master.getByRole('checkbox').check();
+    await popup.getByRole('button', { name: 'Delete Selected (1)', exact: true }).click();
+    await dialog.getByRole('button', { name: 'Delete 1 capture', exact: true }).click();
+    await expect.poll(() => master.count()).toBe(0);
+    expect(await source.evaluate(() => window.MANIFEST_LIST.size)).toBe(0);
+    const failed = popup.locator('[data-capture-row]').filter({ hasText: 'Manifest not detected' });
+    await failed.locator(':scope > summary').click({ position: { x: 8, y: 8 } });
+    await failed.getByRole('checkbox').check();
+    await popup.getByRole('button', { name: 'Delete Selected (1)', exact: true }).click();
+    await dialog.getByRole('button', { name: 'Delete 1 capture', exact: true }).click();
+    await expect.poll(() => failed.count()).toBe(0);
+    await popup.goto(`chrome-extension://${new URL(worker.url()).hostname}/popup.html`);
+    await popup.getByRole('link', { name: 'Captures', exact: true }).click();
+    await expect.poll(() => popup.locator('[data-capture-row]').count()).toBe(2);
+    await popup.goto(`chrome-extension://${new URL(worker.url()).hostname}/popup.html`);
+    await popup.getByRole('button', { name: 'Delete Site Captures', exact: true }).click();
+    expect(await dialog.getByRole('heading').innerText()).toBe('Delete 1 capture?');
+    await dialog.getByRole('button', { name: 'Delete 1 capture', exact: true }).click();
+    await expect
+      .poll(async () => {
+        const stored = (await worker.evaluate(() => browser.storage.local.get('all-keys')))[
+          'all-keys'
+        ];
+        return typeof stored === 'string' ? JSON.parse(stored).length : -1;
+      })
+      .toBe(1);
+    await worker.evaluate(
+      async (records) => browser.storage.local.set({ 'all-keys': JSON.stringify(records) }),
+      [other, { ...arriving, url: 'https://sub.example.test/watch' }],
+    );
+    await popup.getByRole('link', { name: 'Captures', exact: true }).click();
+    await popup.getByRole('combobox', { name: 'Site', exact: true }).selectOption('other.test');
+    await popup.getByRole('button', { name: 'Delete All', exact: true }).click();
+    expect(await dialog.getByRole('heading').innerText()).toBe('Delete 2 captures?');
+    await dialog.getByRole('button', { name: 'Delete 2 captures', exact: true }).click();
+    await expect.poll(() => popup.locator('[data-capture-row]').count()).toBe(0);
+    expect(errors).toEqual([]);
   } finally {
+    await context.close();
     await rm(profile, { recursive: true, force: true });
   }
 });

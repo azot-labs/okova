@@ -1,34 +1,42 @@
+import { useCaptureDiagnostics } from '../utils/state';
 import { popupHistory } from '../utils/history';
-import { TbOutlineFileDownload } from 'solid-icons/tb';
+import { TbOutlineFileDownload, TbOutlineRefresh } from 'solid-icons/tb';
 import { DeleteKeys } from '../components/delete-keys';
 import { Layout } from '../components/layout';
 import { Header } from '../components/header';
 import { Cell } from '../components/cell';
-import { KeyInfo, keyRecordToken } from '@/utils/storage';
-import { KeysList } from '../components/keys-list';
-import { NoKeys } from '../components/no-keys';
+import { KeyInfo } from '@/utils/storage';
+import { CaptureList } from '../components/capture-list';
+import { createPageStreams } from '../utils/page-streams';
+import { CaptureObservationStatus } from '../components/capture-observation-status';
 import { CaptureSiteFilter, CaptureDrmFilter, CaptureOrder } from '../components/capture-filters';
 import { CaptureSearch } from '../components/capture-search';
 import { NoMatchingCaptures } from '../components/no-matching-captures';
-import { serializeHistory, type HistoryExportFormat } from '../utils/history-export';
+import {
+  serializeCaptures,
+  serializeHistory,
+  type HistoryExportFormat,
+} from '../utils/history-export';
 import { saveFile } from '../utils/file';
 import { createCaptureFilters } from '../utils/capture-filters';
 import { CAPTURES_LABEL } from '../utils/captures';
 
 export const Captures = () => {
   const [keys, setKeys] = createSignal<KeyInfo[]>([]);
-  const filters = createCaptureFilters(keys);
+  const pageStreams = createPageStreams();
+  const [diagnostics] = useCaptureDiagnostics();
+  const filters = createCaptureFilters(keys, pageStreams.records, diagnostics);
   const filteredKeys = filters.keys;
   const [selected, setSelected] = createSignal<string[]>([]);
-  const selectedRecords = createMemo(() =>
-    filteredKeys().filter((key) => selected().includes(keyRecordToken(key))),
+  const selectedCaptures = createMemo(() =>
+    filters.captures().filter((capture) => selected().includes(capture.id)),
   );
   const isAllSelected = createMemo(
-    () => filteredKeys().length > 0 && selectedRecords().length === filteredKeys().length,
+    () => filters.captures().length > 0 && selectedCaptures().length === filters.captures().length,
   );
   createEffect(() => {
-    const visible = new Set(filteredKeys().map(keyRecordToken));
-    setSelected((tokens) => tokens.filter((token) => visible.has(token)));
+    const visible = new Set(filters.captures().map((capture) => capture.id));
+    setSelected((ids) => ids.filter((id) => visible.has(id)));
   });
   const [isExporting, setIsExporting] = createSignal(false);
   const [exportError, setExportError] = createSignal<string>();
@@ -39,8 +47,11 @@ export const Captures = () => {
     setExportError(undefined);
     try {
       const records = filteredKeys();
-      const content = serializeHistory(records, format);
-      const filename = format === 'json' ? 'okova-history.json' : 'okova-keys.txt';
+      const content =
+        format === 'json'
+          ? serializeCaptures(filters.captures(), keys())
+          : serializeHistory(records, format);
+      const filename = format === 'json' ? 'okova-captures.json' : 'okova-keys.txt';
       await saveFile(new TextEncoder().encode(content), filename);
     } catch (error) {
       if (!(error instanceof Error && error.name === 'AbortError')) {
@@ -77,16 +88,16 @@ export const Captures = () => {
               size="sm"
               class="w-auto shrink-0"
               label={
-                selectedRecords().length
-                  ? `Delete Selected (${selectedRecords().length})`
+                selectedCaptures().length
+                  ? `Delete Selected (${selectedCaptures().length})`
                   : 'Delete All'
               }
               scope={
-                selectedRecords().length
-                  ? { kind: 'selected', records: selectedRecords() }
+                selectedCaptures().length
+                  ? { kind: 'selected', captures: selectedCaptures() }
                   : { kind: 'all' }
               }
-              disabled={!keys().length}
+              disabled={!filters.allCaptures().length}
               onDeleted={() => setSelected([])}
             />
             <Cell
@@ -94,8 +105,10 @@ export const Captures = () => {
               variant="primary"
               size="sm"
               class="w-auto shrink-0"
-              disabled={!filteredKeys().length}
-              onClick={() => setSelected(isAllSelected() ? [] : filteredKeys().map(keyRecordToken))}
+              disabled={!filters.captures().length}
+              onClick={() =>
+                setSelected(isAllSelected() ? [] : filters.captures().map((capture) => capture.id))
+              }
             >
               {isAllSelected() ? 'Deselect All' : 'Select All'}
             </Cell>
@@ -105,17 +118,19 @@ export const Captures = () => {
         {CAPTURES_LABEL}
       </Header>
       <div class="flex flex-col gap-3">
-        <KeysList
-          keys={filteredKeys}
-          allKeys={keys}
+        <CaptureObservationStatus observation={pageStreams} />
+        <CaptureList
+          captures={filters.captures}
+          total={filters.allCaptures().length}
+          records={keys}
           header="All"
           headerActions={
             <span class="ml-1 capitalize flex items-center gap-1">
               <Cell
                 component="button"
-                disabled={isExporting() || !filteredKeys().length}
+                disabled={isExporting() || !filters.captures().length}
                 onClick={() => exportKeys('json')}
-                title="Matching records, including statuses and metadata"
+                title="Matching captures with manifests, sessions, records, and diagnostics"
                 class="text-neutral-500 dark:text-neutral-400"
                 size="xs"
                 before={<TbOutlineFileDownload aria-hidden="true" class="size-3!" />}
@@ -142,15 +157,32 @@ export const Captures = () => {
           }
           controls={
             <CaptureSearch search={filters.search}>
+              <Cell
+                title="Refresh"
+                class="w-fit"
+                component="button"
+                size="xs"
+                disabled={pageStreams.isLoading()}
+                onClick={() => void pageStreams.refresh()}
+              >
+                <TbOutlineRefresh aria-hidden="true" class="size-3 opacity-50" />
+              </Cell>
               <CaptureSiteFilter {...filters.site} />
               <CaptureDrmFilter {...filters.drm} />
               <CaptureOrder {...filters.order} />
             </CaptureSearch>
           }
-          selection={{ tokens: selectedRecords().map(keyRecordToken), onChange: setSelected }}
+          selection={{ ids: selected(), onChange: setSelected }}
         />
-        <Show when={!filteredKeys().length}>
-          <Show when={keys().length} fallback={<NoKeys />}>
+        <Show when={!filters.captures().length}>
+          <Show
+            when={filters.allCaptures().length}
+            fallback={
+              <p class="py-6 text-center text-xs text-neutral-500 dark:text-neutral-400">
+                No captures yet. Start playback to get it.
+              </p>
+            }
+          >
             <NoMatchingCaptures onClear={filters.clear} />
           </Show>
         </Show>

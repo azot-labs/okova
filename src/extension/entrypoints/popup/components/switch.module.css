@@ -62,8 +62,8 @@
 }
 
 .input:checked + .control::before {
-  border-color: #007aff;
-  background-color: #007aff;
+  border-color: var(--color-emerald-600);
+  background-color: var(--color-emerald-500);
 }
 
 .input:checked + .control::after {

@@ -14,7 +14,7 @@ export const CellLink: Component<CellLinkProps> = (props) => {
       variant="primary"
       after={
         <div class="w-5 h-5 flex items-center justify-center">
-          <TbOutlineExternalLink class="text-blue-500 dark:text-blue-400 w-4.5 h-4.5" />
+          <TbOutlineExternalLink class="text-emerald-500 dark:text-emerald-400 w-4.5 h-4.5" />
         </div>
       }
       onClick={() => window.open(props.href, '_blank')}

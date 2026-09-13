@@ -12,7 +12,7 @@ export const Select: Component<SelectProps> = (props) => {
       <select
         {...rest}
         class={cn(
-          'min-h-4 [field-sizing:content] appearance-none pl-1 pr-3.5 outline-none font-normal rounded-md bg-transparent hover:bg-slate-200/80 hover:dark:bg-neutral-800 cursor-pointer dark:[color-scheme:dark] focus-visible:outline-2 disabled:cursor-default disabled:opacity-50',
+          'min-h-4 [field-sizing:content] appearance-none pl-1 pr-3.5 outline-none font-normal rounded-md bg-transparent hover:bg-emerald-200/80 hover:dark:bg-neutral-800 cursor-pointer dark:[color-scheme:dark] focus-visible:outline-2 disabled:cursor-default disabled:opacity-50',
           local.class,
         )}
       />

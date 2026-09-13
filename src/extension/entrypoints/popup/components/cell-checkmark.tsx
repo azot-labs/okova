@@ -11,7 +11,7 @@ export const CellCheckmark: Component<CellCheckmarkProps> = (props) => {
   return (
     <div class={cn('w-5 h-5 flex items-center justify-center', props.class)}>
       <Show when={props.checked}>
-        <BsCheckLg class="text-blue-500 dark:text-blue-400 w-5 h-5" />
+        <BsCheckLg class="text-emerald-500 dark:text-emerald-400 w-5 h-5" />
       </Show>
     </div>
   );

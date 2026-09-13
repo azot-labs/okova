@@ -1,3 +1,4 @@
+import { visibleKeyIds } from './capture-ui';
 import { mkdir, mkdtemp, readFile, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
@@ -54,9 +55,22 @@ test('filters and ordering control visible history and both export formats', asy
       );
       await popup.goto(`chrome-extension://${new URL(worker.url()).hostname}/popup.html`);
       await popup.getByRole('link', { name: 'Captures', exact: true }).click();
-      const visible = () => popup.locator('[data-history-row] code').allTextContents();
-      const pair = (key: KeyInfo) => `${key.id}:${key.value}`;
+      const visible = () => visibleKeyIds(popup);
+      const pair = (key: KeyInfo) => key.id;
       await expect.poll(visible).toEqual([...records].reverse().map(pair));
+      const orderedDownload = popup.waitForEvent('download');
+      await popup.getByRole('button', { name: 'JSON', exact: true }).click();
+      const orderedPath = await (await orderedDownload).path();
+      if (!orderedPath) throw new Error('Missing export download');
+      expect(JSON.parse(await readFile(orderedPath, 'utf8'))).toEqual({
+        version: 2,
+        captures: [...records].reverse().map((record) => ({
+          url: record.url,
+          createdAt: record.createdAt,
+          playlists: [],
+          sessions: [{ pssh: [], records: [record] }],
+        })),
+      });
       await popup.getByLabel('Order', { exact: true }).selectOption('oldest');
       await expect.poll(visible).toEqual(records.map(pair));
       await popup.getByRole('button', { name: 'Search', exact: true }).click();
@@ -65,11 +79,15 @@ test('filters and ordering control visible history and both export formats', asy
       await popup.getByLabel('DRM', { exact: true }).selectOption('W');
       await expect.poll(visible).toEqual([records[0]!, records[2]!].map(pair));
       await popup.getByRole('button', { name: 'Select All', exact: true }).click();
-      await expect.poll(() => popup.getByRole('status').textContent()).toBe('(2/3)');
+      await expect
+        .poll(() => popup.getByRole('status', { name: /total captures$/ }).textContent())
+        .toBe('(2/3)');
       await popup.getByRole('button', { name: 'Search', exact: true }).click();
       await popup.getByRole('searchbox').fill('first');
       await expect.poll(visible).toEqual([pair(records[0]!)]);
-      await expect.poll(() => popup.getByRole('status').textContent()).toBe('(1/3)');
+      await expect
+        .poll(() => popup.getByRole('status', { name: /total captures$/ }).textContent())
+        .toBe('(1/3)');
       for (const format of ['JSON', 'TXT']) {
         const downloaded = popup.waitForEvent('download');
         await popup.getByRole('button', { name: format, exact: true }).click();
@@ -78,8 +96,11 @@ test('filters and ordering control visible history and both export formats', asy
         if (!path) throw new Error('Missing export download');
         const content = await readFile(path, 'utf8');
         if (format === 'JSON')
-          expect(JSON.parse(content)).toEqual({ version: 1, records: [records[0]] });
-        else expect(content).toBe(`${pair(records[0]!)}\n`);
+          expect(JSON.parse(content)).toMatchObject({
+            version: 2,
+            captures: [{ sessions: [{ records: [records[0]] }] }],
+          });
+        else expect(content).toBe(`${records[0]!.id}:${records[0]!.value}\n`);
       }
       records.push({
         ...records[0]!,
