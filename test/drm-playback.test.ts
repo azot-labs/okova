@@ -359,7 +359,10 @@ test.for(['com.microsoft.playready.recommendation.3000', 'com.microsoft.playread
       name: 'NotSupportedError',
     });
     expect(nativeRequest).not.toHaveBeenCalled();
-    expect(sendDrmMessage).toHaveBeenCalledExactlyOnceWith({ action: 'playback-config' });
+    expect(sendDrmMessage).toHaveBeenCalledExactlyOnceWith({
+      action: 'playback-config',
+      keySystem,
+    });
   },
 );
 

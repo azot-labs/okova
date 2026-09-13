@@ -57,7 +57,7 @@ test('remote credentials survive storage and export/import without exposing secr
   const credentials = await RemoteCredentials.from(connection);
   await appStorage.credentials.add(credentials);
   await appStorage.credentials.active.setValue(credentials);
-  const restored = await appStorage.credentials.active.getValue();
+  const restored = await appStorage.credentials.active.getValue('com.widevine.alpha');
   expect(restored).toBeInstanceOf(RemoteCredentials);
   expect(restored?.filename).toBe(credentials.filename);
   expect(credentials.filename).not.toContain(connection.secret);

@@ -9,7 +9,10 @@ declare const chrome: typeof import('wxt/browser').browser;
 
 const registrySchema = z.object({
   credentials: z.array(z.object({ id: z.string() })),
-  activeCredentialsId: z.string().nullable(),
+  activeCredentialsIds: z.object({
+    widevine: z.string().nullable(),
+    playready: z.string().nullable(),
+  }),
 });
 
 test('imports, selects, exports, and deletes remote credentials in the popup', async () => {
@@ -47,7 +50,7 @@ test('imports, selects, exports, and deletes remote credentials in the popup', a
         }),
       ),
     });
-    await popup.getByText('Fallback device @ cdm.test', { exact: true }).waitFor();
+    await popup.getByText('Widevine: Fallback device @ cdm.test', { exact: true }).waitFor();
     expect(await popup.getByRole('status').textContent()).toContain('Imported as Widevine');
     await mkdir(resolve('output/playwright/remote-credentials'), { recursive: true });
     await popup.screenshot({
@@ -85,6 +88,29 @@ test('imports, selects, exports, and deletes remote credentials in the popup', a
     });
     const pythonClient = popup.getByText('Python device @ cdm.test', { exact: true });
     await pythonClient.click();
+    await expect.poll(() => popup.getByTitle('Active Credentials').count()).toBe(2);
+    await popup.goto(`chrome-extension://${new URL(worker.url()).hostname}/popup.html`);
+    await popup.getByText('PlayReady: Python device @ cdm.test', { exact: true }).waitFor();
+    await popup.getByRole('link', { name: 'Credentials', exact: true }).click();
+    await popup.getByText('Python device @ cdm.test', { exact: true }).waitFor();
+    await expect.poll(() => popup.getByTitle('Active Credentials').count()).toBe(2);
+    await popup.screenshot({
+      path: resolve('output/playwright/remote-credentials/both-active.png'),
+    });
+    for (const keySystem of [
+      'com.widevine.alpha',
+      'com.microsoft.playready',
+      'com.microsoft.playready.recommendation.3000',
+    ]) {
+      expect(
+        await popup.evaluate(
+          (keySystem) => chrome.runtime.sendMessage({ action: 'playback-config', keySystem }),
+          keySystem,
+        ),
+      ).toBe(
+        keySystem === 'com.widevine.alpha' ? keySystem : 'com.microsoft.playready.recommendation',
+      );
+    }
     await pythonClient.hover();
     await popup.getByTitle('Credentials Settings').last().click();
     await popup.getByText('pyplayready', { exact: true }).waitFor();
@@ -186,7 +212,7 @@ test('first import on Credentials survives a failed write, repeated selection an
     );
     const registry = registrySchema.parse(stored['credentials-registry']);
     expect(registry.credentials).toHaveLength(1);
-    expect(registry.activeCredentialsId).toBe(registry.credentials[0]!.id);
+    expect(registry.activeCredentialsIds.widevine).toBe(registry.credentials[0]!.id);
     expect(
       z
         .object({ clientPlayback: z.literal(true) })
@@ -205,7 +231,7 @@ test('first import on Credentials survives a failed write, repeated selection an
           chrome.storage.local.get('credentials-registry'),
         );
         const registry = registrySchema.parse(stored['credentials-registry']);
-        return registry.activeCredentialsId === registry.credentials[1]!.id;
+        return registry.activeCredentialsIds.widevine === registry.credentials[1]!.id;
       })
       .toBe(true);
     await popup.getByText('Same label', { exact: true }).last().hover();

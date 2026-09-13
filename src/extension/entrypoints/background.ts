@@ -308,9 +308,9 @@ export default defineBackground({
       removeTab(replacedTabId),
     );
 
-    const loadCredentials = async () => {
+    const loadCredentials = async (keySystem: string) => {
       console.log('[okova] Loading DRM credentials...');
-      const credentials = await appStorage.credentials.active.getValue();
+      const credentials = await appStorage.credentials.active.getValue(keySystem);
       if (credentials) {
         console.log('[okova] DRM credentials loaded');
         return credentials;
@@ -589,7 +589,8 @@ export default defineBackground({
           return;
         }
         if (message.action === 'playback-config') {
-          const credentials = await run(appStorage.credentials.active.getInfo());
+          if (typeof message.keySystem !== 'string') throw new Error('DRM key system is required');
+          const credentials = await run(appStorage.credentials.active.getInfo(message.keySystem));
           if (!credentials) respond(null);
           else if (credentials.type === 'remote') respond(credentials.config.keySystem);
           else
@@ -754,10 +755,11 @@ export default defineBackground({
           }
           await run(clearFailure());
           await advance('credentials');
-          const credentials = await run(loadCredentials());
+          if (typeof message.keySystem !== 'string') throw new Error('DRM key system is required');
+          const credentials = await run(loadCredentials(message.keySystem));
           if (!credentials)
             throw new Error(
-              'No active DRM credentials. Import or select credentials in the popup.',
+              `No active credentials for ${normalizeKeySystem(message.keySystem)}. Import or select credentials in the popup.`,
             );
           const credentialsInfo = await run(serializeCredentials(credentials));
           if (diagnostic) {

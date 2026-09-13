@@ -23,14 +23,16 @@ export const useCredentials = () => credentialsSignal;
 const failedCredentialsSignal = createSignal<FailedCredentials[]>([]);
 export const useFailedCredentials = () => failedCredentialsSignal;
 
-const activeCredentialsSignal = createSignal<StoredCredentials | null>(null);
+const activeCredentialsSignal = createSignal<StoredCredentials[]>([]);
 export const useActiveCredentials = () => activeCredentialsSignal;
 
 export const syncCredentials = (snapshot: CredentialsSnapshot) => {
   credentialsSignal[1](snapshot.credentials);
   failedCredentialsSignal[1](snapshot.failedCredentials);
   activeCredentialsSignal[1](
-    snapshot.credentials.find((entry) => entry.id === snapshot.activeCredentialsId) ?? null,
+    snapshot.credentials.filter((entry) =>
+      Object.values(snapshot.activeCredentialsIds).includes(entry.id),
+    ),
   );
 };
 

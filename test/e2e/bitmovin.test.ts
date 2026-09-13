@@ -154,8 +154,11 @@ test.for([
             return (
               typeof raw === 'object' &&
               raw !== null &&
-              'activeCredentialsId' in raw &&
-              typeof raw.activeCredentialsId === 'string'
+              'activeCredentialsIds' in raw &&
+              typeof raw.activeCredentialsIds === 'object' &&
+              raw.activeCredentialsIds !== null &&
+              'widevine' in raw.activeCredentialsIds &&
+              typeof raw.activeCredentialsIds.widevine === 'string'
             );
           }),
         )

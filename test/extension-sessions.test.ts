@@ -561,12 +561,12 @@ test('reports missing credentials and clears diagnostics on navigation', async (
     error: {
       kind: 'request',
       stage: 'credentials',
-      message: expect.stringContaining('No active DRM credentials'),
+      message: expect.stringContaining('No active credentials for com.widevine.alpha'),
     },
   });
   expect(await getDrmFailureStorage(1).getValue()).toMatchObject({
     stage: 'credentials',
-    error: expect.stringContaining('No active DRM credentials'),
+    error: expect.stringContaining('No active credentials for com.widevine.alpha'),
   });
   committed.mock.calls[0]![0](navigation(1));
   await vi.waitFor(async () => expect(await getDrmFailureStorage(1).getValue()).toBeNull());
@@ -1152,7 +1152,12 @@ test.each([
 ])('answers playback configuration in the background: $expected', async ({ info, expected }) => {
   vi.spyOn(appStorage.credentials.active, 'getInfo').mockResolvedValue(info);
   const send = startBackground();
-  await expect(send('playback-config', '')).resolves.toBe(expected);
+  await expect(
+    send('playback-config', '', {}, { keySystem: expected ?? 'com.widevine.alpha' }),
+  ).resolves.toBe(expected);
+  expect(appStorage.credentials.active.getInfo).toHaveBeenCalledWith(
+    expected ?? 'com.widevine.alpha',
+  );
   expect(appStorage.credentials.active.getValue).not.toHaveBeenCalled();
 });
 
