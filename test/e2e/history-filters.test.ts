@@ -101,11 +101,14 @@ test('filters and ordering control visible history and both export formats', asy
       await popup.getByRole('button', { name: 'Cancel', exact: true }).click();
       await popup.getByLabel('DRM', { exact: true }).selectOption('C');
       await expect.poll(visible).toEqual([]);
-      expect(await popup.getByRole('button', { name: 'JSON', exact: true }).isVisible()).toBe(
-        false,
-      );
-      expect(await popup.getByLabel('DRM', { exact: true }).isVisible()).toBe(false);
-      expect(await popup.getByLabel('Order', { exact: true }).isVisible()).toBe(false);
+      for (const format of ['JSON', 'TXT']) {
+        const button = popup.getByRole('button', { name: format, exact: true });
+        expect(await button.isVisible()).toBe(true);
+        expect(await button.isDisabled()).toBe(true);
+      }
+      expect(await popup.getByLabel('DRM', { exact: true }).isVisible()).toBe(true);
+      expect(await popup.getByLabel('Site', { exact: true }).isVisible()).toBe(true);
+      expect(await popup.getByLabel('Order', { exact: true }).isVisible()).toBe(true);
       await popup.getByRole('button', { name: 'Clear filters', exact: true }).first().click();
       await expect
         .poll(visible)

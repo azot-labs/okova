@@ -46,7 +46,7 @@ export const KeysList: Component<KeysListProps> = (props) => {
 
   return (
     <>
-      <div ref={list} hidden={!props.keys().length}>
+      <div ref={list} hidden={!(props.allKeys ?? props.keys)().length}>
         <List>
           <Section
             header={

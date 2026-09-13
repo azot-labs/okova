@@ -106,13 +106,23 @@ test('saved keys filter immediately by KID, page URL, and manifest URL', async (
       for (const query of ['missing.example', '---', keys[0]!.value]) {
         await searchButton.click();
         await search.fill(query);
-        await expect.poll(() => count.isVisible()).toBe(false);
+        await expect.poll(() => count.isVisible()).toBe(true);
         await expect.poll(() => popup.locator('[data-history-row]').count()).toBe(0);
         expect(await popup.getByRole('heading', { name: 'No matching keys' }).isVisible()).toBe(
           true,
         );
         expect(await popup.locator('code').count()).toBe(0);
-        expect(await search.isVisible()).toBe(false);
+        expect(await search.isVisible()).toBe(true);
+        expect(await search.evaluate((input) => input === document.activeElement)).toBe(true);
+        await search.pressSequentially('still-no-match');
+        expect(await search.inputValue()).toBe(`${query}still-no-match`);
+        await search.press('ControlOrMeta+A');
+        await search.press('Backspace');
+        await expect.poll(() => popup.locator('[data-history-row]').count()).toBe(2);
+        expect(await search.evaluate((input) => input === document.activeElement)).toBe(true);
+        await search.pressSequentially(query);
+        await expect.poll(() => popup.locator('[data-history-row]').count()).toBe(0);
+        expect(await search.inputValue()).toBe(query);
         await popup.screenshot({ path: resolve('output/playwright/key-search/no-matches.png') });
         await popup.getByRole('button', { name: 'Clear filters', exact: true }).click();
         await expect.poll(() => count.textContent()).toBe('(2)');

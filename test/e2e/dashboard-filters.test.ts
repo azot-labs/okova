@@ -68,7 +68,18 @@ test('dashboard combines search, DRM and order within recent site captures and f
       await popup.getByRole('button', { name: 'Search', exact: true }).click();
       await popup.getByRole('searchbox').fill('AABB-CCDD');
       await expect.poll(visible).toEqual([pair(widevine)]);
-      await popup.getByRole('searchbox').fill('MOVIE.MPD');
+      const search = popup.getByRole('searchbox');
+      await search.pressSequentially('no-match');
+      await expect.poll(visible).toEqual([]);
+      expect(await search.isVisible()).toBe(true);
+      expect(await search.evaluate((input) => input === document.activeElement)).toBe(true);
+      expect(await search.inputValue()).toBe('AABB-CCDDno-match');
+      expect(await popup.getByRole('status').isVisible()).toBe(true);
+      await search.press('ControlOrMeta+A');
+      await search.press('Backspace');
+      await expect.poll(visible).toEqual([pair(widevine)]);
+      expect(await search.evaluate((input) => input === document.activeElement)).toBe(true);
+      await search.fill('MOVIE.MPD');
       await popup.getByRole('searchbox').press('Escape');
       expect(
         await popup
@@ -81,7 +92,11 @@ test('dashboard combines search, DRM and order within recent site captures and f
       await popup.getByLabel('DRM', { exact: true }).selectOption('unknown');
       await expect.poll(visible).toEqual([]);
       expect(await popup.getByRole('heading', { name: 'No matching keys' }).isVisible()).toBe(true);
-      expect(await popup.getByLabel('DRM', { exact: true }).isVisible()).toBe(false);
+      expect(await popup.getByLabel('DRM', { exact: true }).isVisible()).toBe(true);
+      await popup.getByLabel('DRM', { exact: true }).selectOption('W');
+      await expect.poll(visible).toEqual([widevine, incoming].map(pair));
+      await popup.getByLabel('DRM', { exact: true }).selectOption('unknown');
+      await expect.poll(visible).toEqual([]);
       await popup.getByRole('button', { name: 'Clear filters', exact: true }).click();
       await expect.poll(visible).toEqual([widevine, playready, incoming].map(pair));
       expect(await popup.getByLabel('Order', { exact: true }).inputValue()).toBe('oldest');
