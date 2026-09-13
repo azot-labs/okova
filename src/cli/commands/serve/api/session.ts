@@ -246,10 +246,7 @@ app.post(
         return c.json({ error: 'Invalid server certificate' }, 400);
       }
     }
-    if (config.forcePrivacyMode) {
-      if (!(session.engine instanceof Widevine)) {
-        return c.json({ error: 'Forced privacy mode is unsupported for this key system' }, 400);
-      }
+    if (config.forcePrivacyMode && session.engine instanceof Widevine) {
       const nativeSession = session.engine.sessions.get(session.sessionId);
       const hasCertificate =
         session.engine.serverCertificate ||

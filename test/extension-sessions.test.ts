@@ -227,7 +227,9 @@ test('retains the session for a service certificate and cleans up failed license
   expect(Session.prototype.close).not.toHaveBeenCalled();
 
   licenseUpdate.reject(new Error('Invalid license'));
-  await expect(updating).resolves.toBeUndefined();
+  await expect(updating).resolves.toEqual({
+    error: { kind: 'request', stage: 'license', message: 'Invalid license' },
+  });
   expect(Session.prototype.waitForKeyStatusesChange).not.toHaveBeenCalled();
   expect(Session.prototype.close).toHaveBeenCalledOnce();
   await expect(send('license-request', 'one')).resolves.toBeUndefined();
@@ -237,7 +239,9 @@ test('retains the session for a service certificate and cleans up failed license
 test('cleans up failed generation, explicit close and abandoned sessions', async () => {
   const send = startBackground();
   vi.mocked(Session.prototype.generateRequest).mockRejectedValueOnce(new Error('Invalid PSSH'));
-  await expect(send('generateRequest', 'failed')).resolves.toBeUndefined();
+  await expect(send('generateRequest', 'failed')).resolves.toEqual({
+    error: { kind: 'request', stage: 'challenge', message: 'Invalid PSSH' },
+  });
   expect(Session.prototype.close).toHaveBeenCalledOnce();
   await send('generateRequest', 'closed');
   await send('close', 'closed');
@@ -431,7 +435,18 @@ test.each(['deadline', 'removal', 'navigation', 'close'])(
     } else {
       updated.mock.calls[0]![0](1, { status: 'loading' }, tab(1));
     }
-    await expect(update).resolves.toBeUndefined();
+    await expect(update).resolves.toEqual({
+      error: {
+        kind: action === 'deadline' ? 'timeout' : 'request',
+        stage: 'license',
+        message:
+          action === 'deadline'
+            ? 'DRM request timed out after 25000ms'
+            : action === 'close'
+              ? 'DRM request closed'
+              : 'Tab closed or navigated',
+      },
+    });
     await expect(send('license-request', 'waiting', sender)).resolves.toBeUndefined();
     if (action === 'deadline') {
       expect(await getDrmFailureStorage(1).getValue()).toMatchObject({
@@ -485,7 +500,9 @@ test.each([
     const sender = { tab: { ...tab(1), url: 'https://example.com/video' } };
     if (method === 'update') await send('generateRequest', 'failed', sender);
     vi.mocked(Session.prototype[method]).mockRejectedValueOnce(new Error(error));
-    await expect(send(method, 'failed', sender)).resolves.toBeUndefined();
+    await expect(send(method, 'failed', sender)).resolves.toEqual({
+      error: { kind: 'request', stage, message: error },
+    });
     expect(await getDrmFailureStorage(1).getValue()).toEqual({
       stage,
       error,
@@ -503,7 +520,13 @@ test('reports missing credentials and clears diagnostics on navigation', async (
   vi.mocked(appStorage.credentials.active.getValue).mockResolvedValue(null);
   const updated = vi.spyOn(browser.tabs.onUpdated, 'addListener');
   const send = startBackground();
-  await send('generateRequest', 'missing', { tab: tab(1) });
+  await expect(send('generateRequest', 'missing', { tab: tab(1) })).resolves.toMatchObject({
+    error: {
+      kind: 'request',
+      stage: 'credentials',
+      message: expect.stringContaining('No active DRM credentials'),
+    },
+  });
   expect(await getDrmFailureStorage(1).getValue()).toMatchObject({
     stage: 'credentials',
     error: expect.stringContaining('No active DRM credentials'),
@@ -525,7 +548,9 @@ test('cleanup failures preserve the original diagnostic and still respond', asyn
       else await remove(keys);
     },
   );
-  await expect(send('generateRequest', 'failed', { tab: tab(1) })).resolves.toBeUndefined();
+  await expect(send('generateRequest', 'failed', { tab: tab(1) })).resolves.toEqual({
+    error: { kind: 'request', stage: 'challenge', message: 'Invalid PSSH' },
+  });
   expect(await getDrmFailureStorage(1).getValue()).toMatchObject({
     stage: 'challenge',
     error: 'Invalid PSSH',
@@ -652,7 +677,16 @@ test.each(['com.widevine.alpha', 'com.microsoft.playready', undefined])(
     const message = new TextEncoder().encode(
       JSON.stringify({ keys: [{ kty: 'oct', kid: 'AA', k: 'tQ0bJVWb6b0KPL6KtZIy_A' }] }),
     );
-    await expect(send('update', 'other', {}, { keySystem, message })).resolves.toBeUndefined();
+    const result = await send('update', 'other', {}, { keySystem, message });
+    if (keySystem === 'com.widevine.alpha')
+      expect(result).toEqual({
+        error: {
+          kind: 'request',
+          stage: 'license',
+          message: 'Failed to parse message as SignedMessage',
+        },
+      });
+    else expect(result).toBeUndefined();
     expect(Session.prototype.waitForKeyStatusesChange).not.toHaveBeenCalled();
     expect((await appStorage.allKeys.getValue()) ?? []).toEqual([]);
     expect((await appStorage.recentKeys.getValue()) ?? []).toEqual([]);
@@ -774,7 +808,20 @@ test.each([
   'rejects a selected Widevine credentials for %s before creating a session',
   async (keySystem) => {
     const send = startBackground();
-    await send('generateRequest', 'mismatch', { tab: tab(1) }, { keySystem });
+    await expect(
+      send('generateRequest', 'mismatch', { tab: tab(1) }, { keySystem }),
+    ).resolves.toEqual({
+      error: {
+        kind: 'request',
+        stage: 'credentials',
+        message:
+          keySystem === undefined
+            ? 'DRM key system is required'
+            : keySystem === 'com.widevine.alpha.extra'
+              ? 'Unsupported DRM key system: com.widevine.alpha.extra'
+              : `Selected credentials use com.widevine.alpha. Select credentials for ${keySystem} in the popup.`,
+      },
+    });
     expect(Session.prototype.generateRequest).not.toHaveBeenCalled();
     expect(await getDrmFailureStorage(1).getValue()).toMatchObject({ stage: 'credentials' });
     expect(vi.getTimerCount()).toBe(0);
@@ -788,7 +835,9 @@ test('reports an empty license and cleans up without waiting for another status 
   const send = startBackground();
   const sender = { tab: tab(1) };
   await send('generateRequest', 'empty', sender);
-  await expect(send('update', 'empty', sender)).resolves.toBeUndefined();
+  await expect(send('update', 'empty', sender)).resolves.toEqual({
+    error: { kind: 'request', stage: 'keys', message: 'License completed without content keys' },
+  });
   expect(await getDrmFailureStorage(1).getValue()).toMatchObject({
     stage: 'keys',
     error: 'License completed without content keys',
@@ -1121,4 +1170,20 @@ test('navigation interrupts a trace while credentials are still loading', async 
       ]),
     }),
   );
+});
+
+test('preserves the original failure when cleanup exceeds the request deadline', async () => {
+  const send = startBackground();
+  const cleanup = Promise.withResolvers<void>();
+  vi.mocked(Session.prototype.generateRequest).mockRejectedValueOnce(new Error('Invalid PSSH'));
+  vi.mocked(Session.prototype.close).mockReturnValueOnce(cleanup.promise);
+  const request = send('generateRequest', 'slow-cleanup');
+  await vi.waitFor(() => expect(Session.prototype.close).toHaveBeenCalledOnce());
+  await vi.advanceTimersByTimeAsync(25_000);
+  await expect(request).resolves.toEqual({
+    error: { kind: 'request', stage: 'challenge', message: 'Invalid PSSH' },
+  });
+  cleanup.resolve();
+  await vi.advanceTimersByTimeAsync(0);
+  expect(vi.getTimerCount()).toBe(0);
 });

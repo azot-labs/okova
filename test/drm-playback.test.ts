@@ -1,3 +1,4 @@
+import { DrmRequestError } from '../src/extension/utils/drm-error';
 import { afterEach, beforeEach, expect, test, vi } from 'vitest';
 import { installDrmPlayback } from '../src/extension/utils/drm-playback';
 import { sendDrmMessage } from '../src/extension/utils/drm-bridge';
@@ -439,3 +440,29 @@ test('does not deliver a regenerated challenge after close', async () => {
   await vi.runAllTimersAsync();
   expect(listener).not.toHaveBeenCalled();
 });
+
+test.each(['generateRequest', 'update'] as const)(
+  'playback %s preserves the typed background failure',
+  async (action) => {
+    const session = await createSession();
+    if (action === 'update') await session.generateRequest('cenc', createInitData());
+    const error = new DrmRequestError({
+      kind: 'request',
+      stage: action === 'generateRequest' ? 'credentials' : 'license',
+      message:
+        action === 'generateRequest'
+          ? 'Select matching DRM credentials'
+          : 'Invalid license signature',
+    });
+    const original = vi.mocked(sendDrmMessage).getMockImplementation()!;
+    vi.mocked(sendDrmMessage).mockImplementation((data) =>
+      data.action === action ? Promise.reject(error) : original(data),
+    );
+    const request =
+      action === 'generateRequest'
+        ? session.generateRequest('cenc', createInitData())
+        : session.update(new Uint8Array([1]));
+    await expect(request).rejects.toBe(error);
+    expect(nativeUpdate).not.toHaveBeenCalled();
+  },
+);

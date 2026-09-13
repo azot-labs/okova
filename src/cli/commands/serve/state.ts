@@ -59,7 +59,7 @@ const configSchema = z.strictObject({
       z.strictObject({ name: z.string(), credentials: z.array(z.string()) }),
     )
     .default({}),
-  forcePrivacyMode: z.boolean().default(true),
+  forcePrivacyMode: z.boolean().default(false),
   sessionLimits: sessionLimitsSchema.strict().prefault({}),
 });
 

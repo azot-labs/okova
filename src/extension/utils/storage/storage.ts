@@ -1,3 +1,4 @@
+import type { DrmStage } from '../drm-error';
 import { getManifestMetadata, type Manifest } from '../manifest';
 import type { Credentials } from '../../../lib/credentials';
 import { browser, storage } from '#imports';
@@ -51,20 +52,7 @@ const sameKeyRecord = (left: KeyInfo, right: KeyInfo) =>
   left.pssh === right.pssh &&
   ((!isCapturedKey(left) && !isCapturedKey(right)) || left.value === right.value);
 
-export const drmStages = {
-  setup: 'Request setup',
-  credentials: 'Credentials loading',
-  certificate: 'Server certificate',
-  session: 'Session creation',
-  challenge: 'Challenge generation',
-  license: 'License processing',
-  keys: 'Key extraction',
-  storage: 'Session storage',
-  history: 'Key storage',
-  close: 'Session cleanup',
-} as const;
-
-export type DrmStage = keyof typeof drmStages;
+export { drmStages, type DrmStage } from '../drm-error';
 export type DrmFailure = { stage: DrmStage; error: string; url: string; createdAt: number };
 
 // Session storage keeps diagnostics across popup/worker restarts, but not browser restarts.
