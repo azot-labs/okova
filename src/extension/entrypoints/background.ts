@@ -401,13 +401,18 @@ export default defineBackground({
       void updateBadgeForTabId(tabId);
     });
 
-    browser.tabs.onUpdated.addListener((tabId, changeInfo, tab) => {
-      if (changeInfo.status === 'loading' || changeInfo.url) {
-        closeTabSessions(tabId);
-        void updateBadgeForTab(tab, null).catch((error: unknown) => {
+    browser.webNavigation.onCommitted.addListener(({ tabId, frameId }) => {
+      if (frameId !== 0) return;
+      closeTabSessions(tabId);
+      void browser.tabs
+        .get(tabId)
+        .then((tab) => updateBadgeForTab(tab, null))
+        .catch((error: unknown) => {
           console.warn('[okova] Unable to reset badge', error);
         });
-      }
+    });
+
+    browser.tabs.onUpdated.addListener((_tabId, changeInfo, tab) => {
       if (changeInfo.url || changeInfo.status === 'complete') {
         updateBadgeForTabInBackground(tab);
       }

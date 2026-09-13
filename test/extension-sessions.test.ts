@@ -44,6 +44,23 @@ const tab = (id: number): Browser.tabs.Tab => ({
   frozen: false,
 });
 
+const navigation = (
+  tabId: number,
+  frameId = 0,
+): Parameters<Parameters<typeof browser.webNavigation.onCommitted.addListener>[0]>[0] => ({
+  tabId,
+  frameId,
+  url: 'https://example.com/next',
+  timeStamp: Date.now(),
+  processId: 1,
+  documentId: 'next-document',
+  documentLifecycle: 'active',
+  frameType: frameId === 0 ? 'outermost_frame' : 'sub_frame',
+  parentFrameId: frameId === 0 ? -1 : 0,
+  transitionType: 'link',
+  transitionQualifiers: [],
+});
+
 beforeEach(async () => {
   fakeBrowser.reset();
   vi.useFakeTimers();
@@ -57,6 +74,10 @@ beforeEach(async () => {
     new WidevineClientCredentials(new Uint8Array()),
   );
   vi.spyOn(browser.tabs, 'query').mockImplementation(async () => []);
+  vi.spyOn(browser.tabs, 'get').mockImplementation(async (id) => ({
+    ...tab(id),
+    url: 'https://example.com/video',
+  }));
   vi.spyOn(browser.action, 'setBadgeText').mockResolvedValue();
   vi.spyOn(browser.action, 'setBadgeBackgroundColor').mockResolvedValue();
   vi.spyOn(browser.action, 'setBadgeTextColor').mockResolvedValue();
@@ -281,13 +302,13 @@ test.each(['license-request', 'update', 'keystatuseschange'])(
 );
 
 test.each(['navigation', 'removal'])('cleans up only the affected tab on %s', async (action) => {
-  const updated = vi.spyOn(browser.tabs.onUpdated, 'addListener');
+  const committed = vi.spyOn(browser.webNavigation.onCommitted, 'addListener');
   const removed = vi.spyOn(browser.tabs.onRemoved, 'addListener');
   const send = startBackground();
   await send('generateRequest', 'one', { tab: tab(1) });
   await send('generateRequest', 'two', { tab: tab(2) });
   if (action === 'navigation') {
-    updated.mock.calls[0]![0](1, { status: 'loading' }, tab(1));
+    committed.mock.calls[0]![0](navigation(1));
   } else {
     removed.mock.calls[0]![0](1, { windowId: 1, isWindowClosing: false });
   }
@@ -416,7 +437,7 @@ test.each(['deadline', 'removal', 'navigation', 'close'])(
       return new Promise<void>(() => {});
     });
     const removed = vi.spyOn(browser.tabs.onRemoved, 'addListener');
-    const updated = vi.spyOn(browser.tabs.onUpdated, 'addListener');
+    const committed = vi.spyOn(browser.webNavigation.onCommitted, 'addListener');
     const send = startBackground();
     const sender = { tab: tab(1) };
     await send('generateRequest', 'waiting', sender);
@@ -429,7 +450,7 @@ test.each(['deadline', 'removal', 'navigation', 'close'])(
     } else if (action === 'close') {
       await send('close', 'waiting', sender);
     } else {
-      updated.mock.calls[0]![0](1, { status: 'loading' }, tab(1));
+      committed.mock.calls[0]![0](navigation(1));
     }
     await expect(update).resolves.toBeUndefined();
     await expect(send('license-request', 'waiting', sender)).resolves.toBeUndefined();
@@ -501,14 +522,14 @@ test.each([
 
 test('reports missing credentials and clears diagnostics on navigation', async () => {
   vi.mocked(appStorage.credentials.active.getValue).mockResolvedValue(null);
-  const updated = vi.spyOn(browser.tabs.onUpdated, 'addListener');
+  const committed = vi.spyOn(browser.webNavigation.onCommitted, 'addListener');
   const send = startBackground();
   await send('generateRequest', 'missing', { tab: tab(1) });
   expect(await getDrmFailureStorage(1).getValue()).toMatchObject({
     stage: 'credentials',
     error: expect.stringContaining('No active DRM credentials'),
   });
-  updated.mock.calls[0]![0](1, { status: 'loading' }, tab(1));
+  committed.mock.calls[0]![0](navigation(1));
   await vi.waitFor(async () => expect(await getDrmFailureStorage(1).getValue()).toBeNull());
 });
 
@@ -533,7 +554,7 @@ test('cleanup failures preserve the original diagnostic and still respond', asyn
 });
 
 test('an old document cannot clear a new document failure after navigation', async () => {
-  const updated = vi.spyOn(browser.tabs.onUpdated, 'addListener');
+  const committed = vi.spyOn(browser.webNavigation.onCommitted, 'addListener');
   const send = startBackground();
   const started = Promise.withResolvers<void>();
   const resumeWrite = Promise.withResolvers<void>();
@@ -552,7 +573,7 @@ test('an old document cannot clear a new document failure after navigation', asy
     },
   );
   await started.promise;
-  updated.mock.calls[0]![0](1, { status: 'loading' }, tab(1));
+  committed.mock.calls[0]![0](navigation(1));
   vi.mocked(appStorage.credentials.active.getValue).mockResolvedValue(null);
   await send('generateRequest', 'new', { tab: tab(1), documentId: 'new' }, { initData: 'bmV3' });
   const failure = await getDrmFailureStorage(1).getValue();
@@ -855,6 +876,7 @@ test('a queued request responds by its own deadline while earlier cleanup is sti
 });
 
 test('badge changes from observed to fresh, saved on navigation, and failed until retrieval succeeds', async () => {
+  const committed = vi.spyOn(browser.webNavigation.onCommitted, 'addListener');
   const updated = vi.spyOn(browser.tabs.onUpdated, 'addListener');
   const sender = { tab: { ...tab(1), url: 'https://example.com/video' } };
   const send = startBackground();
@@ -882,7 +904,7 @@ test('badge changes from observed to fresh, saved on navigation, and failed unti
   };
   await send('update', 'clear', sender, context);
   await expectBadge('1C', '#16803C');
-  updated.mock.calls[0]![0](1, { status: 'loading' }, sender.tab);
+  committed.mock.calls[0]![0](navigation(1));
   await expectBadge('1C', '#2169EB');
   expect(await getBadgeStorage(1).getValue()).toBeNull();
   await send('update', 'clear', sender, context);
@@ -892,7 +914,7 @@ test('badge changes from observed to fresh, saved on navigation, and failed unti
     { url: 'https://example.com/next' },
     { ...sender.tab, url: 'https://example.com/next' },
   );
-  await expectBadge('1C', '#2169EB');
+  await expectBadge('1C', '#16803C');
 
   await appStorage.settings.setValue({
     spoofing: true,
@@ -907,18 +929,54 @@ test('badge changes from observed to fresh, saved on navigation, and failed unti
   await expectBadge('W!', '#C75300');
   await send('update', 'clear', sender, context);
   await expectBadge('1C', '#16803C');
-  updated.mock.calls[0]![0](
-    1,
-    { status: 'loading' },
-    { ...sender.tab, url: 'https://unrelated.example' },
-  );
+  vi.mocked(browser.tabs.get).mockImplementation(async () => ({
+    ...sender.tab,
+    url: 'https://unrelated.example',
+  }));
+  committed.mock.calls[0]![0](navigation(1));
   await expectBadge('', '#666666');
 });
 
-test.each(['success', 'failure'])(
-  'URL-only navigation invalidates an in-flight license %s',
-  async (outcome) => {
+test.each(['URL update', 'loading', 'subframe commit'])(
+  '%s preserves an active license request',
+  async (event) => {
     const updated = vi.spyOn(browser.tabs.onUpdated, 'addListener');
+    const committed = vi.spyOn(browser.webNavigation.onCommitted, 'addListener');
+    const send = startBackground();
+    const sender = { tab: { ...tab(1), url: 'https://example.com/video' }, documentId: 'same' };
+    await send('generateRequest', 'active', sender);
+    const started = Promise.withResolvers<void>();
+    const completed = Promise.withResolvers<void>();
+    vi.mocked(Session.prototype.update).mockImplementationOnce(async function (this: Session) {
+      started.resolve();
+      await completed.promise;
+      this.keys.set('00112233445566778899aabbccddeeff', 'ffeeddccbbaa99887766554433221100');
+    });
+    const updating = send('update', 'active', sender);
+    await started.promise;
+    if (event === 'subframe commit') committed.mock.calls[0]![0](navigation(1, 3));
+    else
+      updated.mock.calls[0]![0](
+        1,
+        event === 'loading' ? { status: 'loading' } : { url: 'https://example.com/next' },
+        { ...sender.tab, url: 'https://example.com/next' },
+      );
+    await vi.advanceTimersByTimeAsync(0);
+    expect(Session.prototype.close).not.toHaveBeenCalled();
+    completed.resolve();
+    await updating;
+    expect(await appStorage.allKeys.getValue()).toMatchObject([
+      { id: '00112233445566778899aabbccddeeff', value: 'ffeeddccbbaa99887766554433221100' },
+    ]);
+    expect(await getDrmFailureStorage(1).getValue()).toBeNull();
+    expect(await getBadgeStorage(1).getValue()).toMatchObject([{ kind: 'success', system: 'W' }]);
+  },
+);
+
+test.each(['success', 'failure'])(
+  'document navigation invalidates an in-flight license %s',
+  async (outcome) => {
+    const committed = vi.spyOn(browser.webNavigation.onCommitted, 'addListener');
     const send = startBackground();
     const sender = { tab: { ...tab(1), url: 'https://example.com/video' } };
     await send('generateRequest', 'old-page', sender);
@@ -932,7 +990,8 @@ test.each(['success', 'failure'])(
     const updating = send('update', 'old-page', sender);
     await started.promise;
     const nextTab = { ...sender.tab, url: 'https://example.com/next' };
-    updated.mock.calls[0]![0](1, { url: nextTab.url }, nextTab);
+    vi.mocked(browser.tabs.get).mockImplementation(async () => nextTab);
+    committed.mock.calls[0]![0](navigation(1));
     if (outcome === 'success') completed.resolve();
     else completed.reject(new Error('Old page license failed'));
     await updating;
@@ -1105,11 +1164,11 @@ test('navigation interrupts a trace while credentials are still loading', async 
     entered.resolve();
     return new Promise(() => {});
   });
-  const updated = vi.spyOn(browser.tabs.onUpdated, 'addListener');
+  const committed = vi.spyOn(browser.webNavigation.onCommitted, 'addListener');
   const send = startBackground();
   const request = send('generateRequest', 'loading', { tab: tab(85) });
   await entered.promise;
-  updated.mock.calls[0]![0](85, { status: 'loading' }, tab(85));
+  committed.mock.calls[0]![0](navigation(85));
   await request;
   await vi.waitFor(async () =>
     expect((await getCaptureDiagnosticsStorage(85).getValue())?.[0]).toMatchObject({
