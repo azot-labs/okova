@@ -1,3 +1,5 @@
+import { buildDownloadCommand } from '../src/extension/entrypoints/popup/utils/command';
+import { pageRequestHeadersSchema } from '../src/extension/utils/request-headers';
 import { DOMParser, XMLSerializer } from '@xmldom/xmldom';
 import { afterEach, beforeEach, expect, test, vi } from 'vitest';
 import { installNetworkInterception } from '../src/extension/utils/network-interception';
@@ -24,6 +26,7 @@ class NativeXHR extends EventTarget {
     return this.headers;
   }
   overrideMimeType() {}
+  setRequestHeader() {}
   open() {}
   send() {
     this.response = '';
@@ -32,6 +35,18 @@ class NativeXHR extends EventTarget {
 
 beforeEach(() => {
   vi.stubGlobal('window', globalThis);
+  // Node's Request has no document base URL; browsers resolve relative fetch inputs here.
+  vi.stubGlobal(
+    'Request',
+    class extends Request {
+      constructor(resource: RequestInfo | URL, options?: RequestInit) {
+        super(
+          typeof resource === 'string' ? new URL(resource, globalThis.document?.baseURI) : resource,
+          options,
+        );
+      }
+    },
+  );
   vi.stubGlobal('Worker', class {});
   vi.stubGlobal('XMLHttpRequest', NativeXHR);
   vi.stubGlobal('XMLSerializer', XMLSerializer);
@@ -166,7 +181,9 @@ test('page fetch returns before inspection finishes', async () => {
   nativeFetch.mockResolvedValue(response);
   const options = { credentials: 'include' } satisfies RequestInit;
   expect(await fetch(url, options)).toBe(response);
-  expect(nativeFetch).toHaveBeenCalledWith(url, options);
+  expect(nativeFetch).toHaveBeenCalledWith(
+    expect.objectContaining({ url, credentials: 'include' }),
+  );
   expect(postMessage).not.toHaveBeenCalled();
   expect(await response.text()).toBe(manifest);
   inspection.resolve(new TextEncoder().encode(manifest));
@@ -339,3 +356,202 @@ test('preserves the original XHR URL during redirects and reuse from load handle
     '*',
   );
 });
+
+test('captures fetch Request headers with init overrides without changing the request', async () => {
+  const response = new Response(manifest, { headers: { 'Content-Type': 'application/dash+xml' } });
+  Object.defineProperty(response, 'url', { value: url });
+  nativeFetch.mockResolvedValue(response);
+  const resource = new Request(url, { headers: { Authorization: 'Bearer old' } });
+  const options = { headers: new Headers({ Authorization: 'Bearer selected' }) };
+  expect(await fetch(resource, options)).toBe(response);
+  expect(nativeFetch).toHaveBeenCalledWith(
+    expect.objectContaining({ url, headers: new Headers({ Authorization: 'Bearer selected' }) }),
+  );
+  await vi.waitFor(() =>
+    expect(postMessage).toHaveBeenCalledWith(
+      expect.objectContaining({
+        namespace: 'okova:request-headers',
+        url,
+        headers: [{ name: 'authorization', value: 'Bearer selected' }],
+      }),
+      '*',
+    ),
+  );
+});
+
+test('does not forward original fetch credentials after redirects', async () => {
+  const response = new Response(manifest, { headers: { 'Content-Type': 'application/dash+xml' } });
+  Object.defineProperties(response, { url: { value: url }, redirected: { value: true } });
+  nativeFetch.mockResolvedValue(response);
+  await fetch(url, { headers: { Authorization: 'Bearer original' } });
+  await vi.waitFor(() => expect(postMessage).toHaveBeenCalledTimes(1));
+  expect(postMessage.mock.calls[0]?.[0].namespace).toBe('okova:network');
+});
+
+test('captures repeated XHR headers and resets them when the XHR is reused', async () => {
+  const setRequestHeader = vi.spyOn(NativeXHR.prototype, 'setRequestHeader');
+  const xhr = new XMLHttpRequest();
+  xhr.open('GET', url);
+  xhr.setRequestHeader('X-Token', 'first');
+  xhr.setRequestHeader('X-Token', 'second');
+  xhr.send();
+  Object.assign(xhr, { response: manifest });
+  xhr.dispatchEvent(new Event('load'));
+  await vi.waitFor(() =>
+    expect(postMessage).toHaveBeenCalledWith(
+      expect.objectContaining({
+        namespace: 'okova:request-headers',
+        headers: [{ name: 'x-token', value: 'first, second' }],
+      }),
+      '*',
+    ),
+  );
+  expect(setRequestHeader).toHaveBeenCalledTimes(2);
+  postMessage.mockClear();
+  xhr.open('GET', url);
+  xhr.send();
+  Object.assign(xhr, { response: manifest });
+  xhr.dispatchEvent(new Event('load'));
+  await vi.waitFor(() => expect(postMessage).toHaveBeenCalledTimes(1));
+  expect(postMessage.mock.calls[0]?.[0].namespace).toBe('okova:network');
+});
+
+test('evaluates getter-backed header records only once', async () => {
+  let reads = 0;
+  let received: string | null = null;
+  const response = new Response(manifest, { headers: { 'Content-Type': 'application/dash+xml' } });
+  nativeFetch.mockImplementation(async (resource, options) => {
+    received = new Request(resource, options).headers.get('Authorization');
+    return response;
+  });
+  await fetch(url, {
+    headers: {
+      get Authorization() {
+        return `Bearer ${++reads}`;
+      },
+    },
+  });
+  expect(reads).toBe(1);
+  expect(received).toBe('Bearer 1');
+});
+
+test('preserves one-shot header iterables for the native request', async () => {
+  const iterator = (function* (): Generator<[string, string]> {
+    yield ['Authorization', 'Bearer iterable'];
+  })();
+  const headers: [string, string][] = [];
+  headers[Symbol.iterator] = () => iterator;
+  let received: string | null = null;
+  nativeFetch.mockImplementation(async (resource, options) => {
+    received = new Request(resource, options).headers.get('Authorization');
+    return new Response();
+  });
+  await fetch(url, { headers });
+  expect(received).toBe('Bearer iterable');
+});
+
+test('normalization preserves POST bodies, credentials and abort signals', async () => {
+  const controller = new AbortController();
+  const original = new Request(url, {
+    method: 'POST',
+    body: 'license-request',
+    credentials: 'include',
+    signal: controller.signal,
+  });
+  nativeFetch.mockImplementation(async (resource, options) => {
+    const request = new Request(resource, options);
+    expect(request.method).toBe('POST');
+    expect(request.credentials).toBe('include');
+    expect(await request.text()).toBe('license-request');
+    controller.abort();
+    expect(request.signal.aborted).toBe(true);
+    return new Response();
+  });
+  await fetch(original);
+  expect(original.bodyUsed).toBe(true);
+  expect(postMessage).not.toHaveBeenCalled();
+});
+
+test.each([
+  ['Cookie', 'ignored-cookie'],
+  ['cOoKiE', 'ignored-cookie'],
+  ['Origin', 'https://ignored.example'],
+  ['Referer', 'https://ignored.example'],
+  ['Sec-Custom', 'ignored'],
+  ['Proxy-Custom', 'ignored'],
+  ['X-HTTP-Method-Override', 'GET, TRACE'],
+])('does not export ignored XHR header %s', async (name, value) => {
+  const native = vi.spyOn(NativeXHR.prototype, 'setRequestHeader');
+  const xhr = new XMLHttpRequest();
+  xhr.open('GET', url);
+  xhr.setRequestHeader(name, value);
+  xhr.setRequestHeader('Authorization', 'Bearer permitted');
+  xhr.setRequestHeader('X-HTTP-Method', 'PATCH');
+  xhr.send();
+  Object.assign(xhr, { response: manifest });
+  xhr.dispatchEvent(new Event('load'));
+  await vi.waitFor(() => expect(postMessage).toHaveBeenCalledTimes(2));
+  expect(native).toHaveBeenCalledWith(name, value);
+  const message = postMessage.mock.calls.find(
+    ([message]) => message.namespace === 'okova:request-headers',
+  )?.[0];
+  const observed = pageRequestHeadersSchema.parse(message);
+  expect(observed.headers).toEqual([
+    { name: 'authorization', value: 'Bearer permitted' },
+    { name: 'x-http-method', value: 'PATCH' },
+  ]);
+  const command = buildDownloadCommand({ id: 'id', value: 'key', mpd: url }, url, observed.headers);
+  expect(command).not.toContain(value);
+  expect(command).toContain('authorization: Bearer permitted');
+});
+
+test.each([
+  { transport: 'fetch', redirected: false },
+  { transport: 'XHR', redirected: false },
+  { transport: 'fetch', redirected: true },
+  { transport: 'XHR', redirected: true },
+])(
+  'correlates fragment URLs for $transport, redirected=$redirected',
+  async ({ transport, redirected }) => {
+    const networkUrl = 'https://example.com/playback?token=a%23b';
+    const requestUrl = `${networkUrl}#variant`;
+    const responseUrl = redirected ? `${networkUrl}&redirected=1` : networkUrl;
+    if (transport === 'fetch') {
+      const response = new Response(manifest, {
+        headers: { 'Content-Type': 'application/dash+xml' },
+      });
+      Object.defineProperties(response, {
+        url: { value: responseUrl },
+        redirected: { value: redirected },
+      });
+      nativeFetch.mockResolvedValue(response);
+      await fetch(requestUrl, { headers: { Authorization: 'Bearer fragment' } });
+    } else {
+      const xhr = new XMLHttpRequest();
+      xhr.open('GET', requestUrl);
+      xhr.setRequestHeader('Authorization', 'Bearer fragment');
+      xhr.send();
+      Object.assign(xhr, { response: manifest, responseURL: responseUrl });
+      xhr.dispatchEvent(new Event('load'));
+    }
+    await vi.waitFor(() =>
+      expect(postMessage).toHaveBeenCalledWith(
+        expect.objectContaining({ namespace: 'okova:network' }),
+        '*',
+      ),
+    );
+    const observations = postMessage.mock.calls
+      .filter(([message]) => message.namespace === 'okova:request-headers')
+      .map(([message]) => pageRequestHeadersSchema.parse(message));
+    expect(observations).toEqual(
+      redirected
+        ? []
+        : [
+            expect.objectContaining({
+              url: networkUrl,
+              headers: [{ name: 'authorization', value: 'Bearer fragment' }],
+            }),
+          ],
+    );
+  },
+);

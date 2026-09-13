@@ -51,7 +51,15 @@ export default defineConfig({
   },
   manifest: {
     name: 'Okova',
-    permissions: ['scripting', 'storage', 'webNavigation', 'tabs', 'activeTab', 'clipboardWrite'],
+    permissions: [
+      'webRequest',
+      'scripting',
+      'storage',
+      'webNavigation',
+      'tabs',
+      'activeTab',
+      'clipboardWrite',
+    ],
     host_permissions: ['https://*/*', 'http://*/*'],
     minimum_chrome_version: '111',
     browser_specific_settings: { gecko: { strict_min_version: '128.0' } },

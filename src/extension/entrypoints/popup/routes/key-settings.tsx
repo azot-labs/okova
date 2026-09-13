@@ -1,3 +1,6 @@
+import { browser } from 'wxt/browser';
+import { getDownloadHeaders, isSensitiveHeader, type RequestHeader } from '@/utils/request-headers';
+import { appStorage, keyRecordToken } from '@/utils/storage';
 import { getManifestMetadata, isManifestUrl, manifestLabels } from '@/utils/manifest';
 import { CellCheckmark } from '../components/cell-checkmark';
 import { popupHistory } from '../utils/history';
@@ -41,7 +44,53 @@ export const KeySettings: Component<KeySettingsProps> = (props) => {
       options.unshift({ url: saved, label: 'Saved manifest' });
     return options;
   });
-  const generatedCommand = createMemo(() => buildDownloadCommand(props.key, manifestUrl()) ?? '');
+  const [headers, setHeaders] = createSignal<RequestHeader[]>([]);
+  const [headerError, setHeaderError] = createSignal<string>();
+  const [selectedHeaders, setSelectedHeaders] = createSignal<RequestHeader[]>([]);
+  let headerRequestGeneration = 0;
+  createEffect(() => {
+    const token = keyRecordToken(props.key);
+    const url = manifestUrl();
+    const requestGeneration = ++headerRequestGeneration;
+    setHeaders([]);
+    setHeaderError(undefined);
+    setSelectedHeaders([]);
+    void browser.windows
+      .getCurrent()
+      .then(async (window) => {
+        if (requestGeneration !== headerRequestGeneration) return;
+        if (window.id === undefined) throw new Error('Current window has no ID');
+        const result: unknown = await browser.runtime.sendMessage({
+          action: 'download-headers',
+          token,
+          url,
+          windowId: window.id,
+        });
+        if (requestGeneration === headerRequestGeneration) setHeaders(getDownloadHeaders(result));
+      })
+      .catch(() => {
+        if (requestGeneration === headerRequestGeneration)
+          setHeaderError('Unable to load request headers. Reopen the popup to try again.');
+      });
+    onCleanup(() => {
+      headerRequestGeneration++;
+    });
+  });
+  onMount(() => {
+    const unwatch = appStorage.settings.watch((settings) => {
+      if (settings?.requestInterception === false) {
+        headerRequestGeneration++;
+        setHeaderError(undefined);
+        setHeaders([]);
+        setSelectedHeaders([]);
+        setCommand(buildDownloadCommand(props.key, manifestUrl()) ?? '');
+      }
+    });
+    onCleanup(unwatch);
+  });
+  const generatedCommand = createMemo(
+    () => buildDownloadCommand(props.key, manifestUrl(), selectedHeaders()) ?? '',
+  );
   const [command, setCommand] = createSignal(generatedCommand());
   let previousCommand = generatedCommand();
   createEffect(() => {
@@ -51,6 +100,7 @@ export const KeySettings: Component<KeySettingsProps> = (props) => {
   });
 
   const chooseManifest = (url: string) => {
+    setSelectedHeaders([]);
     setManifestUrl(url);
     setCommand(buildDownloadCommand(props.key, url) ?? '');
   };
@@ -182,7 +232,77 @@ export const KeySettings: Component<KeySettingsProps> = (props) => {
             />
           </Cell>
         </Section>
-        <Section header="Command builder (Bash / Zsh)">
+        <Section
+          header="Request headers"
+          headerControls={
+            <Cell
+              component="button"
+              size="xs"
+              class="w-auto"
+              disabled={!headers().length || selectedHeaders().length === headers().length}
+              onClick={() => setSelectedHeaders([...headers()])}
+            >
+              Select All
+            </Cell>
+          }
+          footer="Click on items to include necessary headers in the command."
+        >
+          <Show
+            when={headers().length}
+            fallback={
+              <Cell>
+                {headerError() ??
+                  'No recent request headers available. Reload the player to capture a new request.'}
+              </Cell>
+            }
+          >
+            <For each={headers()}>
+              {(header) => {
+                const isSelected = () => selectedHeaders().includes(header);
+                return (
+                  <Cell
+                    component="button"
+                    aria-pressed={isSelected()}
+                    subtitle={
+                      isSensitiveHeader(header.name) && !isSelected()
+                        ? 'Sensitive value hidden. Select to reveal and include.'
+                        : header.value
+                    }
+                    after={<CellCheckmark checked={isSelected()} />}
+                    onClick={() =>
+                      setSelectedHeaders((current) =>
+                        isSelected()
+                          ? current.filter((item) => item !== header)
+                          : [...current, header],
+                      )
+                    }
+                  >
+                    {header.name}
+                  </Cell>
+                );
+              }}
+            </For>
+          </Show>
+        </Section>
+        <Section
+          header="Command builder (Bash / Zsh)"
+          headerControls={
+            <Cell
+              component="button"
+              size="xs"
+              class="w-auto"
+              disabled={command() === generatedCommand()}
+              onClick={() => setCommand(generatedCommand())}
+            >
+              Reset
+            </Cell>
+          }
+          footer={
+            command() !== generatedCommand()
+              ? 'Command edited manually. Reset to apply the selected headers.'
+              : undefined
+          }
+        >
           <Cell class="w-full">
             <textarea
               class="font-mono outline-none bg-transparent border-none w-full"

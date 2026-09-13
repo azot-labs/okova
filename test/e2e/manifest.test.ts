@@ -205,11 +205,19 @@ test('captures HLS/MSS choices through real EME and builds commands in the popup
         response.end('<!doctype html><title>Manifest workflow</title>');
       }
     });
+    await context.addCookies([
+      { name: 'session', value: 'test-only-cookie', url: origin, httpOnly: true },
+    ]);
     const page = await context.newPage();
     await page.goto(`${origin}/watch`);
     await page.evaluate(
       async ([master, media, mss]) => {
-        await fetch(master!);
+        await fetch(master!, {
+          headers: {
+            Authorization: 'Bearer test-only-token',
+            'X-Playback-Token': 'test-only-custom',
+          },
+        });
         await fetch(media!);
         await new Promise<void>((resolve, reject) => {
           const xhr = new XMLHttpRequest();
@@ -299,12 +307,86 @@ test('captures HLS/MSS choices through real EME and builds commands in the popup
       );
       expect(await copy.isEnabled()).toBe(true);
     }
+    await choices.filter({ hasText: master }).click();
+    const cookie = popup.getByRole('button', { name: /^Cookie/i });
+    const authorization = popup.getByRole('button', { name: /^Authorization/i });
+    await expect.poll(() => cookie.count()).toBe(1);
+    expect(await cookie.textContent()).not.toContain('test-only-cookie');
+    expect(await command.inputValue()).not.toContain('test-only');
+    await cookie.click();
+    await authorization.click();
+    await expect.poll(() => command.inputValue()).toContain('session=test-only-cookie');
+    expect(await command.inputValue()).toContain('Bearer test-only-token');
+    expect(
+      await worker.evaluate(async () => JSON.stringify(await browser.storage.local.get(null))),
+    ).not.toContain('test-only');
+    await cookie.click();
+    expect(await command.inputValue()).not.toContain('test-only-cookie');
+    const editedCommand = `${await command.inputValue()} --save-name custom`;
+    await command.fill(editedCommand);
+    await cookie.click();
+    expect(await command.inputValue()).toBe(editedCommand);
+    await cookie.click();
+    expect(await command.inputValue()).toBe(editedCommand);
+    await popup.getByRole('button', { name: 'Select All', exact: true }).click();
+    expect(await command.inputValue()).toBe(editedCommand);
+    await popup.getByRole('button', { name: 'Reset', exact: true }).click();
+    expect(await command.inputValue()).toContain('session=test-only-cookie');
+    expect(await command.inputValue()).not.toContain('--save-name custom');
+    await cookie.click();
+    expect(await command.inputValue()).not.toContain('test-only-cookie');
     await command.fill('edited command');
     await choices.filter({ hasText: master }).click();
     expect(await command.inputValue()).toContain(master);
     await mkdir(resolve('output/playwright/manifest'), { recursive: true });
     await copy.scrollIntoViewIfNeeded();
     await popup.screenshot({ path: resolve('output/playwright/manifest/selected.png') });
+    // Hold an actual header response until the settings watcher has cleared the popup.
+    await popup.evaluate(() => {
+      const sendMessage = browser.runtime.sendMessage.bind(browser.runtime);
+      browser.runtime.sendMessage = new Proxy(sendMessage, {
+        async apply(target, thisArg, args: unknown[]) {
+          const result: unknown = await Reflect.apply(target, thisArg, args);
+          const message: unknown = args[0];
+          if (
+            typeof message === 'object' &&
+            message !== null &&
+            'action' in message &&
+            message.action === 'download-headers'
+          ) {
+            browser.runtime.sendMessage = sendMessage;
+            document.documentElement.dataset.headerResponsePending = JSON.stringify(result);
+            await new Promise<void>((resolve) =>
+              window.addEventListener('release-header-response', () => resolve(), { once: true }),
+            );
+          }
+          return result;
+        },
+      });
+    });
+    await choices.filter({ hasText: media }).click();
+    await expect
+      .poll(() => popup.evaluate(() => document.documentElement.dataset.headerResponsePending))
+      .toContain('test-only-cookie');
+    await command.fill('pending command to clear');
+    await worker.evaluate(async () => {
+      const stored = (await browser.storage.local.get('settings')).settings;
+      if (typeof stored !== 'string') throw new Error('Missing settings');
+      const settings = JSON.parse(stored);
+      await browser.storage.local.set({
+        settings: JSON.stringify({ ...settings, requestInterception: false }),
+      });
+    });
+    await expect.poll(() => command.inputValue()).not.toBe('pending command to clear');
+    await popup.evaluate(async () => {
+      window.dispatchEvent(new Event('release-header-response'));
+      await new Promise(requestAnimationFrame);
+    });
+    expect(await cookie.count()).toBe(0);
+    expect(await popup.getByRole('button', { name: 'Select All', exact: true }).isDisabled()).toBe(
+      true,
+    );
+    expect(await command.inputValue()).not.toContain('test-only-cookie');
     const input = popup.getByRole('textbox', { name: 'Manifest URL', exact: true });
     await input.fill('javascript:alert(1)');
     expect(await copy.isDisabled()).toBe(true);
@@ -314,6 +396,20 @@ test('captures HLS/MSS choices through real EME and builds commands in the popup
     expect(await command.inputValue()).toContain('https://okova.test/manual.m3u8');
     await input.fill('');
     await popup.screenshot({ path: resolve('output/playwright/manifest/missing.png') });
+    await popup.evaluate(() => {
+      const getCurrent = browser.windows.getCurrent.bind(browser.windows);
+      browser.windows.getCurrent = async () => ({ ...(await getCurrent()), id: undefined });
+    });
+    await choices.filter({ hasText: master }).click();
+    await expect
+      .poll(() =>
+        popup
+          .getByText('Unable to load request headers. Reopen the popup to try again.', {
+            exact: true,
+          })
+          .count(),
+      )
+      .toBe(1);
   } finally {
     await context.close();
     server.closeAllConnections();
