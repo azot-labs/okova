@@ -132,7 +132,11 @@ test('history updates preserve search, visible rows, and live details', async ()
       await worker.evaluate(async () => {
         await browser.storage.local.remove('all-keys');
       });
-      await expect.poll(() => count.textContent()).toBe('(0)');
+      await expect.poll(() => popup.locator('[data-history-row]').count()).toBe(0);
+      expect(await count.isVisible()).toBe(false);
+      expect(await popup.getByRole('heading', { name: 'Keys will appear here' }).isVisible()).toBe(
+        true,
+      );
       records = [captured];
       await save();
       await expect.poll(() => count.textContent()).toBe('(1)');

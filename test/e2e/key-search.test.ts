@@ -101,18 +101,22 @@ test('saved keys filter immediately by KID, page URL, and manifest URL', async (
       expect(await popup.locator('code').allTextContents()).toEqual([
         `${keys[1]!.id}:${keys[1]!.value}`,
       ]);
+      await search.press('Escape');
+      await mkdir(resolve('output/playwright/key-search'), { recursive: true });
       for (const query of ['missing.example', '---', keys[0]!.value]) {
+        await searchButton.click();
         await search.fill(query);
-        await expect.poll(() => count.textContent()).toBe('(2)');
+        await expect.poll(() => count.isVisible()).toBe(false);
         await expect.poll(() => popup.locator('[data-history-row]').count()).toBe(0);
         expect(await popup.getByRole('heading', { name: 'No matching keys' }).isVisible()).toBe(
           true,
         );
         expect(await popup.locator('code').count()).toBe(0);
+        expect(await search.isVisible()).toBe(false);
+        await popup.screenshot({ path: resolve('output/playwright/key-search/no-matches.png') });
+        await popup.getByRole('button', { name: 'Clear filters', exact: true }).click();
+        await expect.poll(() => count.textContent()).toBe('(2)');
       }
-      await mkdir(resolve('output/playwright/key-search'), { recursive: true });
-      await popup.screenshot({ path: resolve('output/playwright/key-search/no-matches.png') });
-      await popup.getByRole('button', { name: 'Clear filters', exact: true }).click();
       await expect.poll(() => count.textContent()).toBe('(2)');
       await expect.poll(() => popup.locator('[data-history-row]').count()).toBe(2);
       expect(await searchButton.getAttribute('title')).toBe('Search');
@@ -132,7 +136,7 @@ test('saved keys filter immediately by KID, page URL, and manifest URL', async (
         .getByRole('dialog')
         .getByRole('button', { name: 'Delete 2 records', exact: true })
         .click();
-      await expect.poll(() => count.textContent()).toBe('(0)');
+      await expect.poll(() => count.isVisible()).toBe(false);
       await expect.poll(() => popup.locator('[data-history-row]').count()).toBe(0);
       expect(await popup.getByRole('heading', { name: 'Keys will appear here' }).isVisible()).toBe(
         true,
