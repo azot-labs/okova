@@ -68,11 +68,13 @@ export const installNetworkInterception = () => {
     startedAt: number,
   ) => {
     // Fetch/XHR may strip credentials on redirects. Never attach original headers to a redirect target.
-    if (!requestUrl || url !== requestUrl || !headers.length) return;
+    // Fragments are not sent to the server and are absent from response URLs.
+    const networkUrl = requestUrl?.split('#')[0];
+    if (!networkUrl || url !== networkUrl || !headers.length) return;
     window.postMessage(
       {
         namespace: 'okova:request-headers',
-        url: requestUrl,
+        url: networkUrl,
         headers,
         startedAt,
         completedAt: Date.now(),

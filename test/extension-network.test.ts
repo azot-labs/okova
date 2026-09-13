@@ -504,3 +504,54 @@ test.each([
   expect(command).not.toContain(value);
   expect(command).toContain('authorization: Bearer permitted');
 });
+
+test.each([
+  { transport: 'fetch', redirected: false },
+  { transport: 'XHR', redirected: false },
+  { transport: 'fetch', redirected: true },
+  { transport: 'XHR', redirected: true },
+])(
+  'correlates fragment URLs for $transport, redirected=$redirected',
+  async ({ transport, redirected }) => {
+    const networkUrl = 'https://example.com/playback?token=a%23b';
+    const requestUrl = `${networkUrl}#variant`;
+    const responseUrl = redirected ? `${networkUrl}&redirected=1` : networkUrl;
+    if (transport === 'fetch') {
+      const response = new Response(manifest, {
+        headers: { 'Content-Type': 'application/dash+xml' },
+      });
+      Object.defineProperties(response, {
+        url: { value: responseUrl },
+        redirected: { value: redirected },
+      });
+      nativeFetch.mockResolvedValue(response);
+      await fetch(requestUrl, { headers: { Authorization: 'Bearer fragment' } });
+    } else {
+      const xhr = new XMLHttpRequest();
+      xhr.open('GET', requestUrl);
+      xhr.setRequestHeader('Authorization', 'Bearer fragment');
+      xhr.send();
+      Object.assign(xhr, { response: manifest, responseURL: responseUrl });
+      xhr.dispatchEvent(new Event('load'));
+    }
+    await vi.waitFor(() =>
+      expect(postMessage).toHaveBeenCalledWith(
+        expect.objectContaining({ namespace: 'okova:network' }),
+        '*',
+      ),
+    );
+    const observations = postMessage.mock.calls
+      .filter(([message]) => message.namespace === 'okova:request-headers')
+      .map(([message]) => pageRequestHeadersSchema.parse(message));
+    expect(observations).toEqual(
+      redirected
+        ? []
+        : [
+            expect.objectContaining({
+              url: networkUrl,
+              headers: [{ name: 'authorization', value: 'Bearer fragment' }],
+            }),
+          ],
+    );
+  },
+);
