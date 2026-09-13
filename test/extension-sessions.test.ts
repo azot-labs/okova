@@ -301,24 +301,40 @@ test.each(['license-request', 'update', 'keystatuseschange'])(
   },
 );
 
-test.each(['navigation', 'removal'])('cleans up only the affected tab on %s', async (action) => {
-  const committed = vi.spyOn(browser.webNavigation.onCommitted, 'addListener');
-  const removed = vi.spyOn(browser.tabs.onRemoved, 'addListener');
-  const send = startBackground();
-  await send('generateRequest', 'one', { tab: tab(1) });
-  await send('generateRequest', 'two', { tab: tab(2) });
-  if (action === 'navigation') {
-    committed.mock.calls[0]![0](navigation(1));
-  } else {
-    removed.mock.calls[0]![0](1, { windowId: 1, isWindowClosing: false });
-  }
-  await expect(send('license-request', 'one', { tab: tab(1) })).resolves.toBeUndefined();
-  await expect(send('license-request', 'two', { tab: tab(2) })).resolves.toEqual(
-    expect.any(String),
-  );
-  expect(Session.prototype.close).toHaveBeenCalledOnce();
-  await send('close', 'two', { tab: tab(2) });
-});
+test.each(['navigation', 'removal', 'replacement', 'network error'])(
+  'cleans up only the affected tab on %s',
+  async (action) => {
+    const committed = vi.spyOn(browser.webNavigation.onCommitted, 'addListener');
+    const removed = vi.spyOn(browser.tabs.onRemoved, 'addListener');
+    const replaced = vi.spyOn(browser.webNavigation.onTabReplaced, 'addListener');
+    const failed = vi.spyOn(browser.webNavigation.onErrorOccurred, 'addListener');
+    const send = startBackground();
+    await send('generateRequest', 'one', { tab: tab(1) });
+    await send('generateRequest', 'two', { tab: tab(2) });
+    await getBadgeStorage(1).setValue([{ kind: 'success', system: 'W', keys: [] }]);
+    if (action === 'navigation') {
+      committed.mock.calls[0]![0](navigation(1));
+    } else if (action === 'replacement') {
+      replaced.mock.calls[0]![0]({ replacedTabId: 1, tabId: 2, timeStamp: Date.now() });
+    } else if (action === 'network error') {
+      failed.mock.calls[0]![0]({ ...navigation(1), error: 'net::ERR_NAME_NOT_RESOLVED' });
+    } else {
+      removed.mock.calls[0]![0](1, { windowId: 1, isWindowClosing: false });
+    }
+    await expect(send('license-request', 'one', { tab: tab(1) })).resolves.toBeUndefined();
+    await expect(send('license-request', 'two', { tab: tab(2) })).resolves.toEqual(
+      expect.any(String),
+    );
+    expect(Session.prototype.close).toHaveBeenCalledOnce();
+    if (action === 'replacement' || action === 'removal') {
+      await vi.advanceTimersByTimeAsync(0);
+      const stored = await browser.storage.session.get(null);
+      expect(stored['capture-diagnostics:1']).toBeUndefined();
+      expect(await getBadgeStorage(1).getValue()).toBeNull();
+    }
+    await send('close', 'two', { tab: tab(2) });
+  },
+);
 
 const SERVICE_CERTIFICATE = `CAUSxQUKvwIIAxIQKHA0VMAI9jYYredEPbbEyBiL5/mQBSKOAjCCAQoCggEBALUhErjQXQI/zF2V4sJRwcZJtBd82NK+7zVbsGdD3mYePSq8MYK3mUbVX9wI3+lUB4FemmJ0syKix/XgZ7tfCsB6idRa6pSyUW8HW2bvgR0NJuG5priU8rmFeWKqFxxPZmMNPkxgJxiJf14e+baq9a1Nuip+FBdt8TSh0xhbWiGKwFpMQfCB7/+Ao6BAxQsJu8dA7tzY8U1nWpGYD5LKfdxkagatrVEB90oOSYzAHwBTK6wheFC9kF6QkjZWt9/v70JIZ2fzPvYoPU9CVKtyWJOQvuVYCPHWaAgNRdiTwryi901goMDQoJk87wFgRwMzTDY4E5SGvJ2vJP1noH+a2UMCAwEAAToSc3RhZ2luZy5nb29nbGUuY29tEoADmD4wNSZ19AunFfwkm9rl1KxySaJmZSHkNlVzlSlyH/iA4KrvxeJ7yYDa6tq/P8OG0ISgLIJTeEjMdT/0l7ARp9qXeIoA4qprhM19ccB6SOv2FgLMpaPzIDCnKVww2pFbkdwYubyVk7jei7UPDe3BKTi46eA5zd4Y+oLoG7AyYw/pVdhaVmzhVDAL9tTBvRJpZjVrKH1lexjOY9Dv1F/FJp6X6rEctWPlVkOyb/SfEJwhAa/K81uDLyiPDZ1Flg4lnoX7XSTb0s+Cdkxd2b9yfvvpyGH4aTIfat4YkF9Nkvmm2mU224R1hx0WjocLsjA89wxul4TJPS3oRa2CYr5+DU4uSgdZzvgtEJ0lksckKfjAF0K64rPeytvDPD5fS69eFuy3Tq26/LfGcF96njtvOUA4P5xRFtICogySKe6WnCUZcYMDtQ0BMMM1LgawFNg4VA+KDCJ8ABHg9bOOTimO0sswHrRWSWX1XF15dXolCk65yEqz5lOfa2/fVomeopkU`;
 
@@ -937,41 +953,85 @@ test('badge changes from observed to fresh, saved on navigation, and failed unti
   await expectBadge('', '#666666');
 });
 
-test.each(['URL update', 'loading', 'subframe commit'])(
-  '%s preserves an active license request',
-  async (event) => {
-    const updated = vi.spyOn(browser.tabs.onUpdated, 'addListener');
-    const committed = vi.spyOn(browser.webNavigation.onCommitted, 'addListener');
-    const send = startBackground();
-    const sender = { tab: { ...tab(1), url: 'https://example.com/video' }, documentId: 'same' };
-    await send('generateRequest', 'active', sender);
-    const started = Promise.withResolvers<void>();
-    const completed = Promise.withResolvers<void>();
-    vi.mocked(Session.prototype.update).mockImplementationOnce(async function (this: Session) {
-      started.resolve();
-      await completed.promise;
-      this.keys.set('00112233445566778899aabbccddeeff', 'ffeeddccbbaa99887766554433221100');
+test('a delayed navigation badge lookup cannot erase the new document result', async () => {
+  const committed = vi.spyOn(browser.webNavigation.onCommitted, 'addListener');
+  const send = startBackground();
+  const lookup = Promise.withResolvers<Browser.tabs.Tab>();
+  vi.mocked(browser.tabs.get).mockImplementationOnce(() => lookup.promise);
+  committed.mock.calls[0]![0](navigation(1));
+  const result = send(
+    'update',
+    'new',
+    { tab: { ...tab(1), url: 'https://example.com/video' }, documentId: 'new' },
+    {
+      keySystem: 'org.w3.clearkey',
+      message: new TextEncoder().encode(
+        JSON.stringify({
+          keys: [{ kty: 'oct', kid: 'AAECAwQFBgcICQoLDA0ODw', k: 'tQ0bJVWb6b0KPL6KtZIy_A' }],
+        }),
+      ),
+    },
+  );
+  await vi.advanceTimersByTimeAsync(0);
+  lookup.resolve({ ...tab(1), url: 'https://example.com/video' });
+  await result;
+  await vi.advanceTimersByTimeAsync(0);
+  expect(await getBadgeStorage(1).getValue()).toMatchObject([{ kind: 'success', system: 'C' }]);
+  expect(browser.action.setBadgeBackgroundColor).toHaveBeenLastCalledWith({
+    tabId: 1,
+    color: '#16803C',
+  });
+});
+
+test.each([
+  'URL update',
+  'loading',
+  'subframe commit',
+  'subframe error',
+  'net::ERR_ABORTED',
+  'NS_BINDING_ABORTED',
+])('%s preserves an active license request', async (event) => {
+  const updated = vi.spyOn(browser.tabs.onUpdated, 'addListener');
+  const committed = vi.spyOn(browser.webNavigation.onCommitted, 'addListener');
+  const failed = vi.spyOn(browser.webNavigation.onErrorOccurred, 'addListener');
+  const send = startBackground();
+  const sender = { tab: { ...tab(1), url: 'https://example.com/video' }, documentId: 'same' };
+  await send('generateRequest', 'active', sender);
+  const started = Promise.withResolvers<void>();
+  const completed = Promise.withResolvers<void>();
+  vi.mocked(Session.prototype.update).mockImplementationOnce(async function (this: Session) {
+    started.resolve();
+    await completed.promise;
+    this.keys.set('00112233445566778899aabbccddeeff', 'ffeeddccbbaa99887766554433221100');
+  });
+  const updating = send('update', 'active', sender);
+  await started.promise;
+  if (event === 'subframe commit') committed.mock.calls[0]![0](navigation(1, 3));
+  else if (
+    event === 'subframe error' ||
+    event === 'net::ERR_ABORTED' ||
+    event === 'NS_BINDING_ABORTED'
+  ) {
+    failed.mock.calls[0]![0]({
+      ...navigation(1, event === 'subframe error' ? 3 : 0),
+      error: event === 'subframe error' ? 'net::ERR_CONNECTION_REFUSED' : event,
     });
-    const updating = send('update', 'active', sender);
-    await started.promise;
-    if (event === 'subframe commit') committed.mock.calls[0]![0](navigation(1, 3));
-    else
-      updated.mock.calls[0]![0](
-        1,
-        event === 'loading' ? { status: 'loading' } : { url: 'https://example.com/next' },
-        { ...sender.tab, url: 'https://example.com/next' },
-      );
-    await vi.advanceTimersByTimeAsync(0);
-    expect(Session.prototype.close).not.toHaveBeenCalled();
-    completed.resolve();
-    await updating;
-    expect(await appStorage.allKeys.getValue()).toMatchObject([
-      { id: '00112233445566778899aabbccddeeff', value: 'ffeeddccbbaa99887766554433221100' },
-    ]);
-    expect(await getDrmFailureStorage(1).getValue()).toBeNull();
-    expect(await getBadgeStorage(1).getValue()).toMatchObject([{ kind: 'success', system: 'W' }]);
-  },
-);
+  } else
+    updated.mock.calls[0]![0](
+      1,
+      event === 'loading' ? { status: 'loading' } : { url: 'https://example.com/next' },
+      { ...sender.tab, url: 'https://example.com/next' },
+    );
+  await vi.advanceTimersByTimeAsync(0);
+  expect(Session.prototype.close).not.toHaveBeenCalled();
+  completed.resolve();
+  await updating;
+  expect(await appStorage.allKeys.getValue()).toMatchObject([
+    { id: '00112233445566778899aabbccddeeff', value: 'ffeeddccbbaa99887766554433221100' },
+  ]);
+  expect(await getDrmFailureStorage(1).getValue()).toBeNull();
+  expect(await getBadgeStorage(1).getValue()).toMatchObject([{ kind: 'success', system: 'W' }]);
+});
 
 test.each(['success', 'failure'])(
   'document navigation invalidates an in-flight license %s',

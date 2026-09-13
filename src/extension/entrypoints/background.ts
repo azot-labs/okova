@@ -294,14 +294,18 @@ export default defineBackground({
         }
       }
     };
-    browser.tabs.onRemoved.addListener((tabId) => {
+    const removeTab = (tabId: number) => {
       closeTabSessions(tabId);
       void clearCaptureDiagnostics(tabId).catch(() => {});
       void (badgeUpdates.get(tabId) ?? Promise.resolve())
         .catch(() => {})
         .then(() => getBadgeStorage(tabId).removeValue())
         .catch((error: unknown) => console.warn('[okova] Unable to clear badge', error));
-    });
+    };
+    browser.tabs.onRemoved.addListener(removeTab);
+    browser.webNavigation.onTabReplaced.addListener(({ replacedTabId }) =>
+      removeTab(replacedTabId),
+    );
 
     const loadCredentials = async () => {
       console.log('[okova] Loading DRM credentials...');
@@ -317,12 +321,16 @@ export default defineBackground({
 
     // Serialize badge writes so an older refresh cannot overwrite a newer result or navigation.
     const badgeUpdates = new Map<number, Promise<void>>();
-    const updateBadgeForTab = (tab?: Browser.tabs.Tab | null, result?: BadgeResult | null) => {
-      const tabId = tab?.id;
+    const updateBadgeForTab = (
+      target?: Browser.tabs.Tab | number | null,
+      result?: BadgeResult | null,
+    ) => {
+      const tabId = typeof target === 'number' ? target : target?.id;
       if (typeof tabId !== 'number') return Promise.resolve();
       const update = (badgeUpdates.get(tabId) ?? Promise.resolve())
         .catch(() => {})
         .then(async () => {
+          const tab = typeof target === 'number' ? await browser.tabs.get(target) : target;
           const history = await getKeyHistory(tab?.incognito === true, tab?.windowId);
           const badgeStorage = getBadgeStorage(tabId);
           if (result === null) await badgeStorage.removeValue();
@@ -361,7 +369,7 @@ export default defineBackground({
 
     const updateBadgeForTabId = async (tabId: number) => {
       try {
-        await updateBadgeForTab(await browser.tabs.get(tabId));
+        await updateBadgeForTab(tabId);
       } catch (error) {
         // The tab may have been closed before the async badge update runs.
         console.warn('[okova] Unable to update extension badge', error);
@@ -401,15 +409,19 @@ export default defineBackground({
       void updateBadgeForTabId(tabId);
     });
 
-    browser.webNavigation.onCommitted.addListener(({ tabId, frameId }) => {
-      if (frameId !== 0) return;
+    const resetNavigatedTab = (tabId: number) => {
       closeTabSessions(tabId);
-      void browser.tabs
-        .get(tabId)
-        .then((tab) => updateBadgeForTab(tab, null))
-        .catch((error: unknown) => {
-          console.warn('[okova] Unable to reset badge', error);
-        });
+      void updateBadgeForTab(tabId, null).catch((error: unknown) => {
+        console.warn('[okova] Unable to reset badge', error);
+      });
+    };
+    browser.webNavigation.onCommitted.addListener(({ tabId, frameId }) => {
+      if (frameId === 0) resetNavigatedTab(tabId);
+    });
+    browser.webNavigation.onErrorOccurred.addListener(({ tabId, frameId, error }) => {
+      // Cancelling a provisional navigation leaves the original document alive.
+      if (frameId !== 0 || error === 'net::ERR_ABORTED' || error === 'NS_BINDING_ABORTED') return;
+      resetNavigatedTab(tabId);
     });
 
     browser.tabs.onUpdated.addListener((_tabId, changeInfo, tab) => {

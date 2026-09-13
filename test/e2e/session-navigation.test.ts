@@ -2,7 +2,7 @@ import { createServer } from 'node:http';
 import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
-import { chromium } from 'playwright';
+import { chromium, type BrowserContext } from 'playwright';
 import { expect, test } from 'vitest';
 import { z } from 'zod';
 
@@ -10,12 +10,21 @@ declare const chrome: typeof import('wxt/browser').browser;
 
 const responseSchema = z.object({ body: z.string().nullish() });
 
-test('same-document navigation preserves a pending challenge; reload closes the session', async () => {
+test('preserves sessions until a reload or terminal navigation error', async () => {
   let hasStarted = false;
+  let hasStalled = false;
   const release = Promise.withResolvers<void>();
   let closes = 0;
   const server = createServer(async (request, response) => {
     response.setHeader('content-type', 'application/json');
+    if (request.url === '/stall') {
+      hasStalled = true;
+      return;
+    }
+    if (request.url === '/network-error') {
+      request.socket.destroy();
+      return;
+    }
     if (request.url === '/sessions') {
       response.end(JSON.stringify({ id: 'navigation-session' }));
     } else if (request.url?.endsWith('/generate-request')) {
@@ -30,18 +39,20 @@ test('same-document navigation preserves a pending challenge; reload closes the 
       response.end('<!doctype html><title>Session navigation</title>');
     }
   });
-  await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve));
-  const address = server.address();
-  if (!address || typeof address === 'string') throw new Error('Missing test server port');
-  const baseUrl = `http://127.0.0.1:${address.port}`;
-  const profile = await mkdtemp(join(tmpdir(), 'okova-navigation-'));
-  const extension = resolve('.output/chrome-mv3');
-  const context = await chromium.launchPersistentContext(profile, {
-    channel: 'chromium',
-    headless: true,
-    args: [`--disable-extensions-except=${extension}`, `--load-extension=${extension}`],
-  });
+  let profile: string | undefined;
+  let context: BrowserContext | undefined;
   try {
+    await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve));
+    const address = server.address();
+    if (!address || typeof address === 'string') throw new Error('Missing test server port');
+    const baseUrl = `http://127.0.0.1:${address.port}`;
+    profile = await mkdtemp(join(tmpdir(), 'okova-navigation-'));
+    const extension = resolve('.output/chrome-mv3');
+    context = await chromium.launchPersistentContext(profile, {
+      channel: 'chromium',
+      headless: true,
+      args: [`--disable-extensions-except=${extension}`, `--load-extension=${extension}`],
+    });
     const worker = context.serviceWorkers()[0] ?? (await context.waitForEvent('serviceworker'));
     await expect
       .poll(() =>
@@ -72,6 +83,9 @@ test('same-document navigation preserves a pending challenge; reload closes the 
           ],
           activeCredentialsId: 'test',
         },
+      });
+      chrome.webNavigation.onErrorOccurred.addListener(({ error }) => {
+        void chrome.storage.session.set({ 'test-navigation-error': error });
       });
       chrome.tabs.onUpdated.addListener((_tabId, change) => {
         if (change.url) void chrome.storage.session.set({ 'test-navigation-url': change.url });
@@ -129,16 +143,42 @@ test('same-document navigation preserves a pending challenge; reload closes the 
     await generating;
     expect(responseSchema.parse(JSON.parse(await send('license-request'))).body).toBe('AQID');
     expect(closes).toBe(0);
+    const cancelled = page.goto(`${baseUrl}/stall`).catch(() => {});
+    await expect.poll(() => hasStalled).toBe(true);
+    const cdp = await context.newCDPSession(page);
+    await cdp.send('Page.stopLoading');
+    await cancelled;
+    await expect
+      .poll(() =>
+        worker.evaluate(
+          async () =>
+            (await chrome.storage.session.get('test-navigation-error'))['test-navigation-error'],
+        ),
+      )
+      .toBe('net::ERR_ABORTED');
+    expect(responseSchema.parse(JSON.parse(await send('license-request'))).body).toBe('AQID');
+    expect(closes).toBe(0);
     await page.reload();
     await expect.poll(() => closes).toBe(1);
     expect(responseSchema.parse(JSON.parse(await send('license-request'))).body).toBeNull();
+    await send('generateRequest');
+    expect(responseSchema.parse(JSON.parse(await send('license-request'))).body).toBe('AQID');
+    await expect(page.goto(`${baseUrl}/network-error`)).rejects.toThrow('net::ERR_EMPTY_RESPONSE');
+    await expect.poll(() => closes).toBe(2);
   } finally {
     release.resolve();
-    await context.close();
-    server.closeAllConnections();
-    await new Promise<void>((resolve, reject) =>
-      server.close((error) => (error ? reject(error) : resolve())),
-    );
-    await rm(profile, { recursive: true, force: true });
+    try {
+      await context?.close();
+    } finally {
+      try {
+        server.closeAllConnections();
+        if (server.listening)
+          await new Promise<void>((resolve, reject) =>
+            server.close((error) => (error ? reject(error) : resolve())),
+          );
+      } finally {
+        if (profile) await rm(profile, { recursive: true, force: true });
+      }
+    }
   }
 });
