@@ -492,6 +492,7 @@ export const CaptureList: Component<{
                 </Show>
                 <Show when={capture.manifestUrl || keyCount()}>
                   <CaptureCommandBuilder
+                    source={capture.stored.source}
                     records={recordEntries().map((entry) => entry.key)}
                     manifestUrl={capture.manifestUrl}
                     active={isOpen()}

@@ -1,6 +1,7 @@
 import { browser } from 'wxt/browser';
 import { appStorage, defaultSettings, keyRecordToken, type KeyInfo } from './storage';
-import { createRequestHeaderCache } from './request-headers';
+import type { CaptureSource } from './storage/capture-history';
+import { createRequestHeaderCache, manifestHeaderToken } from './request-headers';
 import { getManifestMetadata } from './manifest';
 
 export const installRequestHeaderObservation = () => {
@@ -36,6 +37,7 @@ export const installRequestHeaderObservation = () => {
           requestId: details.requestId,
           tabId: details.tabId,
           frameId: details.frameId,
+          documentId: details.documentId,
           url: details.url,
           headers: details.requestHeaders,
         },
@@ -67,10 +69,30 @@ export const installRequestHeaderObservation = () => {
     }, 60_000);
   };
   return {
-    observePage: (value: unknown, tabId: number, frameId: number) => {
-      if (isEnabled !== false) cache.observePage(value, tabId, frameId);
+    observePage: (value: unknown, tabId: number, frameId: number, documentId?: string) => {
+      if (isEnabled !== false) cache.observePage(value, tabId, frameId, documentId);
     },
-    capture: (keys: KeyInfo[], tabId: number, frameId: number, incognito: boolean) => {
+    captureManifest: (source: CaptureSource, url: string, incognito: boolean) => {
+      if (isEnabled === false || source.tabId === undefined) return;
+      scheduleExpiry();
+      cache.capture(
+        {
+          token: manifestHeaderToken(source, url),
+          tabId: source.tabId,
+          frameId: source.frameId ?? 0,
+          documentId: source.documentId,
+          incognito,
+        },
+        [url],
+      );
+    },
+    capture: (
+      keys: KeyInfo[],
+      tabId: number,
+      frameId: number,
+      incognito: boolean,
+      documentId?: string,
+    ) => {
       if (isEnabled === false) return;
       for (const key of keys) {
         const metadata = getManifestMetadata(key);
@@ -81,7 +103,7 @@ export const installRequestHeaderObservation = () => {
           ]),
         ];
         scheduleExpiry();
-        cache.capture({ token: keyRecordToken(key), tabId, frameId, incognito }, urls);
+        cache.capture({ token: keyRecordToken(key), tabId, frameId, documentId, incognito }, urls);
       }
     },
     read: async (token: string, url: string, incognito: boolean) => {

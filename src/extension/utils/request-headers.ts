@@ -1,4 +1,5 @@
 import { isManifestUrl } from './manifest';
+import type { CaptureSource } from './storage/capture-history';
 import { z } from 'zod/mini';
 
 export const requestHeaderSchema = z.object({
@@ -45,10 +46,22 @@ export const getDownloadHeaders = (headers: unknown): RequestHeader[] => {
 export const isSensitiveHeader = (name: string) =>
   /cookie|authorization|token|secret|api[-_]?key/i.test(name);
 
+// Stable across capture regrouping, scoped to the document that observed this manifest.
+export const manifestHeaderToken = (source: CaptureSource, url: string) =>
+  JSON.stringify([
+    'manifest',
+    source.url,
+    source.tabId,
+    source.frameId ?? 0,
+    source.documentId,
+    url,
+  ]);
+
 type Observation = {
   requestId: string;
   tabId: number;
   frameId: number;
+  documentId?: string;
   url: string;
   headers: RequestHeader[];
   at: number;
@@ -57,6 +70,7 @@ type Capture = {
   token: string;
   tabId: number;
   frameId: number;
+  documentId?: string;
   incognito: boolean;
   at: number;
   manifests: { url: string; headers: RequestHeader[] }[];
@@ -101,7 +115,7 @@ export const createRequestHeaderCache = (now = Date.now) => {
         if (request.requestId === requestId) request.redirected = true;
       }
     },
-    observePage: (value: unknown, tabId: number, frameId: number) => {
+    observePage: (value: unknown, tabId: number, frameId: number, documentId?: string) => {
       prune();
       const parsed = pageRequestHeadersSchema.safeParse(value);
       if (!parsed.success) return;
@@ -116,6 +130,7 @@ export const createRequestHeaderCache = (now = Date.now) => {
         (request) =>
           request.tabId === tabId &&
           request.frameId === frameId &&
+          request.documentId === documentId &&
           request.url === page.url &&
           request.at >= page.startedAt - 100 &&
           request.at <= page.completedAt,
@@ -147,6 +162,7 @@ export const createRequestHeaderCache = (now = Date.now) => {
               (request) =>
                 request.tabId === capture.tabId &&
                 request.frameId === capture.frameId &&
+                request.documentId === capture.documentId &&
                 request.url === url,
             )?.headers ?? []
           ).map((header) => ({ ...header })),

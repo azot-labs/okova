@@ -1,4 +1,4 @@
-import { readKeyRecords } from './capture-storage';
+import { readKeyRecords, readStoredCaptures } from './capture-storage';
 import { mkdtemp, rm } from 'node:fs/promises';
 import { createServer } from 'node:http';
 import { tmpdir } from 'node:os';
@@ -296,10 +296,24 @@ test('captures HLS/MSS choices through real EME and builds commands in the popup
         .filter({ has: popup.locator(`a[href="${url}"]`) });
       await capture.locator(':scope > summary').click({ position: { x: 8, y: 8 } });
       const command = capture.getByRole('textbox', { name: 'Download command' });
-      await expect.poll(() => command.inputValue()).toBe(`N_m3u8DL-RE '${url}'`);
+      await expect.poll(() => command.inputValue()).toContain('Referer:');
+      const generated = await command.inputValue();
+      expect(generated).toContain(`N_m3u8DL-RE '${url}'`);
+      expect(generated).not.toContain('--key');
+      expect(generated).not.toContain('test-only-');
+      const cookie = capture.getByRole('checkbox', { name: 'Include Cookie' });
+      expect(await cookie.isChecked()).toBe(false);
+      expect(await cookie.isDisabled()).toBe(true);
+      if (url === master) {
+        expect(
+          await capture.getByRole('checkbox', { name: 'Include Authorization' }).isDisabled(),
+        ).toBe(true);
+      }
+      const stored = (await readStoredCaptures(worker)).find((item) => item.manifest?.url === url);
+      expect(stored?.sessions).toEqual([]);
       await command.fill('custom command');
       await capture.getByText('Reset', { exact: true }).click();
-      expect(await command.inputValue()).toBe(`N_m3u8DL-RE '${url}'`);
+      expect(await command.inputValue()).toBe(generated);
       await capture.locator(':scope > summary').click({ position: { x: 8, y: 8 } });
     }
     expect(await popup.getByRole('textbox', { name: 'Manifest URL' }).count()).toBe(0);
