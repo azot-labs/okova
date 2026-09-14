@@ -71,6 +71,15 @@ const nativeRequest = vi.fn(
   },
 );
 
+const nativeDecodingInfo = vi.fn(async (configuration: MediaDecodingConfiguration) => ({
+  supported:
+    !configuration.keySystemConfiguration ||
+    configuration.keySystemConfiguration.keySystem === 'org.w3.clearkey',
+  smooth: true,
+  powerEfficient: false,
+  keySystemAccess: null,
+}));
+
 const mockSessionBridge = ({
   keySystem = 'com.widevine.alpha',
   challenge = 'Widevine challenge',
@@ -94,7 +103,10 @@ const mockSessionBridge = ({
 
 beforeEach(() => {
   vi.useFakeTimers();
-  vi.stubGlobal('navigator', { requestMediaKeySystemAccess: nativeRequest });
+  vi.stubGlobal('navigator', {
+    requestMediaKeySystemAccess: nativeRequest,
+    mediaCapabilities: { decodingInfo: nativeDecodingInfo },
+  });
   // Playback bridge requests must survive a page-owned malformed manifest entry.
   vi.stubGlobal('window', { MPD_LIST: new Map(), MANIFEST_LIST: new Map([['page-entry', {}]]) });
   vi.stubGlobal('MediaKeySystemAccess', NativeAccess);
@@ -187,7 +199,7 @@ test('rejects an unsuccessful extraction without forwarding a Widevine license t
 
 test.for([
   { videoCapabilities: [{ contentType, robustness: 'HW_SECURE_ALL' }] },
-  { videoCapabilities: [{ contentType, encryptionScheme: 'cbcs' }] },
+  { videoCapabilities: [{ contentType, encryptionScheme: 'cens' }] },
   { videoCapabilities: [{ contentType }], sessionTypes: ['persistent-license'] },
 ])('does not advertise unsupported configurations: %j', async (configuration) => {
   await expect(
@@ -469,3 +481,35 @@ test.each(['generateRequest', 'update'] as const)(
     expect(nativeUpdate).not.toHaveBeenCalled();
   },
 );
+
+test('encrypted media capability checks use adapted access and preserve cbcs', async () => {
+  const configuration: MediaDecodingConfiguration = {
+    type: 'media-source',
+    video: { contentType, width: 640, height: 360, bitrate: 800000, framerate: 30 },
+    keySystemConfiguration: {
+      keySystem: 'com.widevine.alpha',
+      video: { robustness: 'SW_SECURE_CRYPTO', encryptionScheme: 'cbcs' },
+    },
+  };
+  const result = await navigator.mediaCapabilities.decodingInfo(configuration);
+  expect(result.supported).toBe(true);
+  expect(result.keySystemAccess?.keySystem).toBe('com.widevine.alpha');
+  expect(result.keySystemAccess?.getConfiguration().videoCapabilities?.[0]?.encryptionScheme).toBe(
+    'cbcs',
+  );
+  expect(nativeDecodingInfo.mock.calls[0]?.[0].keySystemConfiguration).toMatchObject({
+    keySystem: 'org.w3.clearkey',
+    video: { robustness: '', encryptionScheme: 'cbcs' },
+  });
+  expect(configuration.keySystemConfiguration?.video?.robustness).toBe('SW_SECURE_CRYPTO');
+});
+
+test('clear media capability checks stay native', async () => {
+  const configuration: MediaDecodingConfiguration = {
+    type: 'media-source',
+    audio: { contentType: 'audio/mp4;codecs="mp4a.40.2"' },
+  };
+  expect((await navigator.mediaCapabilities.decodingInfo(configuration)).supported).toBe(true);
+  expect(nativeRequest).not.toHaveBeenCalled();
+  expect(nativeDecodingInfo).toHaveBeenCalledWith(configuration);
+});

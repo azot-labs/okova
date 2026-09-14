@@ -33,6 +33,9 @@ const forwardMethod = <T extends object>(object: T, key: keyof T) => {
 export const installBootstrap = () => {
   const nativeRequest = navigator.requestMediaKeySystemAccess;
   let requestAccess = nativeRequest;
+  const capabilities = navigator.mediaCapabilities;
+  const nativeDecodingInfo = capabilities?.decodingInfo;
+  let decodingInfo = nativeDecodingInfo;
   const methods =
     typeof MediaKeySession === 'undefined'
       ? []
@@ -60,6 +63,8 @@ export const installBootstrap = () => {
       else Reflect.deleteProperty(MediaKeySession.prototype, property);
     }
     requestAccess = nativeRequest;
+    decodingInfo = nativeDecodingInfo;
+    if (capabilities && nativeDecodingInfo) capabilities.decodingInfo = nativeDecodingInfo;
     if (typeof nativeRequest === 'function') navigator.requestMediaKeySystemAccess = nativeRequest;
   };
 
@@ -79,6 +84,7 @@ export const installBootstrap = () => {
           try {
             const resolveOverride = installer(playback);
             requestAccess = navigator.requestMediaKeySystemAccess;
+            decodingInfo = capabilities?.decodingInfo;
             for (const method of methods) method.select(resolveOverride);
             resolve();
             return true;
@@ -98,6 +104,7 @@ export const installBootstrap = () => {
         }
       });
       navigator.requestMediaKeySystemAccess = requestAccess;
+      if (capabilities && decodingInfo) capabilities.decodingInfo = decodingInfo;
       console.info('[okova] Interception ready');
     } catch (error) {
       restore();
@@ -116,6 +123,15 @@ export const installBootstrap = () => {
     return requestAccess.apply(this, args);
   };
   if (typeof nativeRequest === 'function') navigator.requestMediaKeySystemAccess = request;
+  if (capabilities && nativeDecodingInfo) {
+    capabilities.decodingInfo = async function (configuration) {
+      if (!configuration?.keySystemConfiguration)
+        return nativeDecodingInfo.call(this, configuration);
+      loading ??= load();
+      await loading;
+      return decodingInfo.call(this, configuration);
+    };
+  }
 };
 
 export default defineUnlistedScript(installBootstrap);
