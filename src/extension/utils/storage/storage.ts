@@ -10,7 +10,7 @@ import { WidevineClientCredentials } from '../../../lib/widevine/client-credenti
 import { PlayReadyClientCredentials } from '../../../lib/playready/client-credentials';
 import { fromBase64, fromBuffer } from '../../../lib';
 import { asJson } from './json';
-import { defaultSettings, settingsStorage, storedSettings, type Settings } from './settings';
+import { settingsStorage } from './settings';
 
 export { defaultSettings, type Settings, type ThemeMode } from './settings';
 
@@ -198,13 +198,10 @@ const decodeCredentialsRegistry = async (
   return snapshot;
 };
 
-const saveCredentialsRegistry = async (registry: CredentialsRegistry, settings?: Settings) => {
+const saveCredentialsRegistry = async (registry: CredentialsRegistry) => {
   // Build the snapshot before committing; unreadable entries remain stored for explicit repair.
   const snapshot = await decodeCredentialsRegistry(registry);
-  await storage.setItems([
-    { key: credentialsRegistry.key, value: registry },
-    ...(settings ? [{ key: storedSettings.key, value: JSON.stringify(settings) }] : []),
-  ]);
+  await credentialsRegistry.setValue(registry);
   return snapshot;
 };
 
@@ -222,18 +219,15 @@ const addCredentials = (credentials: Credentials, enablePlayback = false) =>
     const entry = { id: crypto.randomUUID(), info };
     registry.credentials.push(entry);
     registry.activeCredentialsIds[getCredentialsSystem(credentials)] ??= entry.id;
-    const settings =
-      enablePlayback && isFirstCredentials
-        ? {
-            ...defaultSettings,
-            ...(await storedSettings.getValue()),
-            emeInterception: true,
-            spoofing: true,
-            clientPlayback: true,
-          }
-        : undefined;
-    const snapshot = await saveCredentialsRegistry(registry, settings);
-    return { ...snapshot, settings };
+    if (enablePlayback && isFirstCredentials) {
+      const snapshot = await decodeCredentialsRegistry(registry);
+      const settings = await settingsStorage.patch(
+        { emeInterception: true, spoofing: true, clientPlayback: true },
+        [{ key: credentialsRegistry.key, value: registry }],
+      );
+      return { ...snapshot, settings };
+    }
+    return saveCredentialsRegistry(registry);
   });
 
 const credentialsStorage = {

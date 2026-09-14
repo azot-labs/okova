@@ -1,41 +1,45 @@
+import { createSignal, type JSX } from 'solid-js';
 import { Layout } from '../components/layout';
 import { Header } from '../components/header';
 import { List } from '../components/list';
-import { Section } from '../components/section';
+import { Section, SectionFooter } from '../components/section';
 import { Cell } from '../components/cell';
 import { Switch } from '../components/switch';
-import { useSettings } from '../utils/state';
+import { useSettings, useSettingsError } from '../utils/state';
 import { appStorage, ThemeMode, Settings as AppSettings } from '@/utils/storage';
 import { useUpdateInfo, useUpdater } from '../utils/updater';
 import { CellLink } from '../components/cell-link';
 import { CellCheckmark } from '../components/cell-checkmark';
 
 export const Settings = () => {
-  const [settings, setSettings] = useSettings();
+  const [settings] = useSettings();
+  const [saveError, setSaveError] = useSettingsError();
+  const [isSaving, setIsSaving] = createSignal(false);
 
-  const updateSettings = (nextSettings: Partial<AppSettings>) => {
-    const updatedSettings = { ...settings, ...nextSettings };
-    setSettings(nextSettings);
-    appStorage.settings.setValue(updatedSettings);
+  const updateSettings = async (patch: Partial<AppSettings>) => {
+    if (isSaving()) return;
+    setIsSaving(true);
+    setSaveError(undefined);
+    try {
+      await appStorage.settings.patch(patch);
+    } catch {
+      setSaveError('Unable to save settings. Please try again.');
+    } finally {
+      setIsSaving(false);
+    }
   };
 
-  const switchEmeInterception = (checked: boolean) => {
-    updateSettings({
-      emeInterception: checked,
-      ...(!checked && { spoofing: false }),
+  const changeToggle = (
+    event: Parameters<JSX.EventHandler<HTMLInputElement, Event>>[0],
+    key: Exclude<keyof AppSettings, 'theme'>,
+  ) => {
+    const checked = event.currentTarget.checked;
+    // A checkbox changes its DOM state before onChange. Keep it at the persisted value.
+    event.currentTarget.checked = settings[key];
+    void updateSettings({
+      [key]: checked,
+      ...(key === 'emeInterception' && !checked && { spoofing: false }),
     });
-  };
-
-  const switchSpoofing = (checked: boolean) => {
-    updateSettings({ spoofing: checked });
-  };
-
-  const switchRequestInterception = (checked: boolean) => {
-    updateSettings({ requestInterception: checked });
-  };
-
-  const setTheme = (theme: ThemeMode) => {
-    updateSettings({ theme });
   };
 
   const themeOptions: { value: ThemeMode; label: string; subtitle?: string }[] = [
@@ -52,6 +56,13 @@ export const Settings = () => {
     <Layout>
       <Header backHref="/">Settings</Header>
       <List>
+        <Show when={saveError()}>
+          <SectionFooter>
+            <span role="alert" class="text-red-500">
+              {saveError()}
+            </span>
+          </SectionFooter>
+        </Show>
         <Section
           header="Encrypted Media Extensions"
           footer="Spoofing can interrupt playback: enable Playback to play protected videos with your active client credentials."
@@ -63,10 +74,8 @@ export const Settings = () => {
             after={
               <Switch
                 checked={settings.emeInterception}
-                onChange={(e) => {
-                  const checked = e.target.checked;
-                  switchEmeInterception(checked);
-                }}
+                disabled={isSaving()}
+                onChange={(event) => changeToggle(event, 'emeInterception')}
               />
             }
           >
@@ -75,12 +84,12 @@ export const Settings = () => {
           <Cell
             subtitle="Use the active credentials to obtain content keys"
             component="label"
-            disabled={!settings.emeInterception}
+            disabled={isSaving() || !settings.emeInterception}
             after={
               <Switch
-                disabled={!settings.emeInterception}
+                disabled={isSaving() || !settings.emeInterception}
                 checked={settings.spoofing}
-                onChange={(e) => switchSpoofing(e.target.checked)}
+                onChange={(event) => changeToggle(event, 'spoofing')}
               />
             }
           >
@@ -89,12 +98,12 @@ export const Settings = () => {
           <Cell
             subtitle="Use the active credentials to play protected content"
             component="label"
-            disabled={!settings.emeInterception || !settings.spoofing}
+            disabled={isSaving() || !settings.emeInterception || !settings.spoofing}
             after={
               <Switch
-                disabled={!settings.emeInterception || !settings.spoofing}
+                disabled={isSaving() || !settings.emeInterception || !settings.spoofing}
                 checked={settings.clientPlayback}
-                onChange={(event) => updateSettings({ clientPlayback: event.target.checked })}
+                onChange={(event) => changeToggle(event, 'clientPlayback')}
               />
             }
           >
@@ -112,7 +121,8 @@ export const Settings = () => {
               after={
                 <Switch
                   checked={settings.requestInterception}
-                  onChange={(e) => switchRequestInterception(e.target.checked)}
+                  disabled={isSaving()}
+                  onChange={(event) => changeToggle(event, 'requestInterception')}
                 />
               }
             >
@@ -127,7 +137,8 @@ export const Settings = () => {
                 component="button"
                 subtitle={option.subtitle}
                 after={<CellCheckmark checked={settings.theme === option.value} />}
-                onClick={() => setTheme(option.value)}
+                disabled={isSaving()}
+                onClick={() => updateSettings({ theme: option.value })}
               >
                 {option.label}
               </Cell>

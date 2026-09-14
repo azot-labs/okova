@@ -46,7 +46,7 @@ export const setupWorkerTests = () => {
     vi.spyOn(browser.webRequest.onErrorOccurred, 'addListener').mockImplementation(() => {});
     vi.useFakeTimers();
     vi.spyOn(browser.tabs, 'query').mockImplementation(async () => []);
-    await appStorage.settings.setValue({
+    await appStorage.settings.patch({
       spoofing: true,
       emeInterception: true,
       requestInterception: false,

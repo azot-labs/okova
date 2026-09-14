@@ -111,12 +111,8 @@ export default defineBackground({
     updateInterceptionScripts();
     browser.runtime.onInstalled.addListener(() => {
       updateInterceptionScripts();
-      void navigator.locks
-        .request('okova:settings', async () => {
-          if (!(await appStorage.settings.getValue())) {
-            await appStorage.settings.setValue(defaultSettings);
-          }
-        })
+      void appStorage.settings
+        .patch({})
         .catch((error) => console.warn('[okova] Settings initialization failed', error));
     });
 

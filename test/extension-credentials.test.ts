@@ -139,7 +139,7 @@ test('migrates the client registry and remote selector without losing selection 
 });
 
 test('commits first import, activation and playback settings in one write', async () => {
-  await appStorage.settings.setValue({ ...defaultSettings, theme: 'dark' });
+  await appStorage.settings.patch({ ...defaultSettings, theme: 'dark' });
   const write = vi.spyOn(browser.storage.local, 'set');
   const snapshot = await appStorage.credentials.import(await remote());
   expect(write).toHaveBeenCalledTimes(1);
@@ -156,7 +156,7 @@ test('commits first import, activation and playback settings in one write', asyn
 });
 
 test('failed imports leave both settings and selection unchanged and can be retried', async () => {
-  await appStorage.settings.setValue(defaultSettings);
+  await appStorage.settings.patch(defaultSettings);
   const before = await appStorage.credentials.getSnapshot();
   vi.spyOn(browser.storage.local, 'set').mockRejectedValueOnce(new Error('Quota exceeded'));
   const credentials = await remote();
@@ -481,4 +481,22 @@ test('repairing an active entry with a different system does not replace that sy
   });
   const repaired = await appStorage.credentials.replace('broken', await remote('repair'));
   expect(repaired.activeCredentialsIds).toEqual(imported.activeCredentialsIds);
+});
+
+test('first import and concurrent settings patches preserve both updates', async () => {
+  const credentials = await remote();
+  await Promise.all([
+    appStorage.credentials.import(credentials),
+    appStorage.settings.patch({ theme: 'dark', requestInterception: false }),
+    appStorage.settings.patch({}),
+  ]);
+  expect(await appStorage.settings.getValue()).toEqual({
+    ...defaultSettings,
+    theme: 'dark',
+    requestInterception: false,
+    emeInterception: true,
+    spoofing: true,
+    clientPlayback: true,
+  });
+  expect((await appStorage.credentials.getSnapshot()).credentials).toHaveLength(1);
 });

@@ -69,7 +69,7 @@ beforeEach(async () => {
   vi.spyOn(browser.webRequest.onBeforeRedirect, 'addListener').mockImplementation(() => {});
   vi.spyOn(browser.webRequest.onErrorOccurred, 'addListener').mockImplementation(() => {});
   vi.useFakeTimers();
-  await appStorage.settings.setValue({
+  await appStorage.settings.patch({
     spoofing: true,
     emeInterception: true,
     requestInterception: false,
@@ -682,7 +682,7 @@ test('a recovered key-status history write clears the previous failure', async (
 test.each([true, false])(
   'captures ClearKey without credentials when spoofing is %s',
   async (spoofing) => {
-    await appStorage.settings.setValue({
+    await appStorage.settings.patch({
       spoofing,
       emeInterception: true,
       requestInterception: false,
@@ -971,7 +971,7 @@ test('badge changes from observed to fresh, saved on navigation, and failed unti
     expect(browser.action.setBadgeText).toHaveBeenLastCalledWith({ tabId: 1, text });
     expect(browser.action.setBadgeBackgroundColor).toHaveBeenLastCalledWith({ tabId: 1, color });
   };
-  await appStorage.settings.setValue({
+  await appStorage.settings.patch({
     spoofing: false,
     emeInterception: true,
     requestInterception: false,
@@ -1002,7 +1002,7 @@ test('badge changes from observed to fresh, saved on navigation, and failed unti
   );
   await expectBadge('1C', '#16803C');
 
-  await appStorage.settings.setValue({
+  await appStorage.settings.patch({
     spoofing: true,
     emeInterception: true,
     requestInterception: false,
