@@ -45,6 +45,8 @@ export const useActiveTabUrl = () => activeTabUrlSignal;
 
 const settingsStore = createStore<Settings>(defaultSettings);
 export const useSettings = () => settingsStore;
+const settingsErrorSignal = createSignal<string>();
+export const useSettingsError = () => settingsErrorSignal;
 
 export const useSyncStateWithStorage = () => {
   const [, setSettings] = useSettings();
@@ -61,13 +63,19 @@ export const useSyncStateWithStorage = () => {
   });
 
   onMount(async () => {
-    const settings = await appStorage.settings.getValue();
-    if (settings) {
-      const syncedSettings = { ...defaultSettings, ...settings };
-      setSettings(syncedSettings);
-      if (!settings.theme) await appStorage.settings.setValue(syncedSettings);
-    } else {
-      await appStorage.settings.setValue(defaultSettings);
+    let hasSettingsUpdate = false;
+    disposers.push(
+      appStorage.settings.watch((settings) => {
+        hasSettingsUpdate = true;
+        setSettings(settings ?? defaultSettings);
+      }),
+    );
+    try {
+      const settings = await appStorage.settings.patch({});
+      if (!isDisposed && !hasSettingsUpdate) setSettings(settings);
+    } catch {
+      if (!isDisposed)
+        settingsErrorSignal[1]('Unable to load settings. Reopen the popup to retry.');
     }
 
     if (isDisposed) return;

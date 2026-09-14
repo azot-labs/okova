@@ -72,7 +72,7 @@ test('captures keys after logging a status with spoofing disabled', async () => 
     requestInterception: false,
     theme: 'auto',
   } as const;
-  await appStorage.settings.setValue(settings);
+  await appStorage.settings.patch(settings);
   const loadCredentials = vi
     .spyOn(appStorage.credentials.active, 'getValue')
     .mockResolvedValue(new WidevineClientCredentials(new Uint8Array()));
@@ -97,7 +97,7 @@ test('captures keys after logging a status with spoofing disabled', async () => 
   ]);
   expect(loadCredentials).not.toHaveBeenCalled();
 
-  await appStorage.settings.setValue({ ...settings, spoofing: true });
+  await appStorage.settings.patch({ ...settings, spoofing: true });
   await sendMessage({ action: 'generateRequest', initDataType: 'cenc' });
   expect(createSession).toHaveBeenCalledOnce();
   expect(generateRequest).toHaveBeenCalledExactlyOnceWith('cenc', new TextEncoder().encode('pssh'));
@@ -136,7 +136,7 @@ test('stored captures are not relabeled as current-site results', async () => {
 test.each(['capture-history', 'all-storage'])(
   'reports %s persistence failures and still returns extracted keys',
   async (failedStore) => {
-    await appStorage.settings.setValue({
+    await appStorage.settings.patch({
       spoofing: false,
       emeInterception: true,
       requestInterception: false,

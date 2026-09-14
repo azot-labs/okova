@@ -126,7 +126,7 @@ test('reports injection failures without proceeding to installation', async () =
 
 test('does not load a runtime when stored EME interception is disabled', async () => {
   const execute = vi.spyOn(browser.scripting, 'executeScript');
-  await appStorage.settings.setValue({ ...defaultSettings, emeInterception: false });
+  await appStorage.settings.patch({ ...defaultSettings, emeInterception: false });
   const send = start();
   await expect(
     send(
@@ -145,7 +145,7 @@ test.each([
   ['blob:null/uuid', 'null', 'https://example.com/watch'],
   ['https://frame.example/watch', 'https://frame.example', 'https://frame.example/watch'],
 ])('retains captures from %s under their site', async (url, origin, expectedUrl) => {
-  await appStorage.settings.setValue(defaultSettings);
+  await appStorage.settings.patch(defaultSettings);
   const send = start();
   const sender = { tab: { ...tab, url: 'https://example.com/watch' }, frameId: 3, url, origin };
   expect(getCaptureUrl(sender)).toBe(expectedUrl);
@@ -189,7 +189,7 @@ test.each(['keystatuseschange', 'update'])(
         alwaysOnTop: false,
       },
     ]);
-    await appStorage.settings.setValue(defaultSettings);
+    await appStorage.settings.patch(defaultSettings);
     const localBefore = await browser.storage.local.get(null);
     const send = start();
     const license = new TextEncoder().encode(
@@ -303,7 +303,7 @@ test('does not show ordinary same-site keys on a private tab badge', async () =>
 });
 
 test('header lookups accept routed popup URLs and large stored capture tokens only from this extension', async () => {
-  await appStorage.settings.setValue(defaultSettings);
+  await appStorage.settings.patch(defaultSettings);
   const send = start();
   const listener = vi.mocked(browser.webRequest.onSendHeaders.addListener).mock.calls[0]?.[0];
   if (!listener) throw new Error('Missing request header listener');

@@ -15,7 +15,7 @@ test.each([
 ] as const)(
   'registers only enabled startup scripts: EME %s, network %s',
   async (emeInterception, requestInterception, js) => {
-    await settingsStorage.setValue({ ...defaultSettings, emeInterception, requestInterception });
+    await settingsStorage.patch({ ...defaultSettings, emeInterception, requestInterception });
     vi.spyOn(browser.scripting, 'getRegisteredContentScripts').mockImplementation(async () => []);
     const register = vi.spyOn(browser.scripting, 'registerContentScripts').mockResolvedValue();
     await syncInterceptionScripts();
@@ -45,7 +45,7 @@ test('updates existing registrations for settings changes and removes them when 
   expect(update).toHaveBeenCalledExactlyOnceWith([
     expect.objectContaining({ js: ['eme-bootstrap.js', 'network.js'] }),
   ]);
-  await settingsStorage.setValue({
+  await settingsStorage.patch({
     ...defaultSettings,
     emeInterception: false,
     requestInterception: false,

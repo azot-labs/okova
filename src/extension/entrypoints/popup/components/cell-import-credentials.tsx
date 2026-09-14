@@ -3,7 +3,7 @@ import { z } from 'zod';
 import { Section, SectionFooter } from './section';
 import { TbOutlineFilePlus } from 'solid-icons/tb';
 import { Cell } from './cell';
-import { syncCredentials, useCredentialsImportWarning, useSettings } from '../utils/state';
+import { syncCredentials, useCredentialsImportWarning } from '../utils/state';
 import { appStorage, Credentials } from '@/utils/storage';
 import { parseCredentialsFiles } from '../utils/credential-import';
 
@@ -12,8 +12,6 @@ export const CellImportCredentials: Component<{
   replaceId?: string;
   onChange?: (credentials: Credentials) => void;
 }> = (props) => {
-  const [, setSettings] = useSettings();
-
   const [, setImportWarning] = useCredentialsImportWarning();
   const [error, setError] = createSignal<string>();
   const [isImporting, setIsImporting] = createSignal(false);
@@ -32,7 +30,6 @@ export const CellImportCredentials: Component<{
         ? await appStorage.credentials.replace(props.replaceId, credentials)
         : await appStorage.credentials.import(credentials);
       syncCredentials(snapshot);
-      if ('settings' in snapshot && snapshot.settings) setSettings(snapshot.settings);
       setImportWarning(warning);
       props.onChange?.(credentials);
     } catch (error) {
