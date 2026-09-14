@@ -872,6 +872,22 @@ export default defineBackground({
           return;
         }
 
+        if (
+          (message.action === 'license-request' || message.action === 'update') &&
+          (!sessionKey || !state.sessions.has(sessionKey))
+        ) {
+          // Preserve the original capture outcome and any failure that closed the session.
+          respond(
+            drmErrorResponse(
+              new Error(
+                `Cannot process ${message.action}: DRM session is missing or closed. Create a new session to request another license.`,
+              ),
+              'session',
+            ),
+          );
+          return;
+        }
+
         if (!sessionKey) {
           respond();
           return;

@@ -141,6 +141,63 @@ const startBackground = () => {
     });
 };
 
+const missingSessionError = (action: string) => ({
+  error: {
+    kind: 'request',
+    stage: 'session',
+    message: `Cannot process ${action}: DRM session is missing or closed. Create a new session to request another license.`,
+  },
+});
+
+test.each(['com.widevine.alpha', 'com.microsoft.playready'])(
+  'reports missing %s sessions without exposing another owner or requiring close',
+  async (keySystem) => {
+    const send = startBackground();
+    const owner = { tab: tab(1), frameId: 0, documentId: 'owner' };
+    await send('generateRequest', 'shared', owner);
+    for (const sender of [
+      { ...owner, tab: tab(2) },
+      { ...owner, frameId: 1 },
+      { ...owner, documentId: 'other' },
+    ]) {
+      for (const action of ['license-request', 'update']) {
+        await expect(send(action, 'shared', sender, { keySystem })).resolves.toEqual(
+          missingSessionError(action),
+        );
+      }
+      await expect(send('close', 'shared', sender)).resolves.toBeUndefined();
+    }
+    for (const sessionToken of ['', 'unknown']) {
+      for (const action of ['license-request', 'update']) {
+        await expect(send(action, sessionToken, owner, { keySystem })).resolves.toEqual(
+          missingSessionError(action),
+        );
+      }
+      await expect(send('close', sessionToken, owner)).resolves.toBeUndefined();
+    }
+    expect(Session.prototype.update).not.toHaveBeenCalled();
+    expect(Session.prototype.close).not.toHaveBeenCalled();
+    await expect(send('license-request', 'shared', owner)).resolves.toEqual(expect.any(String));
+    await send('close', 'shared', owner);
+    await expect(send('close', 'shared', owner)).resolves.toBeUndefined();
+    expect(Session.prototype.close).toHaveBeenCalledOnce();
+  },
+);
+
+test.each(['license-request', 'update'])(
+  'reports %s after successful key capture without processing another license',
+  async (action) => {
+    const send = startBackground();
+    await send('generateRequest', 'captured');
+    await expect(send('update', 'captured')).resolves.toMatchObject({ keys: expect.any(Array) });
+    await expect(send(action, 'captured')).resolves.toEqual(missingSessionError(action));
+    expect(Session.prototype.update).toHaveBeenCalledOnce();
+    expect(Session.prototype.close).toHaveBeenCalledOnce();
+    await expect(send('close', 'captured')).resolves.toBeUndefined();
+    expect(Session.prototype.close).toHaveBeenCalledOnce();
+  },
+);
+
 const getSessionCredentials = (index: number) => {
   const engine = sessions[index]?.engine;
   if (!(engine instanceof Widevine)) throw new Error('Expected a Widevine session');
@@ -165,7 +222,9 @@ test('new sessions use the current credentials while existing sessions retain th
   getCredentials.mockResolvedValue(null);
   await send('generateRequest', 'unselected');
   expect(sessions).toHaveLength(2);
-  await expect(send('license-request', 'unselected')).resolves.toBeUndefined();
+  await expect(send('license-request', 'unselected')).resolves.toEqual(
+    missingSessionError('license-request'),
+  );
 
   getCredentials.mockResolvedValue(firstCredentials);
   await send('generateRequest', 'reselected');
@@ -259,7 +318,9 @@ test('retains the session for a service certificate and cleans up failed license
   });
   expect(Session.prototype.waitForKeyStatusesChange).not.toHaveBeenCalled();
   expect(Session.prototype.close).toHaveBeenCalledOnce();
-  await expect(send('license-request', 'one')).resolves.toBeUndefined();
+  await expect(send('license-request', 'one')).resolves.toEqual(
+    missingSessionError('license-request'),
+  );
   expect(vi.getTimerCount()).toBe(0);
 });
 
@@ -272,10 +333,14 @@ test('cleans up failed generation, explicit close and abandoned sessions', async
   expect(Session.prototype.close).toHaveBeenCalledOnce();
   await send('generateRequest', 'closed');
   await send('close', 'closed');
-  await expect(send('license-request', 'closed')).resolves.toBeUndefined();
+  await expect(send('license-request', 'closed')).resolves.toEqual(
+    missingSessionError('license-request'),
+  );
   await send('generateRequest', 'abandoned');
   await vi.advanceTimersByTimeAsync(5 * 60_000);
-  await expect(send('license-request', 'abandoned')).resolves.toBeUndefined();
+  await expect(send('license-request', 'abandoned')).resolves.toEqual(
+    missingSessionError('license-request'),
+  );
   expect(Session.prototype.close).toHaveBeenCalledTimes(3);
   expect(vi.getTimerCount()).toBe(0);
 });
@@ -331,7 +396,9 @@ test.each(['navigation', 'removal', 'replacement', 'network error'])(
     } else {
       removed.mock.calls[0]![0](1, { windowId: 1, isWindowClosing: false });
     }
-    await expect(send('license-request', 'one', { tab: tab(1) })).resolves.toBeUndefined();
+    await expect(send('license-request', 'one', { tab: tab(1) })).resolves.toEqual(
+      missingSessionError('license-request'),
+    );
     await expect(send('license-request', 'two', { tab: tab(2) })).resolves.toEqual(
       expect.any(String),
     );
@@ -490,7 +557,9 @@ test.each(['deadline', 'removal', 'navigation', 'close'])(
               : 'Tab closed or navigated',
       },
     });
-    await expect(send('license-request', 'waiting', sender)).resolves.toBeUndefined();
+    await expect(send('license-request', 'waiting', sender)).resolves.toEqual(
+      missingSessionError('license-request'),
+    );
     if (action === 'deadline') {
       expect(await getDrmFailureStorage(1).getValue()).toMatchObject({
         stage: 'license',
@@ -741,7 +810,7 @@ test.each(['com.widevine.alpha', 'com.microsoft.playready', undefined])(
           message: 'Failed to parse message as SignedMessage',
         },
       });
-    else expect(result).toBeUndefined();
+    else expect(result).toEqual(missingSessionError('update'));
     expect(Session.prototype.waitForKeyStatusesChange).not.toHaveBeenCalled();
     expect((await appStorage.allKeys.getValue()) ?? []).toEqual([]);
     expect((await appStorage.recentKeys.getValue()) ?? []).toEqual([]);
@@ -1260,8 +1329,10 @@ test('a late-expiry request cannot leave or resurrect a pending diagnostic', asy
   const sender = { tab: tab(83), frameId: 0 };
   await send('generateRequest', 'expired', sender);
   vi.setSystemTime(Date.now() + 5 * 60_000 + 1);
-  await send('license-request', 'expired', sender);
-  await send('update', 'expired', sender);
+  await expect(send('license-request', 'expired', sender)).resolves.toEqual(
+    missingSessionError('license-request'),
+  );
+  await expect(send('update', 'expired', sender)).resolves.toEqual(missingSessionError('update'));
   expect((await getCaptureDiagnosticsStorage(83).getValue())?.[0]?.outcome).toBe('closed');
 });
 
