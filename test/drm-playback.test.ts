@@ -189,6 +189,21 @@ test('uses real ClearKey objects, hides native messages, and installs extracted 
   expect(sendDrmMessage).toHaveBeenCalledWith(expect.objectContaining({ action: 'close' }));
 });
 
+test('a follow-up update preserves the closed-session error and previously installed keys', async () => {
+  const session = await createSession();
+  await session.generateRequest('cenc', createInitData());
+  await session.update(new Uint8Array([1, 2, 3]));
+  const error = new DrmRequestError({
+    kind: 'request',
+    stage: 'session',
+    message:
+      'Cannot process update: DRM session is missing or closed. Create a new session to request another license.',
+  });
+  vi.mocked(sendDrmMessage).mockRejectedValueOnce(error);
+  await expect(session.update(new Uint8Array([4, 5, 6]))).rejects.toBe(error);
+  expect(nativeUpdate).toHaveBeenCalledOnce();
+});
+
 test('rejects an unsuccessful extraction without forwarding a Widevine license to ClearKey', async () => {
   mockSessionBridge({ keys: [] });
   const session = await createSession();

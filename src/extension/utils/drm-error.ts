@@ -2,7 +2,7 @@ export const drmStages = {
   setup: 'Request setup',
   credentials: 'Credentials loading',
   certificate: 'Server certificate',
-  session: 'Session creation',
+  session: 'DRM session',
   challenge: 'Challenge generation',
   license: 'License processing',
   keys: 'Key extraction',

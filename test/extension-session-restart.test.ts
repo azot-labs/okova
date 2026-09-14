@@ -123,8 +123,22 @@ test('does not revive expired or explicitly closed sessions after a restart', as
   vi.clearAllTimers();
   vi.setSystemTime(Date.now() + 5 * 60_000);
   send = startWorker();
-  expect(await send('license-request', 'expired')).toBeUndefined();
-  expect(await send('license-request', 'closed')).toBeUndefined();
+  expect(await send('license-request', 'expired')).toEqual({
+    error: {
+      kind: 'request',
+      stage: 'session',
+      message:
+        'Cannot process license-request: DRM session is missing or closed. Create a new session to request another license.',
+    },
+  });
+  expect(await send('license-request', 'closed')).toEqual({
+    error: {
+      kind: 'request',
+      stage: 'session',
+      message:
+        'Cannot process license-request: DRM session is missing or closed. Create a new session to request another license.',
+    },
+  });
   expect(await pendingRecords()).toEqual([]);
 });
 
@@ -326,7 +340,9 @@ test('capture diagnostics retain identity and successful stages after worker res
   await send('license-request');
   const after = (await getCaptureDiagnosticsStorage(tab.id!).getValue())![0]!;
   expect(after.captureId).toBe(before.captureId);
-  expect(before.credential?.name).toBe((await appStorage.credentials.active.getValue('com.widevine.alpha'))?.label);
+  expect(before.credential?.name).toBe(
+    (await appStorage.credentials.active.getValue('com.widevine.alpha'))?.label,
+  );
   expect(before.credential?.name).toBeTruthy();
   expect(after.credential).toEqual(before.credential);
   expect(after.sessionId).toBe(before.sessionId);

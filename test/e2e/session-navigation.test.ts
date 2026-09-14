@@ -8,7 +8,7 @@ import { z } from 'zod';
 
 declare const chrome: typeof import('wxt/browser').browser;
 
-const responseSchema = z.object({ body: z.string().nullish() });
+const responseSchema = z.object({ body: z.string() });
 
 test('preserves sessions until a reload or terminal navigation error', async () => {
   let hasStarted = false;
@@ -160,7 +160,16 @@ test('preserves sessions until a reload or terminal navigation error', async () 
     expect(closes).toBe(0);
     await page.reload();
     await expect.poll(() => closes).toBe(1);
-    expect(responseSchema.parse(JSON.parse(await send('license-request'))).body).toBeNull();
+    expect(JSON.parse(await send('license-request'))).toMatchObject({
+      body: {
+        error: {
+          kind: 'request',
+          stage: 'session',
+          message:
+            'Cannot process license-request: DRM session is missing or closed. Create a new session to request another license.',
+        },
+      },
+    });
     await send('generateRequest');
     expect(responseSchema.parse(JSON.parse(await send('license-request'))).body).toBe('AQID');
     await expect(page.goto(`${baseUrl}/network-error`)).rejects.toThrow('net::ERR_EMPTY_RESPONSE');

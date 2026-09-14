@@ -187,6 +187,12 @@ test.each(['load-eme'])('keeps %s off page responses', async (action) => {
 test.each([
   { kind: 'request', stage: 'credentials', message: 'Select matching DRM credentials' },
   { kind: 'request', stage: 'license', message: 'Invalid license signature' },
+  {
+    kind: 'request',
+    stage: 'session',
+    message:
+      'Cannot process update: DRM session is missing or closed. Create a new session to request another license.',
+  },
   { kind: 'timeout', stage: 'license', message: 'DRM request timed out after 25000ms' },
 ])('carries a background $stage failure through the content script to the page', async (error) => {
   await startContentBridge();

@@ -732,8 +732,26 @@ export default defineBackground({
           await run(persistSession(sessionKey, entry));
         }
 
-        await advance('setup');
         const settings = await run(appStorage.settings.getValue());
+        if (
+          settings?.spoofing &&
+          message.keySystem !== 'org.w3.clearkey' &&
+          (message.action === 'license-request' || message.action === 'update') &&
+          !entry
+        ) {
+          // Preserve the original capture outcome and any failure that closed the session.
+          respond(
+            drmErrorResponse(
+              new Error(
+                `Cannot process ${message.action}: DRM session is missing or closed. Create a new session to request another license.`,
+              ),
+              'session',
+            ),
+          );
+          return;
+        }
+
+        await advance('setup');
         const saveHistory = async (input: KeyInfo[]) => {
           const fallbackId = sessionKey
             ? fromBuffer(
