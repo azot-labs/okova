@@ -7,6 +7,7 @@ import {
   keyRecordToken,
   type KeyInfo,
 } from '../src/extension/utils/storage';
+import { manifestHeaderToken } from '../src/extension/utils/request-headers';
 import { installRequestHeaderObservation } from '../src/extension/utils/request-header-observation';
 
 beforeEach(() => {
@@ -28,7 +29,7 @@ const key: KeyInfo = {
   mpd: 'https://example.com/manifest',
 };
 const headers = [{ name: 'Cookie', value: 'session=test' }];
-const setup = () => {
+const setup = (documentId?: string) => {
   const settings =
     Promise.withResolvers<Awaited<ReturnType<typeof appStorage.settings.getValue>>>();
   vi.spyOn(appStorage.settings, 'getValue').mockReturnValue(settings.promise);
@@ -43,6 +44,7 @@ const setup = () => {
   const onSettings = watch.mock.calls[0]?.[0];
   if (!onSend || !onSettings) throw new Error('Missing observation listeners');
   onSend({
+    documentId,
     documentLifecycle: 'active',
     frameType: 'outermost_frame',
     requestId: 'first',
@@ -101,4 +103,37 @@ test('a settings change wins over the pending startup read', async () => {
   settings.resolve(defaultSettings);
   await settings.promise;
   expect(await observer.read(keyRecordToken(key), key.mpd ?? '', false)).toEqual([]);
+});
+
+test('manifest-only headers are scoped to their source and private context, then expire', async () => {
+  const { settings, observer } = setup('document-a');
+  const source = { url: key.url, tabId: 1, frameId: 0, documentId: 'document-a' };
+  const url = key.mpd!;
+  observer.captureManifest(source, url, false);
+  settings.resolve(defaultSettings);
+  expect(await observer.read(manifestHeaderToken(source, url), url, false)).toEqual(headers);
+  expect(await observer.read(manifestHeaderToken(source, url), url, true)).toEqual([]);
+  for (const other of [
+    { ...source, documentId: 'document-b' },
+    { ...source, tabId: 2 },
+    { ...source, frameId: 1 },
+  ]) {
+    expect(await observer.read(manifestHeaderToken(other, url), url, false)).toEqual([]);
+    observer.captureManifest(other, url, false);
+    expect(await observer.read(manifestHeaderToken(other, url), url, false)).toEqual([]);
+  }
+  await vi.advanceTimersByTimeAsync(300_000);
+  expect(await observer.read(manifestHeaderToken(source, url), url, false)).toEqual([]);
+});
+
+test('manifest-only headers are cleared when interception is disabled', async () => {
+  const { settings, observer, onSettings } = setup();
+  const source = { url: key.url, tabId: 1, frameId: 0 };
+  const url = key.mpd!;
+  observer.captureManifest(source, url, false);
+  settings.resolve(defaultSettings);
+  expect(await observer.read(manifestHeaderToken(source, url), url, false)).toEqual(headers);
+  onSettings({ ...defaultSettings, requestInterception: false }, null);
+  onSettings(defaultSettings, null);
+  expect(await observer.read(manifestHeaderToken(source, url), url, false)).toEqual([]);
 });

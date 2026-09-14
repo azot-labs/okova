@@ -137,3 +137,23 @@ test('captures independent snapshots and does not expose mutable cache entries',
   result.push({ name: 'X-Extra', value: 'mutated' });
   expect(cache.read('key', url, false)).toEqual(headers);
 });
+
+test('document identity prevents capturing or supplementing another document request', () => {
+  const cache = createRequestHeaderCache(() => 1000);
+  cache.observe({ ...observation, documentId: 'old' });
+  cache.observePage(
+    {
+      url,
+      headers: [{ name: 'X-Other', value: 'wrong document' }],
+      startedAt: 999,
+      completedAt: 1000,
+    },
+    1,
+    2,
+    'new',
+  );
+  cache.capture({ ...capture, documentId: 'old' }, [url]);
+  expect(cache.read('key', url, false)).toEqual(headers);
+  cache.capture({ ...capture, documentId: 'new' }, [url]);
+  expect(cache.read('key', url, false)).toEqual([]);
+});

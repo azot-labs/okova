@@ -1,13 +1,20 @@
 import { browser } from 'wxt/browser';
 import { type Component } from 'solid-js';
 import { appStorage, keyRecordToken, type KeyInfo } from '@/utils/storage';
-import { getDownloadHeaders, isSensitiveHeader, type RequestHeader } from '@/utils/request-headers';
+import type { CaptureSource } from '@/utils/storage/capture-history';
+import {
+  manifestHeaderToken,
+  getDownloadHeaders,
+  isSensitiveHeader,
+  type RequestHeader,
+} from '@/utils/request-headers';
 import { isManifestUrl } from '@/utils/manifest';
 import { buildCaptureDownloadCommand } from '../utils/command';
 import { Cell } from './cell';
 
 export const CaptureCommandBuilder: Component<{
   records: KeyInfo[];
+  source: CaptureSource;
   manifestUrl: string | undefined;
   active: boolean;
   copiedValue: string;
@@ -23,7 +30,10 @@ export const CaptureCommandBuilder: Component<{
   createEffect(() => {
     if (!props.active || !isManifestUrl(manifestUrl())) return;
     const url = manifestUrl();
-    const tokens = props.records.map(keyRecordToken);
+    const tokens = [
+      ...(props.manifestUrl ? [manifestHeaderToken(props.source, props.manifestUrl)] : []),
+      ...props.records.map(keyRecordToken),
+    ];
     const request = ++generation;
     setHeaders([]);
     setSelectedHeaders([]);

@@ -481,6 +481,7 @@ export default defineBackground({
                 documentId: sender.documentId,
               };
           if (source?.tabId !== tab.id || !hasManifestResponse(source, manifest.url)) return;
+          requestHeaders.captureManifest(source, manifest.url, tab.incognito === true);
           const history = await getKeyHistory(tab.incognito === true, tab.windowId);
           await history.observeManifest(source, manifest);
         })().then(
@@ -491,7 +492,12 @@ export default defineBackground({
       }
       if (incoming?.action === 'observed-request-headers') {
         if (sender.tab?.id !== undefined)
-          requestHeaders.observePage(incoming, sender.tab.id, sender.frameId ?? 0);
+          requestHeaders.observePage(
+            incoming,
+            sender.tab.id,
+            sender.frameId ?? 0,
+            sender.documentId,
+          );
         sendResponse();
         return;
       }
@@ -759,6 +765,7 @@ export default defineBackground({
                 tabId,
                 sender.frameId ?? 0,
                 sender.tab?.incognito === true,
+                sender.documentId,
               );
             }
             await run(
