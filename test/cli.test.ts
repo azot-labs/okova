@@ -323,7 +323,7 @@ test('rejects packed/raw and duplicate raw credential candidates', async () => {
   await writeFile(join(cwd, 'copy.wvd'), wvd);
   expect(run(['credentials', 'info', cwd]).stderr).toContain('Ambiguous');
   const rawKey = (await readdir(cwd)).find((file) => file.includes('private_key'))!;
-  await writeFile(join(cwd, 'other_private_key'), await readFile(join(cwd, rawKey)));
+  await writeFile(join(cwd, 'private_key.pem'), await readFile(join(cwd, rawKey)));
   expect(run(['credentials', 'pack', cwd, '--format', 'wvd']).stderr).toContain('Ambiguous raw');
 });
 

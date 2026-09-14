@@ -1,5 +1,5 @@
 import { readdir, readFile, stat } from 'node:fs/promises';
-import { join } from 'node:path';
+import { extname, join } from 'node:path';
 import { WidevineClientCredentials } from '../lib/widevine/client-credentials';
 import { PlayReadyClientCredentials } from '../lib/playready/client-credentials';
 
@@ -27,6 +27,8 @@ export const listFiles = async (directory: string) => {
 };
 
 export const importClientCredentials = async (input: string, output?: string) => {
+  const inputExtension = extname(input).toLowerCase();
+  const outputExtension = output ? extname(output).toLowerCase() : undefined;
   const inputStat = await stat(input);
   const isDir = inputStat.isDirectory();
 
@@ -35,15 +37,15 @@ export const importClientCredentials = async (input: string, output?: string) =>
     const candidates: (() => Promise<WidevineClientCredentials | PlayReadyClientCredentials>)[] =
       [];
     const addRaw = (
-      firstQuery: string,
-      secondQuery: string,
+      firstNames: string[],
+      secondNames: string[],
       load: (
         first: Buffer,
         second: Buffer,
       ) => Promise<WidevineClientCredentials | PlayReadyClientCredentials>,
     ) => {
-      const first = entries.filter((entry) => entry.includes(firstQuery));
-      const second = entries.filter((entry) => entry.includes(secondQuery));
+      const first = entries.filter((entry) => firstNames.includes(entry.toLowerCase()));
+      const second = entries.filter((entry) => secondNames.includes(entry.toLowerCase()));
       if (!first.length || !second.length) return;
       if (first.length > 1 || second.length > 1 || first[0] === second[0]) {
         throw new Error(`Ambiguous raw credential files in ${input}`);
@@ -52,22 +54,29 @@ export const importClientCredentials = async (input: string, output?: string) =>
         load(await readFile(join(input, first[0]!)), await readFile(join(input, second[0]!))),
       );
     };
-    if (!output?.endsWith('.prd')) {
-      for (const file of entries.filter((entry) => entry.endsWith('.wvd'))) {
+    if (outputExtension !== '.prd') {
+      for (const file of entries.filter((entry) => extname(entry).toLowerCase() === '.wvd')) {
         candidates.push(async () =>
           WidevineClientCredentials.from({ wvd: await readFile(join(input, file)) }),
         );
       }
-      addRaw('client_id', 'private_key', (id, key) => WidevineClientCredentials.from({ id, key }));
+      addRaw(
+        ['device_client_id_blob', 'client_id_blob', 'client_id', 'client_id.bin'],
+        ['device_private_key', 'private_key', 'private_key.pem'],
+        (id, key) => WidevineClientCredentials.from({ id, key }),
+      );
     }
-    if (!output?.endsWith('.wvd')) {
-      for (const file of entries.filter((entry) => entry.endsWith('.prd'))) {
+    if (outputExtension !== '.wvd') {
+      for (const file of entries.filter((entry) => extname(entry).toLowerCase() === '.prd')) {
         candidates.push(async () =>
           PlayReadyClientCredentials.from({ prd: await readFile(join(input, file)) }),
         );
       }
-      addRaw('bgroupcert', 'zgpriv', (groupCertificate, groupKey) =>
-        PlayReadyClientCredentials.from({ groupCertificate, groupKey }),
+      addRaw(
+        ['bgroupcert.dat', 'bgroupcert'],
+        ['zgpriv.dat', 'zgpriv'],
+        (groupCertificate, groupKey) =>
+          PlayReadyClientCredentials.from({ groupCertificate, groupKey }),
       );
     }
     if (candidates.length > 1) {
@@ -78,10 +87,10 @@ export const importClientCredentials = async (input: string, output?: string) =>
     const load = candidates[0];
     if (!load) throw new Error(`Unable to find credential files in ${input}`);
     return load();
-  } else if (input.endsWith('.wvd')) {
+  } else if (inputExtension === '.wvd') {
     const wvd = await readFile(input);
     return await WidevineClientCredentials.from({ wvd });
-  } else if (input.endsWith('.prd')) {
+  } else if (inputExtension === '.prd') {
     const prd = await readFile(input);
     return await PlayReadyClientCredentials.from({ prd });
   } else {

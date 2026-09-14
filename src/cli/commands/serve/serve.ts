@@ -35,7 +35,7 @@ export const serve = async (options: ServeOptions = {}) => {
   }
   if (!config.credentials.length) {
     const files = await listFiles(process.cwd());
-    const candidates = files.filter((file) => /\.(wvd|prd)$/.test(file)).sort();
+    const candidates = files.filter((file) => /\.(wvd|prd)$/i.test(file)).sort();
     if (candidates.length > 1) {
       console.warn(
         'Multiple credential files found. Selecting the first filename in sorted order.',
