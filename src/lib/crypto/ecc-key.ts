@@ -14,8 +14,10 @@ export class EccKey {
   }
 
   static randomScalar() {
-    const randomBytes = getRandomBytes(32);
-    return utils.bytesToNumberBE(randomBytes) % p256.Point.Fn.ORDER;
+    while (true) {
+      const scalar = utils.bytesToNumberBE(getRandomBytes(32));
+      if (scalar > 0n && scalar < p256.Point.Fn.ORDER) return scalar;
+    }
   }
 
   static generate() {
