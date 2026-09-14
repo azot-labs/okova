@@ -1322,6 +1322,41 @@ test('diagnostics distinguish no content keys from license processing failure', 
   });
 });
 
+test.each(['capture', 'failure'])(
+  'rejected follow-up requests preserve the diagnostic after %s',
+  async (result) => {
+    const { getCaptureDiagnosticsStorage } =
+      await import('../src/extension/utils/session-diagnostics');
+    const send = startBackground();
+    const sender = { tab: tab(82), frameId: 0 };
+    await send('generateRequest', 'finished', sender);
+    if (result === 'failure')
+      vi.mocked(Session.prototype.update).mockRejectedValueOnce(new Error('Invalid license'));
+    await send('update', 'finished', sender);
+    await scheduler.yield();
+    const diagnostics = getCaptureDiagnosticsStorage(82);
+    const before = await diagnostics.getValue();
+    expect(before?.[0]?.outcome).toBe(result === 'capture' ? 'keys-returned' : 'failed');
+    expect(before?.[0]?.events.at(-1)?.status).toBe(result === 'capture' ? 'succeeded' : 'failed');
+    const savedBefore = (await regularHistory.captures.getValue())
+      .flatMap((capture) => capture.sessions)
+      .map((session) => session.diagnostic);
+
+    // Exceed the trace limit so rejected requests cannot evict the original events.
+    for (let index = 0; index < 101; index++) {
+      const action = index % 2 === 0 ? 'license-request' : 'update';
+      await expect(send(action, 'finished', sender)).resolves.toEqual(missingSessionError(action));
+    }
+    await scheduler.yield();
+    expect(await diagnostics.getValue()).toEqual(before);
+    expect(
+      (await regularHistory.captures.getValue())
+        .flatMap((capture) => capture.sessions)
+        .map((session) => session.diagnostic),
+    ).toEqual(savedBefore);
+  },
+);
+
 test('a late-expiry request cannot leave or resurrect a pending diagnostic', async () => {
   const { getCaptureDiagnosticsStorage } =
     await import('../src/extension/utils/session-diagnostics');
