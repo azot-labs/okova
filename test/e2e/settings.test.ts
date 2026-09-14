@@ -29,18 +29,34 @@ test('settings synchronize across popups and failed saves preserve toggle state 
     // Inject an actual rejected storage promise in this popup only.
     await first.evaluate(() => {
       const original = browser.storage.local.set.bind(browser.storage.local);
+      const rejectionRequested = new Promise<void>((resolve) =>
+        window.addEventListener('reject-settings-save', () => resolve(), { once: true }),
+      );
       browser.storage.local.set = async () => {
         browser.storage.local.set = original;
-        await new Promise<void>((resolve) =>
-          window.addEventListener('reject-settings-save', () => resolve(), { once: true }),
-        );
+        await rejectionRequested;
         throw new Error('Storage unavailable');
       };
     });
+    // Hold the shared lock so the save cannot reach storage before rejection is requested.
+    await second.evaluate(
+      () =>
+        new Promise<void>((resolve) => {
+          void navigator.locks.request(
+            'okova:settings',
+            () =>
+              new Promise<void>((release) => {
+                window.addEventListener('release-settings-lock', () => release(), { once: true });
+                resolve();
+              }),
+          );
+        }),
+    );
     await firstToggle.click({ force: true });
     expect(await firstToggle.isChecked()).toBe(true);
     expect(await firstToggle.isDisabled()).toBe(true);
     await first.evaluate(() => window.dispatchEvent(new Event('reject-settings-save')));
+    await second.evaluate(() => window.dispatchEvent(new Event('release-settings-lock')));
     await expect
       .poll(() => first.getByRole('alert').textContent())
       .toBe('Unable to save settings. Please try again.');
