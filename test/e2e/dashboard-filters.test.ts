@@ -1,3 +1,4 @@
+import { seedKeyRecords } from './capture-storage';
 import { visibleKeyIds } from './capture-ui';
 import { mkdir, mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
@@ -36,19 +37,7 @@ test('dashboard combines search, DRM and order within recent site captures and f
       const otherSite = { ...widevine, url: 'https://other.example/watch', createdAt: 4_000 };
       const olderCapture = { ...widevine, id: 'd'.repeat(32), createdAt: 500 };
       const save = (recent: KeyInfo[]) =>
-        worker.evaluate(
-          async ({ recent, otherSite, olderCapture }) => {
-            await browser.storage.local.set({
-              'all-keys': JSON.stringify([...recent, otherSite, olderCapture]),
-              'recent-keys': JSON.stringify([otherSite]),
-              'recent-keys-by-domain': JSON.stringify({
-                'watch.example': recent,
-                'other.example': [otherSite],
-              }),
-            });
-          },
-          { recent, otherSite, olderCapture },
-        );
+        seedKeyRecords(worker, [...recent, otherSite, olderCapture]);
       await save([widevine, playready]);
       const popup = await context.newPage();
       const errors: string[] = [];
@@ -61,14 +50,14 @@ test('dashboard combines search, DRM and order within recent site captures and f
       await popup.goto(`chrome-extension://${new URL(worker.url()).hostname}/popup.html`);
       const visible = () => visibleKeyIds(popup);
       const pair = (key: KeyInfo) => key.id;
-      await expect.poll(visible).toEqual([widevine, playready].map(pair));
+      await expect.poll(visible).toEqual([widevine, playready, olderCapture].map(pair));
       await popup.getByLabel('Order', { exact: true }).selectOption('oldest');
-      await expect.poll(visible).toEqual([widevine, playready].map(pair));
+      await expect.poll(visible).toEqual([widevine, playready, olderCapture].map(pair));
       await popup.getByLabel('DRM', { exact: true }).selectOption('W');
-      await expect.poll(visible).toEqual([widevine, playready].map(pair));
+      await expect.poll(visible).toEqual([widevine, playready, olderCapture].map(pair));
       await popup.getByRole('button', { name: 'Search', exact: true }).click();
       await popup.getByRole('searchbox').fill('AABB-CCDD');
-      await expect.poll(visible).toEqual([widevine, playready].map(pair));
+      await expect.poll(visible).toEqual([widevine, playready, olderCapture].map(pair));
       const search = popup.getByRole('searchbox');
       await search.pressSequentially('no-match');
       await expect.poll(visible).toEqual([]);
@@ -78,7 +67,7 @@ test('dashboard combines search, DRM and order within recent site captures and f
       expect(await popup.getByRole('status', { name: /total captures$/ }).isVisible()).toBe(true);
       await search.press('ControlOrMeta+A');
       await search.press('Backspace');
-      await expect.poll(visible).toEqual([widevine, playready].map(pair));
+      await expect.poll(visible).toEqual([widevine, playready, olderCapture].map(pair));
       expect(await search.evaluate((input) => input === document.activeElement)).toBe(true);
       await search.fill('MOVIE.MPD');
       await popup.getByRole('searchbox').press('Escape');
@@ -89,7 +78,7 @@ test('dashboard combines search, DRM and order within recent site captures and f
       ).toBe(true);
       const incoming = { ...widevine, id: 'c'.repeat(32), createdAt: 3_000 };
       await save([widevine, playready, incoming]);
-      await expect.poll(visible).toEqual([widevine, playready, incoming].map(pair));
+      await expect.poll(visible).toEqual([widevine, playready, incoming, olderCapture].map(pair));
       await popup.getByLabel('DRM', { exact: true }).selectOption('unknown');
       await expect.poll(visible).toEqual([]);
       expect(await popup.getByRole('heading', { name: 'No matching captures' }).isVisible()).toBe(
@@ -97,11 +86,11 @@ test('dashboard combines search, DRM and order within recent site captures and f
       );
       expect(await popup.getByLabel('DRM', { exact: true }).isVisible()).toBe(true);
       await popup.getByLabel('DRM', { exact: true }).selectOption('W');
-      await expect.poll(visible).toEqual([widevine, playready, incoming].map(pair));
+      await expect.poll(visible).toEqual([widevine, playready, incoming, olderCapture].map(pair));
       await popup.getByLabel('DRM', { exact: true }).selectOption('unknown');
       await expect.poll(visible).toEqual([]);
       await popup.getByRole('button', { name: 'Clear filters', exact: true }).click();
-      await expect.poll(visible).toEqual([widevine, playready, incoming].map(pair));
+      await expect.poll(visible).toEqual([widevine, playready, incoming, olderCapture].map(pair));
       expect(await popup.getByLabel('Order', { exact: true }).inputValue()).toBe('oldest');
       expect(await popup.getByLabel('DRM', { exact: true }).inputValue()).toBe('all');
       expect(

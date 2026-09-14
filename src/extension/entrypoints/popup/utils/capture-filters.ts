@@ -1,37 +1,28 @@
-import type { CaptureDiagnostic } from '@/utils/session-diagnostics';
+import { captureRecords, type StoredCapture } from '@/utils/storage/capture-history';
 import { getBadgeDrmSystem } from '@/utils/badge';
 import { type Accessor, batch } from 'solid-js';
-import { getWebsiteDomain, type KeyInfo } from '@/utils/storage';
-import type { StreamRecord } from '@/utils/streams';
-import { groupCaptureRecords } from '@/utils/capture-groups';
-import { filterHistory, getHistorySites, type HistoryFilters } from './history-filters';
+import { getWebsiteDomain } from '@/utils/storage';
+import { storedCaptureGroups } from '@/utils/capture-groups';
+import { filterHistory, type HistoryFilters } from './history-filters';
 
 /** Owns filtering state independently of the list and where its controls are rendered. */
-export const createCaptureFilters = (
-  records: Accessor<KeyInfo[]>,
-  streams: Accessor<StreamRecord[]> = () => [],
-  diagnostics: Accessor<CaptureDiagnostic[]> = () => [],
-) => {
+export const createCaptureFilters = (stored: Accessor<StoredCapture[]>) => {
+  const records = createMemo(() => captureRecords(stored()));
   const [search, setSearch] = createSignal('');
   const [site, setSite] = createSignal('');
   const [drm, setDrm] = createSignal<HistoryFilters['drm']>('all');
   const [order, setOrder] = createSignal<HistoryFilters['order']>('newest');
   const sites = createMemo(() =>
     [
-      ...new Set([
-        ...getHistorySites(records()),
-        ...diagnostics().flatMap((record) => {
-          const domain = getWebsiteDomain(record.frameOrigin ?? record.origin ?? '');
+      ...new Set(
+        stored().flatMap((capture) => {
+          const domain = getWebsiteDomain(capture.source.url);
           return domain ? [domain] : [];
         }),
-        ...streams().flatMap((stream) => {
-          const domain = getWebsiteDomain(stream.frameUrl);
-          return domain ? [domain] : [];
-        }),
-      ]),
+      ),
     ].sort(),
   );
-  const allCaptures = createMemo(() => groupCaptureRecords(records(), streams(), diagnostics()));
+  const allCaptures = createMemo(() => storedCaptureGroups(stored()));
   const captures = createMemo(() => {
     const matching = new Set(
       filterHistory(records(), { search: search(), site: site(), drm: drm(), order: order() }),
@@ -66,13 +57,9 @@ export const createCaptureFilters = (
         return matchesSite && matchesDrm && matchesSearch;
       })
       .sort((left, right) => {
-        const live = Number(!right.recordIndexes.length) - Number(!left.recordIndexes.length);
-        return (
-          live ||
-          (order() === 'newest'
-            ? right.createdAt - left.createdAt
-            : left.createdAt - right.createdAt)
-        );
+        return order() === 'newest'
+          ? right.createdAt - left.createdAt
+          : left.createdAt - right.createdAt;
       });
   });
   createEffect(() => {
@@ -80,6 +67,7 @@ export const createCaptureFilters = (
   });
 
   return {
+    records,
     allCaptures,
     captures,
     keys: createMemo(() =>

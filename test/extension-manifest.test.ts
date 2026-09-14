@@ -35,6 +35,7 @@ const post = (text: string, manifestUrl = url, requestUrl?: string) =>
 beforeEach(() => {
   vi.stubGlobal('DOMParser', DOMParser);
   vi.stubGlobal('window', {
+    postMessage: vi.fn(),
     addEventListener: (_name: string, callback: typeof receive) => {
       receive = callback;
     },

@@ -1,3 +1,4 @@
+import { readKeyRecords } from './capture-storage';
 import { mkdtemp, rm } from 'node:fs/promises';
 import { createServer } from 'node:http';
 import { tmpdir } from 'node:os';
@@ -270,15 +271,11 @@ test('captures HLS/MSS choices through real EME and builds commands in the popup
       );
     });
     await expect
-      .poll(() =>
-        worker.evaluate(async () => {
-          const stored = (await browser.storage.local.get('all-keys'))['all-keys'];
-          return typeof stored === 'string'
-            ? JSON.parse(stored).filter(
-                (key: { value: string }) => key.value === 'b50d1b25559be9bd0a3cbe8ab59232fc',
-              ).length
-            : 0;
-        }),
+      .poll(
+        async () =>
+          (await readKeyRecords(worker)).filter(
+            (key) => key.value === 'b50d1b25559be9bd0a3cbe8ab59232fc',
+          ).length,
       )
       .toBe(1);
     const popup = await context.newPage();

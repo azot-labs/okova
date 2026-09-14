@@ -2,7 +2,7 @@ import { getBadgeDrmSystem } from '@/utils/badge';
 import { SessionDiagnostics, captureStatus } from './session-diagnostics';
 import { type Accessor, type Component, type JSX, untrack } from 'solid-js';
 import { createStore, reconcile } from 'solid-js/store';
-import { type KeyInfo } from '@/utils/storage';
+import { isCapturedKey, type KeyInfo } from '@/utils/storage';
 import { manifestLabels } from '@/utils/manifest';
 import type { CaptureGroup } from '@/utils/capture-groups';
 import { groupCaptureSessions } from '../utils/capture-sessions';
@@ -142,14 +142,26 @@ export const CaptureList: Component<{
             );
             createEffect(() =>
               setSessions(
-                reconcile(groupCaptureSessions(recordEntries(), capture.diagnostics), {
-                  key: 'id',
-                }),
+                reconcile(
+                  groupCaptureSessions(
+                    recordEntries(),
+                    capture.diagnostics,
+                    capture.stored?.sessions,
+                  ),
+                  {
+                    key: 'id',
+                  },
+                ),
               ),
             );
 
             const keyCount = createMemo(
-              () => new Set(recordEntries().map((row) => row.key.id)).size,
+              () =>
+                new Set(
+                  recordEntries()
+                    .filter((row) => isCapturedKey(row.key))
+                    .map((row) => row.key.id),
+                ).size,
             );
             return (
               <details
@@ -452,7 +464,12 @@ export const CaptureList: Component<{
                                 >
                                   <span class="text-[10px] flex items-center gap-1.5">
                                     {/* {entry.key.id} */}
-                                    <TbOutlineKey title="Key" class="size-3 opacity-50" />
+                                    <Show
+                                      when={isCapturedKey(entry.key)}
+                                      fallback={<span class="font-sans opacity-60">Status</span>}
+                                    >
+                                      <TbOutlineKey title="Key" class="size-3 opacity-50" />
+                                    </Show>
                                     {`${entry.key.id}:${entry.key.value}`}
                                   </span>
                                 </Cell>

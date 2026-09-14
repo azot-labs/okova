@@ -1,11 +1,9 @@
-import { useCaptureDiagnostics } from '../utils/state';
-import { popupHistory } from '../utils/history';
+import { useCaptures } from '../utils/state';
 import { TbOutlineFileDownload, TbOutlineRefresh } from 'solid-icons/tb';
 import { DeleteKeys } from '../components/delete-keys';
 import { Layout } from '../components/layout';
 import { Header } from '../components/header';
 import { Cell } from '../components/cell';
-import { KeyInfo } from '@/utils/storage';
 import { CaptureList } from '../components/capture-list';
 import { createPageStreams } from '../utils/page-streams';
 import { CaptureObservationStatus } from '../components/capture-observation-status';
@@ -22,10 +20,10 @@ import { createCaptureFilters } from '../utils/capture-filters';
 import { CAPTURES_LABEL } from '../utils/captures';
 
 export const Captures = () => {
-  const [keys, setKeys] = createSignal<KeyInfo[]>([]);
+  const [storedCaptures] = useCaptures();
   const pageStreams = createPageStreams();
-  const [diagnostics] = useCaptureDiagnostics();
-  const filters = createCaptureFilters(keys, pageStreams.records, diagnostics);
+  const filters = createCaptureFilters(storedCaptures);
+  const keys = filters.records;
   const filteredKeys = filters.keys;
   const [selected, setSelected] = createSignal<string[]>([]);
   const selectedCaptures = createMemo(() =>
@@ -49,7 +47,7 @@ export const Captures = () => {
       const records = filteredKeys();
       const content =
         format === 'json'
-          ? serializeCaptures(filters.captures(), keys())
+          ? serializeCaptures(filters.captures())
           : serializeHistory(records, format);
       const filename = format === 'json' ? 'okova-captures.json' : 'okova-keys.txt';
       await saveFile(new TextEncoder().encode(content), filename);
@@ -61,22 +59,6 @@ export const Captures = () => {
       setIsExporting(false);
     }
   };
-
-  let isDisposed = false;
-  let hasUpdate = false;
-  const unwatch = popupHistory.allKeys.raw.watch((records) => {
-    hasUpdate = true;
-    setKeys(records ?? []);
-  });
-  onCleanup(() => {
-    isDisposed = true;
-    unwatch();
-  });
-  onMount(async () => {
-    const records = await popupHistory.allKeys.getValue();
-    // A storage event may arrive before the initial read resolves.
-    if (!isDisposed && !hasUpdate) setKeys(records ?? []);
-  });
 
   return (
     <Layout>

@@ -1,4 +1,5 @@
-import { groupCaptureRecords } from '../src/extension/utils/capture-groups';
+import { capturesForRecords } from './e2e/capture-storage';
+import { storedCaptureGroups } from '../src/extension/utils/capture-groups';
 import { expect, test } from 'vitest';
 import {
   serializeHistory,
@@ -61,11 +62,12 @@ test('capture JSON preserves the manifest and separate sessions with their recor
     { ...key, captureId: 'a' },
     { ...key, captureId: 'b' },
   ];
-  const exported = JSON.parse(serializeCaptures(groupCaptureRecords(records), records));
-  expect(exported.version).toBe(2);
+  const exported = JSON.parse(serializeCaptures(storedCaptureGroups(capturesForRecords(records))));
+  expect(exported.version).toBe(3);
   expect(exported.captures).toHaveLength(1);
-  expect(exported.captures[0].manifestUrl).toBe(key.mpd);
-  expect(
-    exported.captures[0].sessions.map((session: { captureId: string }) => session.captureId),
-  ).toEqual(['a', 'b']);
+  expect(exported.captures[0].manifest.url).toBe(key.mpd);
+  expect(exported.captures[0].sessions.map((session: { id: string }) => session.id)).toEqual([
+    'a',
+    'b',
+  ]);
 });

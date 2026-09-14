@@ -1,3 +1,4 @@
+import { seedKeyRecords } from './capture-storage';
 import { visibleKeyIds } from './capture-ui';
 import { mkdir, mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
@@ -35,9 +36,7 @@ test('saved keys filter immediately by KID, page URL, and manifest URL', async (
           createdAt: Date.now(),
         },
       ];
-      await worker.evaluate(async (keys) => {
-        await browser.storage.local.set({ 'all-keys': JSON.stringify(keys) });
-      }, keys);
+      await seedKeyRecords(worker, keys);
       const popup = await context.newPage();
       await popup.goto(`chrome-extension://${new URL(worker.url()).hostname}/popup.html`);
       await popup.getByRole('link', { name: 'Captures', exact: true }).click();
@@ -58,13 +57,11 @@ test('saved keys filter immediately by KID, page URL, and manifest URL', async (
         keys[0]!.mpd!,
       ]) {
         const updated = [{ ...keys[0]!, mpd }, keys[1]!];
-        await worker.evaluate(async (records) => {
-          await browser.storage.local.set({ 'all-keys': JSON.stringify(records) });
-        }, updated);
+        await seedKeyRecords(worker, updated);
         const href = mpd.startsWith('javascript:') ? keys[0]!.url : mpd;
         await expect
           .poll(() => popup.locator('[data-capture-row] > summary p[title]').allTextContents())
-          .toContain(href);
+          .toContain(href.replace(/^https?:\/\//, ''));
       }
       for (const query of [
         'aabbccdd-1122-3344-5566-77889900aabb',
@@ -137,13 +134,13 @@ test('saved keys filter immediately by KID, page URL, and manifest URL', async (
       await popup.getByRole('button', { name: 'Delete All', exact: true }).click();
       await popup
         .getByRole('dialog')
-        .getByRole('button', { name: 'Delete 2 records', exact: true })
+        .getByRole('button', { name: 'Delete 2 captures', exact: true })
         .click();
       await expect.poll(() => count.textContent()).toBe('(0)');
       await expect.poll(() => popup.locator('[data-history-row]').count()).toBe(0);
       expect(
         await popup
-          .getByText('No captures yet. Start playback, then refresh.', { exact: true })
+          .getByText('No captures yet. Start playback to get it.', { exact: true })
           .isVisible(),
       ).toBe(true);
     } finally {

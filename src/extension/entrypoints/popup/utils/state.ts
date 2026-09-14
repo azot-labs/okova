@@ -1,4 +1,4 @@
-import { getCaptureDiagnosticsStorage, type CaptureDiagnostic } from '@/utils/session-diagnostics';
+import type { StoredCapture } from '@/utils/storage/capture-history';
 import { popupHistory } from './history';
 import {
   appStorage,
@@ -6,8 +6,6 @@ import {
   FailedCredentials,
   CredentialsSnapshot,
   defaultSettings,
-  KeyInfo,
-  RecentKeysByDomain,
   Settings,
 } from '@/utils/storage';
 import { getDrmFailureStorage, type DrmFailure } from '@/utils/storage';
@@ -36,14 +34,8 @@ export const syncCredentials = (snapshot: CredentialsSnapshot) => {
   );
 };
 
-const recentKeysSignal = createSignal<KeyInfo[]>([]);
-export const useRecentKeys = () => recentKeysSignal;
-
-const recentKeysByDomainSignal = createSignal<RecentKeysByDomain>({});
-export const useRecentKeysByDomain = () => recentKeysByDomainSignal;
-
-const captureDiagnosticsSignal = createSignal<CaptureDiagnostic[]>([]);
-export const useCaptureDiagnostics = () => captureDiagnosticsSignal;
+const capturesSignal = createSignal<StoredCapture[]>([]);
+export const useCaptures = () => capturesSignal;
 
 const drmFailureSignal = createSignal<DrmFailure | null>(null);
 export const useDrmFailure = () => drmFailureSignal;
@@ -56,18 +48,16 @@ export const useSettings = () => settingsStore;
 
 export const useSyncStateWithStorage = () => {
   const [, setSettings] = useSettings();
-  const [, setRecentKeys] = useRecentKeys();
-  const [, setRecentKeysByDomain] = useRecentKeysByDomain();
   const [, setActiveTabUrl] = useActiveTabUrl();
 
   const [, setDrmFailure] = useDrmFailure();
-  let unwatchDiagnostics: (() => void) | undefined;
   let unwatchFailure: (() => void) | undefined;
   let isDisposed = false;
+  const disposers: (() => void)[] = [];
   onCleanup(() => {
     isDisposed = true;
+    for (const dispose of disposers) dispose();
     unwatchFailure?.();
-    unwatchDiagnostics?.();
   });
 
   onMount(async () => {
@@ -80,39 +70,41 @@ export const useSyncStateWithStorage = () => {
       await appStorage.settings.setValue(defaultSettings);
     }
 
-    appStorage.credentials.getSnapshot().then(syncCredentials);
-    browser.tabs.query({ active: true, currentWindow: true }).then(async ([tab]) => {
-      if (isDisposed) return;
+    if (isDisposed) return;
+    appStorage.credentials.getSnapshot().then((snapshot) => {
+      if (!isDisposed) syncCredentials(snapshot);
+    });
+    let activeTabGeneration = 0;
+    const syncTab = async () => {
+      const generation = ++activeTabGeneration;
+      const [tab] = await browser.tabs.query({ active: true, currentWindow: true });
+      if (isDisposed || generation !== activeTabGeneration) return;
+      unwatchFailure?.();
       setActiveTabUrl(tab?.url ?? null);
       setDrmFailure(null);
       if (tab?.id === undefined) return;
-      const diagnosticStorage = getCaptureDiagnosticsStorage(tab.id);
-      let hasDiagnosticUpdate = false;
-      unwatchDiagnostics = diagnosticStorage.watch((records) => {
-        hasDiagnosticUpdate = true;
-        captureDiagnosticsSignal[1](records ?? []);
-      });
-      const records = await diagnosticStorage.getValue();
-      if (!isDisposed && !hasDiagnosticUpdate) captureDiagnosticsSignal[1](records ?? []);
-      if (isDisposed) return;
       const failureStorage = getDrmFailureStorage(tab.id);
-      let hasUpdate = false;
-      unwatchFailure = failureStorage.watch((failure) => {
-        hasUpdate = true;
-        setDrmFailure(failure);
-      });
+      unwatchFailure = failureStorage.watch((failure) => setDrmFailure(failure));
       const failure = await failureStorage.getValue();
-      if (!isDisposed && !hasUpdate) setDrmFailure(failure);
+      if (!isDisposed && generation === activeTabGeneration) setDrmFailure(failure);
+    };
+    void syncTab();
+    browser.tabs.onActivated.addListener(syncTab);
+    browser.tabs.onUpdated.addListener(syncTab);
+    let hasUpdate = false;
+    const syncCaptures = (captures: StoredCapture[]) => {
+      capturesSignal[1](captures);
+    };
+    const unwatch = popupHistory.captures.watch((captures) => {
+      hasUpdate = true;
+      syncCaptures(captures);
     });
-    popupHistory.recentKeys
-      .getValue()
-      .then((recentKeys) => recentKeys && setRecentKeys(recentKeys));
-    popupHistory.recentKeys.watch((newKeys) => setRecentKeys(newKeys || []));
-    popupHistory.recentKeysByDomain
-      .getValue()
-      .then((recentKeysByDomain) => setRecentKeysByDomain(recentKeysByDomain || {}));
-    popupHistory.recentKeysByDomain.watch((newKeysByDomain) =>
-      setRecentKeysByDomain(newKeysByDomain || {}),
-    );
+    disposers.push(() => {
+      unwatch();
+      browser.tabs.onActivated.removeListener(syncTab);
+      browser.tabs.onUpdated.removeListener(syncTab);
+    });
+    const captures = await popupHistory.captures.getValue();
+    if (!isDisposed && !hasUpdate) syncCaptures(captures);
   });
 };

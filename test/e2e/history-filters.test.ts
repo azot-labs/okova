@@ -1,3 +1,4 @@
+import { seedKeyRecords } from './capture-storage';
 import { visibleKeyIds } from './capture-ui';
 import { mkdir, mkdtemp, readFile, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
@@ -44,10 +45,7 @@ test('filters and ordering control visible history and both export formats', asy
           pssh: '',
         },
       ];
-      const save = () =>
-        worker.evaluate(async (records) => {
-          await browser.storage.local.set({ 'all-keys': JSON.stringify(records) });
-        }, records);
+      const save = () => seedKeyRecords(worker, records);
       await save();
       const popup = await context.newPage();
       await popup.addInitScript(() =>
@@ -62,15 +60,11 @@ test('filters and ordering control visible history and both export formats', asy
       await popup.getByRole('button', { name: 'JSON', exact: true }).click();
       const orderedPath = await (await orderedDownload).path();
       if (!orderedPath) throw new Error('Missing export download');
-      expect(JSON.parse(await readFile(orderedPath, 'utf8'))).toEqual({
-        version: 2,
-        captures: [...records].reverse().map((record) => ({
-          url: record.url,
-          createdAt: record.createdAt,
-          playlists: [],
-          sessions: [{ pssh: [], records: [record] }],
-        })),
-      });
+      const exported = JSON.parse(await readFile(orderedPath, 'utf8'));
+      expect(exported.version).toBe(3);
+      expect(
+        exported.captures.map((capture: { source: { url: string } }) => capture.source.url),
+      ).toEqual([...records].reverse().map((record) => record.url));
       await popup.getByLabel('Order', { exact: true }).selectOption('oldest');
       await expect.poll(visible).toEqual(records.map(pair));
       await popup.getByRole('button', { name: 'Search', exact: true }).click();
@@ -97,8 +91,14 @@ test('filters and ordering control visible history and both export formats', asy
         const content = await readFile(path, 'utf8');
         if (format === 'JSON')
           expect(JSON.parse(content)).toMatchObject({
-            version: 2,
-            captures: [{ sessions: [{ records: [records[0]] }] }],
+            version: 3,
+            captures: [
+              {
+                sessions: [
+                  { records: [{ id: records[0]!.id, value: records[0]!.value, kind: 'key' }] },
+                ],
+              },
+            ],
           });
         else expect(content).toBe(`${records[0]!.id}:${records[0]!.value}\n`);
       }
@@ -117,7 +117,7 @@ test('filters and ordering control visible history and both export formats', asy
       expect(
         await popup.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth),
       ).toBe(true);
-      await popup.getByRole('button', { name: /^Delete Selected \(/ }).click();
+      await popup.getByRole('button', { name: /^Delete \(/ }).click();
       await expect.poll(() => popup.getByRole('dialog').isVisible()).toBe(true);
       await popup.getByRole('button', { name: 'Cancel', exact: true }).click();
       await popup.getByLabel('DRM', { exact: true }).selectOption('C');

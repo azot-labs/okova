@@ -3,7 +3,6 @@ import { browser, type Browser } from 'wxt/browser';
 import { fakeBrowser } from 'wxt/testing/fake-browser';
 import {
   appStorage,
-  MAX_HISTORY_BYTES,
   privateHistory,
   clearClosedPrivateHistory,
   getKeyHistory,
@@ -21,6 +20,7 @@ const privateWindow = {
   state: 'normal',
 } as const;
 const key: KeyInfo = {
+  captureId: 'private-session',
   id: '00112233445566778899aabbccddeeff',
   value: 'ffeeddccbbaa99887766554433221100',
   url: 'https://example.com/private',
@@ -28,8 +28,7 @@ const key: KeyInfo = {
   createdAt: 1,
 };
 const capture = async (history: typeof privateHistory, record: KeyInfo) => {
-  await history.recentKeys.setForUrl(record.url, [record]);
-  await history.allKeys.add(record);
+  await history.upsertKeys([record]);
 };
 
 beforeEach(() => {
@@ -56,12 +55,13 @@ test('isolates private history, recent caches, watchers, and deletion from local
     await privateHistory.deleteKeySnapshot(snapshot.tokens);
     expect(await privateHistory.allKeys.getValue()).toEqual([]);
     expect(await privateHistory.recentKeys.getValue()).toEqual([]);
-    expect(await privateHistory.recentKeysByDomain.getValue()).toEqual({ 'example.com': [] });
+    expect(await privateHistory.recentKeysByDomain.getValue()).toEqual({});
     expect(await browser.storage.local.get(null)).toEqual(localBefore);
 
-    await capture(privateHistory, key);
+    const next = { ...key, captureId: 'next-session' };
+    await capture(privateHistory, next);
     await appStorage.allKeys.clear();
-    expect(await privateHistory.allKeys.getValue()).toEqual([key]);
+    expect(await privateHistory.allKeys.getValue()).toEqual([next]);
   } finally {
     unwatch();
   }
@@ -76,13 +76,13 @@ test('retains private history while a private window exists, then clears it and 
   vi.mocked(browser.windows.getAll).mockImplementation(async () => []);
   await clearClosedPrivateHistory();
   await capture(privateHistory, key);
-  expect(await privateHistory.allKeys.getValue()).toBeNull();
-  expect(await privateHistory.recentKeys.getValue()).toBeNull();
-  expect(await privateHistory.recentKeysByDomain.getValue()).toBeNull();
+  expect(await privateHistory.allKeys.getValue()).toEqual([]);
+  expect(await privateHistory.recentKeys.getValue()).toEqual([]);
+  expect(await privateHistory.recentKeysByDomain.getValue()).toEqual({});
   expect(await appStorage.allKeys.getValue()).toEqual([key]);
 
   vi.mocked(browser.windows.getAll).mockImplementation(async () => [privateWindow]);
-  expect(await privateHistory.allKeys.getValue()).toBeNull();
+  expect(await privateHistory.allKeys.getValue()).toEqual([]);
   await capture(privateHistory, key);
   expect(await privateHistory.allKeys.getValue()).toEqual([key]);
 });
@@ -157,7 +157,7 @@ test('keeps a generation while private windows overlap and across history-handle
   await clearClosedPrivateHistory();
   const restoredHistory = await getKeyHistory(true, 3);
   expect(await restoredHistory.allKeys.getValue()).toEqual([key]);
-  const laterKey = { ...key, id: 'another-id', createdAt: 2 };
+  const laterKey = { ...key, captureId: 'later-session', id: 'another-id', createdAt: 2 };
   await firstHistory.allKeys.add(laterKey);
   expect(await restoredHistory.allKeys.getValue()).toEqual([key, laterKey]);
 });
@@ -184,29 +184,21 @@ test('does not apply an old cleanup snapshot after another context advances the 
   expect(await history.recentKeys.getValue()).toEqual([replacementKey]);
 });
 
-test('applies the byte budget to private history and recent caches without changing PSSH', async () => {
-  const records = Array.from({ length: 20 }, (_, index) => ({
+test('private retention evicts whole captures without truncating initialization data', async () => {
+  const records = Array.from({ length: 40 }, (_, index) => ({
     ...key,
-    id: String(index),
+    captureId: `private-${index}`,
     createdAt: index,
     pssh: 'A'.repeat(200_000),
   }));
-  await privateHistory.allKeys.setValue(records);
-  await privateHistory.recentKeys.setForUrl(key.url, records);
+  await privateHistory.upsertKeys(records);
   const stored = await browser.storage.session.get(null);
-  for (const name of [
-    'incognito:all-keys',
-    'incognito:recent-keys',
-    'incognito:recent-keys-by-domain',
-  ]) {
-    expect(
-      Buffer.byteLength(name) + Buffer.byteLength(JSON.stringify(stored[name])),
-    ).toBeLessThanOrEqual(MAX_HISTORY_BYTES);
-  }
-  const history = (await privateHistory.allKeys.getValue()) ?? [];
-  expect(history.length).toBeGreaterThan(0);
-  expect(history.length).toBeLessThan(records.length);
-  expect(history.at(-1)).toEqual(records.at(-1));
-  expect(history.every((record) => record.pssh === records[0]?.pssh)).toBe(true);
-  expect(await appStorage.allKeys.getValue()).toBeNull();
+  expect(
+    Buffer.byteLength(JSON.stringify(stored['incognito:capture-history'])),
+  ).toBeLessThanOrEqual(6 * 1024 * 1024);
+  const captures = await privateHistory.captures.getValue();
+  expect(captures.length).toBeGreaterThan(0);
+  expect(captures.length).toBeLessThan(records.length);
+  expect(captures.at(-1)?.sessions[0]?.pssh).toEqual([records.at(-1)!.pssh]);
+  expect(await appStorage.captures.getValue()).toEqual([]);
 });

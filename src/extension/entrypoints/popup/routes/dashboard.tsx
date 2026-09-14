@@ -1,4 +1,4 @@
-import { useCaptureDiagnostics } from '../utils/state';
+import { useCaptures } from '../utils/state';
 import { getCredentialsSystem } from '@/utils/storage';
 
 import { DeleteKeys } from '../components/delete-keys';
@@ -8,8 +8,6 @@ import {
   useActiveTabUrl,
   useCredentials,
   useDrmFailure,
-  useRecentKeys,
-  useRecentKeysByDomain,
   useSettings,
 } from '../utils/state';
 import { Toolbar } from '../components/toolbar';
@@ -24,7 +22,7 @@ import { CaptureDrmFilter, CaptureOrder } from '../components/capture-filters';
 import { CaptureSearch } from '../components/capture-search';
 import { NoMatchingCaptures } from '../components/no-matching-captures';
 import { createCaptureFilters } from '../utils/capture-filters';
-import { getRecentKeysForUrl, getWebsiteDomain, drmStages } from '@/utils/storage';
+import { getWebsiteDomain, drmStages } from '@/utils/storage';
 import { DELETE_SITE_CAPTURES_LABEL, RECENT_CAPTURES_LABEL } from '../utils/captures';
 import { TbOutlineRefresh } from 'solid-icons/tb';
 import { NoKeys } from '../components/no-keys';
@@ -33,19 +31,19 @@ export const Dashboard = () => {
   const [failure] = useDrmFailure();
   const [settings] = useSettings();
   const [credentials] = useCredentials();
-  const [recentKeys] = useRecentKeys();
-  const [recentKeysByDomain] = useRecentKeysByDomain();
   const [activeTabUrl] = useActiveTabUrl();
   const [activeCredentials] = useActiveCredentials();
   const activeFailure = createMemo(() => failure()?.url === activeTabUrl() && failure());
   const activeDomain = createMemo(() => getWebsiteDomain(activeTabUrl()));
-  const activeDomainRecentKeys = createMemo(() => {
-    return getRecentKeysForUrl(activeTabUrl(), recentKeysByDomain(), recentKeys());
-  });
-
+  const [allCaptures] = useCaptures();
+  const storedCaptures = createMemo(() =>
+    allCaptures().filter(
+      (capture) => !activeDomain() || getWebsiteDomain(capture.source.url) === activeDomain(),
+    ),
+  );
   const pageStreams = createPageStreams();
-  const [diagnostics] = useCaptureDiagnostics();
-  const filters = createCaptureFilters(activeDomainRecentKeys, pageStreams.records, diagnostics);
+  const filters = createCaptureFilters(storedCaptures);
+  const activeDomainRecentKeys = filters.records;
 
   return (
     <Layout>
@@ -64,7 +62,7 @@ export const Dashboard = () => {
         Dashboard
       </Header>
       <div class="flex flex-col gap-1">
-        <Toolbar streams={pageStreams.records()} />
+        <Toolbar />
         <CaptureObservationStatus observation={pageStreams} />
 
         <Show when={credentials().length === 0}>

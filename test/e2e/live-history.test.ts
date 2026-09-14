@@ -1,3 +1,4 @@
+import { seedKeyRecords } from './capture-storage';
 import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
@@ -25,10 +26,7 @@ test('history updates preserve search, scroll, and expanded record details', asy
       createdAt: Date.now() + index,
     }));
     const selected = records[39]!;
-    const save = () =>
-      worker.evaluate(async (records) => {
-        await browser.storage.local.set({ 'all-keys': JSON.stringify(records) });
-      }, records);
+    const save = () => seedKeyRecords(worker, records);
     await save();
     const popup = await context.newPage();
     await popup.goto(`chrome-extension://${new URL(worker.url()).hostname}/popup.html`);
@@ -89,7 +87,7 @@ test('history updates preserve search, scroll, and expanded record details', asy
     await expect.poll(() => stable.count()).toBe(0);
     expect(await search.inputValue()).toBe('history.example');
     await worker.evaluate(async () => {
-      await browser.storage.local.remove('all-keys');
+      await browser.storage.local.remove('capture-history');
     });
     await expect.poll(() => popup.locator('[data-capture-row]').count()).toBe(0);
     expect(await count.textContent()).toBe('(0)');

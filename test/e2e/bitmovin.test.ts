@@ -1,10 +1,10 @@
+import { readKeyRecords } from './capture-storage';
 import { existsSync } from 'node:fs';
 import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { resolve, join } from 'node:path';
 import { chromium } from 'playwright';
 import { expect, test } from 'vitest';
-import { z } from 'zod';
 
 declare global {
   interface Window {
@@ -13,16 +13,6 @@ declare global {
 }
 
 declare const chrome: typeof import('wxt/browser').browser;
-
-const storedKeys = z.array(
-  z.object({
-    id: z.string(),
-    value: z.string(),
-    url: z.string(),
-    drmSystem: z.string().optional(),
-    createdAt: z.number(),
-  }),
-);
 
 test.for([
   { drm: 'widevine', playback: false },
@@ -164,13 +154,7 @@ test.for([
         )
         .toBe(true);
 
-      const readKeys = async () => {
-        const raw: unknown = await worker.evaluate(async () => {
-          const storage = await chrome.storage.local.get('all-keys');
-          return storage['all-keys'];
-        });
-        return storedKeys.parse(typeof raw === 'string' ? JSON.parse(raw) : (raw ?? []));
-      };
+      const readKeys = () => readKeyRecords(worker);
       expect((await readKeys()).length).toBe(0);
       const startedAt = Date.now();
       const demo = await context.newPage();

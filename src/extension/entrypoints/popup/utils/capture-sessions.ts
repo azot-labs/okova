@@ -9,8 +9,14 @@ type CaptureSession = {
 };
 
 // Missing identities share an explicitly unknown bucket, not an inferred session.
-export const groupCaptureSessions = (rows: HistoryRow[], diagnostics: CaptureDiagnostic[] = []) => {
+export const groupCaptureSessions = (
+  rows: HistoryRow[],
+  diagnostics: CaptureDiagnostic[] = [],
+  stored: import('@/utils/storage/capture-history').SessionRecord[] = [],
+) => {
   const sessions = new Map<string | undefined, CaptureSession>();
+  for (const session of stored)
+    sessions.set(session.id, { id: session.id, entries: [], psshValues: session.pssh });
   for (const row of rows) {
     const id = row.key.captureId || undefined;
     const session = sessions.get(id) ?? { id, entries: [], psshValues: [] };

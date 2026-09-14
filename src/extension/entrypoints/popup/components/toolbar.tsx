@@ -1,35 +1,14 @@
-import { popupHistory } from '../utils/history';
 import { A } from '@solidjs/router';
 import { TbOutlineDevices, TbOutlineSettings, TbOutlineLayersDifference } from 'solid-icons/tb';
 import { CardButton } from './card-button';
 import { Section } from './section';
-import type { KeyInfo } from '@/utils/storage';
-import type { StreamRecord } from '@/utils/streams';
-import { groupCaptureRecords } from '@/utils/capture-groups';
-import { useCredentials, useCaptureDiagnostics } from '../utils/state';
+import { useCredentials, useCaptures } from '../utils/state';
 import { CAPTURES_LABEL, CAPTURES_PATH } from '../utils/captures';
 
-export const Toolbar = (props: { streams?: StreamRecord[] }) => {
+export const Toolbar = () => {
   const [credentials] = useCredentials();
-  const [diagnostics] = useCaptureDiagnostics();
-  const [records, setRecords] = createSignal<KeyInfo[]>([]);
-  const captureCount = createMemo(
-    () => groupCaptureRecords(records(), props.streams, diagnostics()).length,
-  );
-  let hasUpdate = false;
-  let isDisposed = false;
-  const unwatch = popupHistory.allKeys.raw.watch((keys) => {
-    hasUpdate = true;
-    setRecords(keys ?? []);
-  });
-  onCleanup(() => {
-    isDisposed = true;
-    unwatch();
-  });
-  onMount(async () => {
-    const keys = await popupHistory.allKeys.getValue();
-    if (!isDisposed && !hasUpdate) setRecords(keys ?? []);
-  });
+  const [captures] = useCaptures();
+  const captureCount = () => captures().length;
 
   return (
     <div class="grid grid-cols-3 gap-3">

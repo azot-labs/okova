@@ -1,3 +1,4 @@
+import { popupHistory } from './history';
 import { browser } from 'wxt/browser';
 import { isManifestUrl } from '@/utils/manifest';
 import type { StreamRecord } from '@/utils/streams';
@@ -24,10 +25,26 @@ export const createPageStreams = () => {
       currentTabId = tab?.id;
       if (tab?.id === undefined || !isManifestUrl(tab.url)) {
         setRecords([]);
-        setNotice('Open a website to see its detected streams.');
+        setNotice('Open a website to discover more captures.');
         return;
       }
       const result = await getTabStreams(tab.id);
+      if (isDisposed || request !== generation) return;
+      await Promise.all(
+        result.records.flatMap((stream) =>
+          [stream.manifest, ...stream.playlists].map((manifest) =>
+            popupHistory.observeManifest(
+              {
+                url: stream.frameUrl,
+                tabId: tab.id,
+                frameId: stream.frameId,
+                documentId: stream.documentId,
+              },
+              { ...manifest, initData: [] },
+            ),
+          ),
+        ),
+      );
       if (isDisposed || request !== generation) return;
       setRecords(result.records);
       const notices = [];
@@ -53,16 +70,11 @@ export const createPageStreams = () => {
       setRecords([]);
       void refresh();
     };
-    const onStorageChanged = (changes: Record<string, unknown>, area: string) => {
-      if (area === 'session' && 'capture-deletion-revision' in changes) void refresh();
-    };
-    browser.storage.onChanged.addListener(onStorageChanged);
     browser.tabs.onActivated.addListener(onActivated);
     browser.webNavigation.onCommitted.addListener(onCommitted);
     onCleanup(() => {
       isDisposed = true;
       generation++;
-      browser.storage.onChanged.removeListener(onStorageChanged);
       browser.tabs.onActivated.removeListener(onActivated);
       browser.webNavigation.onCommitted.removeListener(onCommitted);
     });

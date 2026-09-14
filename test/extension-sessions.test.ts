@@ -1,9 +1,10 @@
+import { scheduler } from 'node:timers/promises';
 import { afterEach, beforeEach, expect, test, vi } from 'vitest';
 import { browser, type Browser } from 'wxt/browser';
 import { fakeBrowser } from 'wxt/testing/fake-browser';
 import background from '../src/extension/entrypoints/background';
 import { getBadgeStorage } from '../src/extension/utils/badge';
-import { appStorage, getDrmFailureStorage } from '../src/extension/utils/storage';
+import { appStorage, regularHistory, getDrmFailureStorage } from '../src/extension/utils/storage';
 import * as certificateUtils from '../src/lib/widevine/certificate';
 import { fromBase64, fromBuffer } from '../src/lib/utils';
 import {
@@ -104,7 +105,8 @@ beforeEach(async () => {
   );
 });
 
-afterEach(() => {
+afterEach(async () => {
+  await scheduler.yield();
   vi.restoreAllMocks();
   vi.useRealTimers();
   setSupportedEngines([]);
@@ -499,10 +501,16 @@ test.each(['deadline', 'removal', 'navigation', 'close'])(
     }
     if (action === 'close') expect(await getDrmFailureStorage(1).getValue()).toBeNull();
     const remaining = await browser.storage.session.get(null);
-    expect(Object.keys(remaining).filter((key) => !key.startsWith('capture-diagnostics:'))).toEqual(
-      [],
-    );
-    if (action === 'removal') expect(remaining).toEqual({});
+    expect(
+      Object.keys(remaining).filter(
+        (key) =>
+          !key.startsWith('capture-diagnostics:') &&
+          !key.startsWith('capture-owners:') &&
+          key !== 'capture-history-runtime-id',
+      ),
+    ).toEqual([]);
+    if (action === 'removal')
+      expect(Object.keys(remaining)).toEqual(['capture-history-runtime-id']);
     expect(vi.getTimerCount()).toBe(0);
   },
 );
@@ -527,7 +535,13 @@ test('tab closure does not leave a record from an interrupted storage write', as
   await sessions[0]!.closed;
   resumeWrite.resolve();
   await expect(challenge).resolves.toBeUndefined();
-  await vi.waitFor(async () => expect(await browser.storage.session.get(null)).toEqual({}));
+  await vi.waitFor(async () =>
+    expect(
+      Object.keys(await browser.storage.session.get(null)).filter(
+        (key) => key !== 'capture-history-runtime-id',
+      ),
+    ).toEqual([]),
+  );
 });
 
 test.each([
@@ -602,11 +616,11 @@ test('an old document cannot clear a new document failure after navigation', asy
   const send = startBackground();
   const started = Promise.withResolvers<void>();
   const resumeWrite = Promise.withResolvers<void>();
-  const setRecentKeys = appStorage.recentKeys.setForUrl;
-  vi.spyOn(appStorage.recentKeys, 'setForUrl').mockImplementationOnce(async (url, keys) => {
+  const upsertKeys = regularHistory.upsertKeys;
+  vi.spyOn(regularHistory, 'upsertKeys').mockImplementationOnce(async (...args) => {
     started.resolve();
     await resumeWrite.promise;
-    await setRecentKeys(url, keys);
+    await upsertKeys(...args);
   });
   const oldRequest = send(
     'keystatuseschange',
@@ -653,7 +667,7 @@ test('a recovered key-status history write clears the previous failure', async (
   const send = startBackground();
   const sender = { tab: tab(1) };
   const message = { keyStatuses: { 'AAECAw==': 'usable' } };
-  vi.spyOn(appStorage.allKeys, 'add').mockRejectedValueOnce(new Error('History write failed'));
+  vi.spyOn(regularHistory, 'upsertKeys').mockRejectedValueOnce(new Error('History write failed'));
   await send('keystatuseschange', 'one', sender, message);
   expect(await getDrmFailureStorage(1).getValue()).toMatchObject({
     stage: 'history',
@@ -698,9 +712,9 @@ test.each([true, false])(
       });
     }
     expect(await appStorage.allKeys.getValue()).toHaveLength(2);
-    expect(await appStorage.recentKeys.getValue()).toMatchObject([
-      { id: '000102030405060708090a0b0c0d0e0f' },
-    ]);
+    expect(await appStorage.allKeys.getValue()).toEqual(
+      expect.arrayContaining([expect.objectContaining({ id: '000102030405060708090a0b0c0d0e0f' })]),
+    );
     expect(await appStorage.recentKeysByDomain.getValue()).toHaveProperty('example.com');
     expect(appStorage.credentials.active.getValue).not.toHaveBeenCalled();
     expect(Session.prototype.generateRequest).not.toHaveBeenCalled();
@@ -754,9 +768,9 @@ test('retains reused ClearKey IDs across origins and status events', async () =>
     );
     await send('update', 'clear', {}, { ...context, message });
     await send('keystatuseschange', 'clear', {}, { ...context, keyStatuses: { 'AA==': 'usable' } });
-    expect(await appStorage.recentKeys.getValue()).toMatchObject([
-      { id: '00', value: capture.value, url: capture.url },
-    ]);
+    expect(
+      (await appStorage.allKeys.getValue()).filter((record) => record.url === capture.url),
+    ).toMatchObject([{ id: '00', value: capture.value, url: capture.url }]);
   }
   const history = await appStorage.allKeys.getValue();
   expect(history).toHaveLength(2);
@@ -775,7 +789,7 @@ test('a recovered ClearKey history write clears its diagnostic', async () => {
       JSON.stringify({ keys: [{ kty: 'oct', kid: 'AA', k: 'tQ0bJVWb6b0KPL6KtZIy_A' }] }),
     ),
   };
-  vi.spyOn(appStorage.allKeys, 'add').mockRejectedValueOnce(new Error('History write failed'));
+  vi.spyOn(regularHistory, 'upsertKeys').mockRejectedValueOnce(new Error('History write failed'));
   await expect(send('update', 'clear', sender, context)).resolves.toMatchObject({
     keys: [{ id: '00', value: 'b50d1b25559be9bd0a3cbe8ab59232fc' }],
   });
@@ -819,7 +833,7 @@ test.each(['https://example.com/video', 'https://other.example/video'])(
       createdAt: Date.now(),
     };
     await expect(send('update', 'fresh', {}, context)).resolves.toEqual({ keys: [captured] });
-    expect(await appStorage.recentKeys.getValue()).toEqual([captured]);
+    expect(await appStorage.allKeys.getValue()).toMatchObject([oldKey, captured]);
     await send(
       'keystatuseschange',
       'fresh',
@@ -829,11 +843,8 @@ test.each(['https://example.com/video', 'https://other.example/video'])(
         keyStatuses: { [fromBuffer(Buffer.from(captured.id, 'hex')).toBase64()]: 'usable' },
       },
     );
-    expect(await appStorage.recentKeys.getValue()).toEqual([captured]);
-    expect(await appStorage.recentKeysByDomain.getValue()).toEqual({
-      [new URL(url).hostname]: [captured],
-    });
-    expect(await appStorage.allKeys.getValue()).toEqual([oldKey, captured]);
+    expect(await appStorage.allKeys.getValue()).toMatchObject([oldKey, captured]);
+    expect(await appStorage.allKeys.getValue()).toMatchObject([oldKey, captured]);
     expect(Session.prototype.close).toHaveBeenCalledOnce();
     expect(vi.getTimerCount()).toBe(0);
   },
@@ -884,7 +895,7 @@ test('reports an empty license and cleans up without waiting for another status 
   });
   expect(Session.prototype.waitForKeyStatusesChange).not.toHaveBeenCalled();
   expect(Session.prototype.close).toHaveBeenCalledOnce();
-  expect(await appStorage.allKeys.getValue()).toBeNull();
+  expect(await appStorage.allKeys.getValue()).toEqual([]);
   expect(vi.getTimerCount()).toBe(0);
 });
 

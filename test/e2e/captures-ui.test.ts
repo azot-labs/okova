@@ -1,3 +1,5 @@
+import { seedKeyRecords } from './capture-storage';
+import type { KeyInfo } from '../../src/extension/utils/storage';
 import { mkdir, mkdtemp, rm } from 'node:fs/promises';
 import { createServer } from 'node:http';
 import { tmpdir } from 'node:os';
@@ -102,7 +104,10 @@ test('groups captures by manifest or session and embeds existing record details'
     await worker.evaluate(async (id) => {
       await browser.tabs.update(id, { active: true });
     }, sourceId);
-    await popup.screenshot({ path: join(screenshots, 'dashboard-light.png') });
+    await popup.screenshot({
+      animations: 'disabled',
+      path: join(screenshots, 'dashboard-light.png'),
+    });
     await popup.getByRole('link', { name: 'Captures', exact: true }).click();
     const records = popup.locator('[data-capture-row]');
     await expect.poll(() => records.count()).toBe(3);
@@ -110,14 +115,17 @@ test('groups captures by manifest or session and embeds existing record details'
     expect(
       await worker.evaluate(async () => (await browser.storage.local.get('all-keys'))['all-keys']),
     ).toBeUndefined();
-    await popup.screenshot({ path: join(screenshots, 'list-light.png') });
+    await popup.screenshot({ animations: 'disabled', path: join(screenshots, 'list-light.png') });
     const masterRecord = records.filter({ hasText: 'master.m3u8' });
     await masterRecord.locator(':scope > summary').click({ position: { x: 8, y: 8 } });
     await expect
       .poll(() => masterRecord.textContent())
       .toContain('/live/720p.m3u8?signature=child-token');
     expect(await masterRecord.locator('a').first().getAttribute('href')).toContain('master.m3u8');
-    await popup.screenshot({ path: join(screenshots, 'details-light.png') });
+    await popup.screenshot({
+      animations: 'disabled',
+      path: join(screenshots, 'details-light.png'),
+    });
     await popup.getByRole('button', { name: 'Refresh', exact: true }).click();
     await expect
       .poll(() => popup.getByRole('button', { name: 'Refresh', exact: true }).isEnabled())
@@ -137,23 +145,27 @@ test('groups captures by manifest or session and embeds existing record details'
     await expect.poll(() => records.count()).toBe(3);
     await expect.poll(() => popup.locator('html').getAttribute('class')).toContain('dark');
     await masterRecord.locator(':scope > summary').click({ position: { x: 8, y: 8 } });
-    await popup.screenshot({ path: join(screenshots, 'details-dark.png') });
+    await popup.screenshot({ animations: 'disabled', path: join(screenshots, 'details-dark.png') });
     expect(await popup.evaluate(() => document.documentElement.scrollWidth)).toBe(500);
 
-    // Cross-frame observations disappear when that frame navigates.
+    // Saved captures survive both embedded-frame and top-level navigation.
     await embedded.goto(`${origin}/empty-frame`);
-    await expect.poll(() => records.count()).toBe(2);
+    await expect.poll(() => records.count()).toBe(3);
     await page.goto(`${origin}/empty`);
+    await expect.poll(() => records.count()).toBe(3);
+    await popup.getByRole('button', { name: 'Delete All', exact: true }).click();
+    await popup
+      .getByRole('dialog')
+      .getByRole('button', { name: 'Delete 3 captures', exact: true })
+      .click();
     await expect.poll(() => records.count()).toBe(0);
     expect(
-      await popup
-        .getByText('No captures yet. Start playback, then refresh.', { exact: true })
-        .count(),
+      await popup.getByText('No captures yet. Start playback to get it.', { exact: true }).count(),
     ).toBe(1);
     expect(await popup.getByRole('button', { name: 'Select All', exact: true }).isDisabled()).toBe(
       true,
     );
-    await popup.screenshot({ path: join(screenshots, 'empty-dark.png') });
+    await popup.screenshot({ animations: 'disabled', path: join(screenshots, 'empty-dark.png') });
 
     await worker.evaluate(async () => {
       const stored = (await browser.storage.local.get('settings')).settings;
@@ -165,8 +177,11 @@ test('groups captures by manifest or session and embeds existing record details'
     await popup.goto(`chrome-extension://${new URL(worker.url()).hostname}/popup.html`);
     await popup.getByRole('link', { name: 'Captures', exact: true }).click();
     await expect.poll(() => popup.getByText(/Request interception is off/).count()).toBe(1);
-    await popup.screenshot({ path: join(screenshots, 'disabled-dark.png') });
-    const metadataRecords = [
+    await popup.screenshot({
+      animations: 'disabled',
+      path: join(screenshots, 'disabled-dark.png'),
+    });
+    const metadataRecords: KeyInfo[] = [
       { id: '10000000000000000000000000000001', captureId: 'session-audio', mpd: master },
       { id: '10000000000000000000000000000002', captureId: 'session-video', mpd: master },
       { id: '20000000000000000000000000000001', captureId: 'session-unresolved' },
@@ -178,30 +193,35 @@ test('groups captures by manifest or session and embeds existing record details'
       url: `${origin}/watch`,
       pssh: '',
       createdAt: Date.now(),
-      drmSystem: 'W',
+      drmSystem: 'W' as const,
     }));
-    await worker.evaluate(async (records) => {
+    await seedKeyRecords(worker, metadataRecords);
+    await worker.evaluate(async () => {
       const stored = (await browser.storage.local.get('settings')).settings;
       if (typeof stored !== 'string') throw new Error('Missing settings');
       await browser.storage.local.set({
-        'all-keys': JSON.stringify(records),
-        'recent-keys': JSON.stringify(records),
         settings: JSON.stringify({
           ...JSON.parse(stored),
           theme: 'light',
           requestInterception: true,
         }),
       });
-    }, metadataRecords);
+    });
     await popup.goto(`chrome-extension://${new URL(worker.url()).hostname}/popup.html`);
     expect(await popup.getByRole('link', { name: 'Streams', exact: true }).count()).toBe(0);
     await popup.getByRole('link', { name: 'Captures', exact: true }).click();
     await expect.poll(() => records.count()).toBe(3);
-    await popup.screenshot({ path: join(screenshots, 'grouped-light.png') });
+    await popup.screenshot({
+      animations: 'disabled',
+      path: join(screenshots, 'grouped-light.png'),
+    });
     const saved = records.filter({ hasText: 'master.m3u8' });
     await saved.locator(':scope > summary').click({ position: { x: 8, y: 8 } });
     await expect.poll(() => saved.locator('[data-key-record]').count()).toBe(2);
-    await popup.screenshot({ path: join(screenshots, 'key-ids-light.png') });
+    await popup.screenshot({
+      animations: 'disabled',
+      path: join(screenshots, 'key-ids-light.png'),
+    });
     expect(await saved.locator('[data-capture-session]').count()).toBeGreaterThan(0);
     await popup.getByRole('button', { name: 'Search', exact: true }).click();
     await popup
@@ -212,7 +232,7 @@ test('groups captures by manifest or session and embeds existing record details'
     expect(await saved.locator('[data-key-record]').count()).toBe(2);
     await popup.getByRole('searchbox', { name: 'Search', exact: true }).press('Escape');
     await saved.getByRole('checkbox').check();
-    await popup.getByRole('button', { name: 'Delete Selected (1)', exact: true }).click();
+    await popup.getByRole('button', { name: 'Delete (1)', exact: true }).click();
     await expect
       .poll(() => popup.getByRole('heading', { name: 'Delete 1 capture?', exact: true }).count())
       .toBe(1);
@@ -222,15 +242,16 @@ test('groups captures by manifest or session and embeds existing record details'
     await popup.getByRole('searchbox', { name: 'Search', exact: true }).fill('');
     await popup.getByRole('searchbox', { name: 'Search', exact: true }).press('Escape');
     await expect.poll(() => records.count()).toBe(3);
-    const unresolved = records
-      .filter({ hasText: 'Manifest not detected' })
-      .filter({ hasText: '2 keys' });
+    const unresolved = records.filter({ hasText: 'Manifest not detected' }).first();
     await unresolved.locator(':scope > summary').click({ position: { x: 8, y: 8 } });
     await expect.poll(() => unresolved.locator('[data-key-record]').count()).toBe(2);
     expect(await unresolved.textContent()).toContain('session-unresolved');
     await saved.locator(':scope > summary').click({ position: { x: 8, y: 8 } });
     await unresolved.scrollIntoViewIfNeeded();
-    await popup.screenshot({ path: join(screenshots, 'session-fallback-light.png') });
+    await popup.screenshot({
+      animations: 'disabled',
+      path: join(screenshots, 'session-fallback-light.png'),
+    });
     await worker.evaluate(async () => {
       const stored = (await browser.storage.local.get('settings')).settings;
       if (typeof stored !== 'string') throw new Error('Missing settings');
@@ -243,7 +264,7 @@ test('groups captures by manifest or session and embeds existing record details'
     await expect.poll(() => records.count()).toBe(3);
     await saved.locator(':scope > summary').click({ position: { x: 8, y: 8 } });
     await expect.poll(() => saved.locator('[data-key-record]').count()).toBe(2);
-    await popup.screenshot({ path: join(screenshots, 'key-ids-dark.png') });
+    await popup.screenshot({ animations: 'disabled', path: join(screenshots, 'key-ids-dark.png') });
     expect(errors).toEqual([]);
   } finally {
     await context.close();

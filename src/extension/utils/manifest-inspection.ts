@@ -184,6 +184,7 @@ export const installManifestInspection = () => {
       ].slice(0, MAX_MANIFEST_REQUEST_URLS);
       window.MANIFEST_LIST.delete(url);
       window.MANIFEST_LIST.set(url, manifest);
+      window.postMessage({ namespace: 'okova:manifest-observed', manifest }, '*');
       while (window.MANIFEST_LIST.size > MAX_MANIFESTS) {
         const oldest = window.MANIFEST_LIST.keys().next();
         if (!oldest.done) window.MANIFEST_LIST.delete(oldest.value);

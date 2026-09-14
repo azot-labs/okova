@@ -1,3 +1,4 @@
+import { readKeyRecords } from './capture-storage';
 import { mkdir, mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
@@ -88,11 +89,7 @@ test.each(['pssh', 'default-kid'])(
           },
           [...pssh],
         );
-      const readHistory = () =>
-        worker.evaluate(async () => {
-          const stored = (await browser.storage.local.get('all-keys'))['all-keys'];
-          return typeof stored === 'string' ? JSON.parse(stored) : [];
-        });
+      const readHistory = () => readKeyRecords(worker);
       await completeSession();
       await expect
         .poll(
@@ -142,7 +139,7 @@ test.each(['pssh', 'default-kid'])(
         fullPage: true,
       });
       await capture.getByRole('checkbox').check();
-      await popup.getByRole('button', { name: 'Delete Selected (1)', exact: true }).click();
+      await popup.getByRole('button', { name: 'Delete (1)', exact: true }).click();
       await popup
         .getByRole('dialog')
         .getByRole('button', { name: 'Delete 1 capture', exact: true })

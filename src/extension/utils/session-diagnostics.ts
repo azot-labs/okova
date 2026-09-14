@@ -42,6 +42,12 @@ export const diagnosticOrigin = (url?: string) => {
 export const getCaptureDiagnosticsStorage = (tabId: number) =>
   storage.defineItem<CaptureDiagnostic[]>(`session:capture-diagnostics:${tabId}`);
 
+// Session identity outlives the bounded diagnostic event list within an open tab.
+const captureOwnersStorage = (tabId: number) =>
+  storage.defineItem<Record<string, string>>(`session:capture-owners:${tabId}`);
+export const getCaptureIdForOwner = async (tabId: number, owner: string) =>
+  (await captureOwnersStorage(tabId).getValue())?.[owner];
+
 // Keep only owner identities so late events cannot recreate a replaced session.
 const retiredOwnersStorage = (tabId: number) =>
   storage.defineItem<string[]>(`session:retired-capture-owners:${tabId}`);
@@ -52,19 +58,24 @@ export const isRetiredCaptureOwner = async (tabId: number, owner: string) =>
 export const retireCaptureDiagnostics = async (captureIds: string[]) => {
   const items = await browser.storage.session.get(null);
   for (const key of Object.keys(items)) {
-    if (!key.startsWith('capture-diagnostics:')) continue;
-    const tabId = Number(key.slice('capture-diagnostics:'.length));
+    if (!key.startsWith('capture-diagnostics:') && !key.startsWith('capture-owners:')) continue;
+    const tabId = Number(key.slice(key.indexOf(':') + 1));
     if (!Number.isInteger(tabId)) continue;
     await navigator.locks.request(`okova:diagnostics:${tabId}`, async () => {
       const item = getCaptureDiagnosticsStorage(tabId);
       const records = (await item.getValue()) ?? [];
       const removed = records.filter((record) => captureIds.includes(record.captureId));
-      if (!removed.length) return;
+      const index = (await captureOwnersStorage(tabId).getValue()) ?? {};
+      const retiredOwners = Object.entries(index)
+        .filter(([, id]) => captureIds.includes(id))
+        .map(([owner]) => owner);
+      if (!removed.length && !retiredOwners.length) return;
       const owners = retiredOwnersStorage(tabId);
       await owners.setValue([
         ...new Set([
           ...((await owners.getValue()) ?? []),
           ...removed.map((record) => record.owner),
+          ...retiredOwners,
         ]),
       ]);
       await item.setValue(records.filter((record) => !captureIds.includes(record.captureId)));
@@ -86,6 +97,13 @@ export const saveCaptureDiagnostic = (
     const previous = records.find((record) => record.captureId === diagnostic.captureId);
     // Cleanup and retention decisions win over requests holding an older snapshot.
     if (previous?.outcome === 'closed' || (!previous && !isNewCapture)) return;
+    if (isNewCapture) {
+      const index = captureOwnersStorage(tabId);
+      await index.setValue({
+        ...(await index.getValue()),
+        [diagnostic.owner]: diagnostic.captureId,
+      });
+    }
     await item.setValue(
       [...records.filter((record) => record.captureId !== diagnostic.captureId), diagnostic]
         .sort((left, right) => left.createdAt - right.createdAt)
@@ -97,6 +115,7 @@ export const clearCaptureDiagnostics = (tabId: number) =>
   navigator.locks.request(`okova:diagnostics:${tabId}`, async () => {
     await getCaptureDiagnosticsStorage(tabId).removeValue();
     await retiredOwnersStorage(tabId).removeValue();
+    await captureOwnersStorage(tabId).removeValue();
   });
 
 export const closeCaptureDiagnostics = (tabId: number, owner?: string) =>

@@ -1,12 +1,14 @@
+import { captureRecords } from '@/utils/storage/capture-history';
 import { installRequestHeaderObservation } from '@/utils/request-header-observation';
 import { drmErrorResponse, type DrmErrorResponse } from '@/utils/drm-error';
-import { getManifestMetadata } from '@/utils/manifest';
+import { getManifestMetadata, parseDetectedManifest } from '@/utils/manifest';
 import { getCredentialFingerprint } from '@/utils/credential-fingerprint';
 import {
   clearCaptureDiagnostics,
-  closeCaptureDiagnostics,
+  closeCaptureDiagnostics as closeRuntimeDiagnostics,
   diagnosticOrigin,
   getCaptureDiagnosticsStorage,
+  getCaptureIdForOwner,
   saveCaptureDiagnostic,
   isRetiredCaptureOwner,
   type CaptureDiagnostic,
@@ -28,7 +30,7 @@ import {
   credentialsInfoSchema,
   serializeCredentials,
   deserializeCredentials,
-  getRecentKeysForUrl,
+  getWebsiteDomain,
   isCapturedKey,
 } from '@/utils/storage';
 import { getDrmFailureStorage } from '@/utils/storage';
@@ -154,6 +156,16 @@ export default defineBackground({
         if (pending.get(id) === settled) pending.delete(id);
       });
       return operation;
+    };
+
+    const closeCaptureDiagnostics = async (tabId: number, owner?: string) => {
+      const sessionId = owner ? await getCaptureIdForOwner(tabId, owner) : undefined;
+      await closeRuntimeDiagnostics(tabId, owner);
+      if (owner && !sessionId) return;
+      await Promise.all([
+        appStorage.closePendingSessions(tabId, sessionId),
+        privateHistory.closePendingSessions(tabId, sessionId),
+      ]);
     };
 
     const scheduleExpiry = (id: string, expiresAt: number) =>
@@ -345,12 +357,15 @@ export default defineBackground({
               result,
             ]);
           }
-          const [recentKeys, recentKeysByDomain, storedResult] = await Promise.all([
-            history.recentKeys.getValue(),
-            history.recentKeysByDomain.getValue(),
+          const [captures, storedResult] = await Promise.all([
+            history.captures.getValue(),
             badgeStorage.getValue(),
           ]);
-          const keys = getRecentKeysForUrl(tab?.url, recentKeysByDomain, recentKeys);
+          const keys = captureRecords(
+            captures.filter(
+              (capture) => getWebsiteDomain(capture.source.url) === getWebsiteDomain(tab?.url),
+            ),
+          );
           const badge = getBadgeAppearance(keys, storedResult);
           await browser.action.setBadgeBackgroundColor({ tabId, color: badge.color });
           await browser.action.setBadgeTextColor?.({ tabId, color: '#FFFFFF' });
@@ -398,16 +413,8 @@ export default defineBackground({
 
     updateActiveTabBadgesInBackground();
 
-    privateHistory.recentKeys.watch(updateActiveTabBadgesInBackground);
-    privateHistory.recentKeysByDomain.watch(updateActiveTabBadgesInBackground);
-
-    appStorage.recentKeys.watch(() => {
-      updateActiveTabBadgesInBackground();
-    });
-
-    appStorage.recentKeysByDomain.watch(() => {
-      updateActiveTabBadgesInBackground();
-    });
+    privateHistory.captures.watch(updateActiveTabBadgesInBackground);
+    appStorage.captures.watch(updateActiveTabBadgesInBackground);
 
     browser.tabs.onActivated.addListener(({ tabId }) => {
       void updateBadgeForTabId(tabId);
@@ -443,6 +450,34 @@ export default defineBackground({
 
     const requestHeaders = installRequestHeaderObservation();
     browser.runtime.onMessage.addListener((incoming, sender, sendResponse) => {
+      if (incoming?.action === 'observed-manifest') {
+        const manifest = parseDetectedManifest(incoming.manifest);
+        if (
+          !manifest ||
+          sender.tab?.id === undefined ||
+          JSON.stringify(manifest).length > 128 * 1024
+        ) {
+          sendResponse();
+          return;
+        }
+        void getKeyHistory(sender.tab.incognito === true, sender.tab.windowId)
+          .then((history) =>
+            history.observeManifest(
+              {
+                url: getCaptureUrl(sender) ?? sender.url ?? '',
+                tabId: sender.tab?.id,
+                frameId: sender.frameId,
+                documentId: sender.documentId,
+              },
+              manifest,
+            ),
+          )
+          .then(
+            () => sendResponse(),
+            () => sendResponse(),
+          );
+        return true;
+      }
       if (incoming?.action === 'observed-request-headers') {
         if (sender.tab?.id !== undefined)
           requestHeaders.observePage(incoming, sender.tab.id, sender.frameId ?? 0);
@@ -525,6 +560,17 @@ export default defineBackground({
             () => tabGeneration === (tabGenerations.get(tabId) ?? 0),
             isNewCapture,
           );
+          if (
+            tabGeneration === (tabGenerations.get(tabId) ?? 0) &&
+            !(await isRetiredCaptureOwner(tabId, diagnostic.owner))
+          )
+            await (
+              await historyReady
+            ).upsertDiagnostic(
+              captureSource,
+              diagnostic,
+              typeof message.initData === 'string' ? message.initData : undefined,
+            );
         } catch {
           // Diagnostics must not prevent playback when storage is unavailable.
         } finally {
@@ -547,6 +593,12 @@ export default defineBackground({
       const historyReady = getKeyHistory(sender.tab?.incognito === true, sender.tab?.windowId);
       void historyReady.catch(() => {});
       const tabId = sender.tab?.id;
+      const captureSource = {
+        url: message.url ?? sender.url ?? '',
+        tabId,
+        frameId: sender.frameId,
+        documentId: sender.documentId,
+      };
       const tabGeneration = tabId === undefined ? 0 : (tabGenerations.get(tabId) ?? 0);
       const system = getBadgeDrmSystem(message.keySystem);
       const recordBadgeResult = async (result: BadgeResult) => {
@@ -669,7 +721,20 @@ export default defineBackground({
 
         await advance('setup');
         const settings = await run(appStorage.settings.getValue());
-        const saveHistory = async (keys: KeyInfo[], recent = keys) => {
+        const saveHistory = async (input: KeyInfo[]) => {
+          const fallbackId = sessionKey
+            ? fromBuffer(
+                new Uint8Array(
+                  await crypto.subtle.digest(
+                    'SHA-256',
+                    new TextEncoder().encode(JSON.stringify([sessionKey, captureSource.url])),
+                  ),
+                ),
+              ).toHex()
+            : crypto.randomUUID();
+          const keys = input.map((key) =>
+            key.captureId ? key : { ...key, captureId: fallbackId },
+          );
           try {
             if (
               tabId !== undefined &&
@@ -685,16 +750,13 @@ export default defineBackground({
                 sender.tab?.incognito === true,
               );
             }
-            await run(history.allKeys.add(...keys));
-            await run(history.recentKeys.setForUrl(message.url, recent));
-            const captureId = keys[0]?.captureId;
-            if (
-              message.action === 'update' &&
-              captureId &&
-              keys.length &&
-              keys.every(isCapturedKey)
-            )
-              await run(history.replaceDuplicateSessions(captureId));
+            await run(
+              history.upsertKeys(
+                keys,
+                captureSource,
+                message.action === 'update' && keys.length > 0 && keys.every(isCapturedKey),
+              ),
+            );
             updateBadgeForTabInBackground(sender.tab);
             await run(clearFailure());
             return true;
@@ -739,7 +801,7 @@ export default defineBackground({
               drmSystem: system,
               url: message.url,
               ...getManifestMetadata(message),
-              pssh: message.initData,
+              pssh: typeof message.initData === 'string' ? message.initData : '',
               createdAt: Date.now(),
             }));
             await advance('history');
@@ -776,24 +838,11 @@ export default defineBackground({
             value: status,
             url: message.url,
             ...getManifestMetadata(message),
-            pssh: message.initData,
+            pssh: typeof message.initData === 'string' ? message.initData : '',
             createdAt: new Date().getTime(),
           }));
           await advance('history');
-          const recentKeys = getRecentKeysForUrl(
-            message.url,
-            await run(history.recentKeysByDomain.getValue()),
-            await run(history.recentKeys.getValue()),
-          );
-          // Status events must not replace extracted keys or borrow another capture's metadata.
-          const capturedKeys = recentKeys.filter(
-            (key) => isCapturedKey(key) && key.url === message.url && key.pssh === initData,
-          );
-          const capturedIds = new Set(capturedKeys.map((key) => key.id));
-          await saveHistory(keys, [
-            ...capturedKeys,
-            ...keys.filter((key) => !capturedIds.has(key.id)),
-          ]);
+          await saveHistory(keys);
           respond();
           return;
         }
@@ -949,7 +998,7 @@ export default defineBackground({
             value,
             url: message.url,
             ...getManifestMetadata(message),
-            pssh: message.initData,
+            pssh: typeof message.initData === 'string' ? message.initData : '',
             createdAt: new Date().getTime(),
           }));
           await advance('history');
@@ -988,25 +1037,34 @@ export default defineBackground({
               if (
                 !diagnostic &&
                 !(await isRetiredCaptureOwner(tabId, sessionKey)) &&
-                !state.sessions.get(sessionKey)?.captureId &&
                 ['generateRequest', 'update', 'keystatuseschange'].includes(message.action)
               ) {
-                isNewCapture = true;
-                diagnostic = {
-                  captureId: crypto.randomUUID(),
-                  owner: sessionKey,
-                  createdAt: Date.now(),
-                  origin: diagnosticOrigin(sender.tab?.url ?? message.url),
-                  frameOrigin: diagnosticOrigin(sender.url),
-                  frameId: sender.frameId ?? null,
-                  documentId: sender.documentId ?? null,
-                  keySystem: String(message.keySystem).slice(0, 100),
-                  credential: null,
-                  sessionId: null,
-                  outcome: 'observed',
-                  keyCount: 0,
-                  events: [{ stage: 'eme', status: 'succeeded', at: Date.now() }],
-                };
+                const previousId =
+                  state.sessions.get(sessionKey)?.captureId ??
+                  (await getCaptureIdForOwner(tabId, sessionKey));
+                const previous = previousId
+                  ? (await (await historyReady).captures.getValue())
+                      .flatMap((capture) => capture.sessions)
+                      .find((session) => session.id === previousId)?.diagnostic
+                  : undefined;
+                isNewCapture = !previous;
+                diagnostic = previous
+                  ? { ...previous, owner: sessionKey }
+                  : {
+                      captureId: previousId ?? crypto.randomUUID(),
+                      owner: sessionKey,
+                      createdAt: Date.now(),
+                      origin: diagnosticOrigin(sender.tab?.url ?? message.url),
+                      frameOrigin: diagnosticOrigin(sender.url),
+                      frameId: sender.frameId ?? null,
+                      documentId: sender.documentId ?? null,
+                      keySystem: String(message.keySystem).slice(0, 100),
+                      credential: null,
+                      sessionId: null,
+                      outcome: 'observed',
+                      keyCount: 0,
+                      events: [{ stage: 'eme', status: 'succeeded', at: Date.now() }],
+                    };
               }
               await saveDiagnostic();
             } catch {
