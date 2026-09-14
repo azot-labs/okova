@@ -4,6 +4,7 @@ import { cn } from '../utils/cn';
 interface CellProps {
   class?: string;
   title?: string;
+  'data-key-record'?: string;
   subtitle?: JSX.Element;
   children: JSX.Element;
   size?: 'xs' | 'sm' | 'md' | 'lg';
@@ -18,6 +19,7 @@ interface CellProps {
   };
   component?: 'div' | 'button' | 'label';
   disabled?: boolean;
+  'aria-label'?: string;
   'aria-expanded'?: boolean;
   'aria-controls'?: string;
   'aria-pressed'?: boolean;
@@ -31,20 +33,22 @@ export const Cell: Component<CellProps> = (props) => {
     <Dynamic
       component={cellProps.component}
       class={cn(
-        'bg-white w-full min-h-9 py-2 rounded-lg text-[13px] flex items-center px-3 cursor-pointer text-left text-neutral-950',
-        'transition-colors hover:duration-0 hover:bg-slate-50 active:bg-slate-100',
+        'group/cell bg-white w-full min-h-9 py-2 rounded-lg text-[13px] flex items-center px-3 cursor-pointer text-left text-neutral-950',
+        'transition-colors hover:duration-0 hover:bg-neutral-200/20 active:bg-neutral-100/60',
         'dark:bg-neutral-800/50 dark:text-neutral-50 dark:hover:bg-neutral-700/30 dark:active:bg-neutral-700/60',
-        props.variant === 'primary' && 'text-[#007AFF] dark:text-blue-400',
+        props.variant === 'primary' && 'text-emerald-600 dark:text-emerald-400',
         props.variant === 'danger' && 'text-[#E53935] dark:text-red-400',
         props.variant === 'warning' && 'text-[#d07200] dark:text-orange-400',
         props.disabled && 'cursor-default pointer-events-none opacity-70',
         props.size === 'sm' &&
           'text-[13px] font-medium hover:bg-transparent dark:hover:bg-transparent hover:opacity-80 min-h-4 py-1 px-1.5',
         props.size === 'xs' &&
-          'text-[10px] rounded-md font-medium bg-transparent dark:bg-transparent hover:bg-slate-200/80 hover:dark:bg-slate-800 active:bg-slate-300/80 min-h-4 py-0 px-1',
+          'text-[10px] rounded-md font-medium bg-transparent dark:bg-transparent hover:bg-neutral-200/80 hover:dark:bg-neutral-700/40 active:bg-neutral-300/80 min-h-4 py-0 px-1',
         props.class,
       )}
       title={props.title}
+      data-key-record={props['data-key-record']}
+      aria-label={props['aria-label']}
       aria-expanded={props['aria-expanded']}
       aria-controls={props['aria-controls']}
       aria-pressed={props['aria-pressed']}
@@ -59,7 +63,7 @@ export const Cell: Component<CellProps> = (props) => {
           >
             <input
               type="checkbox"
-              class="size-3.5 cursor-pointer accent-blue-600 dark:accent-blue-400 dark:hover:accent-blue-300"
+              class="size-3.5 cursor-pointer accent-emerald-600 dark:accent-emerald-400 dark:hover:accent-emerald-300"
               aria-label={selection().label}
               checked={selection().checked}
               ref={(input) =>

@@ -140,7 +140,7 @@ export const CredentialsPage = () => {
                     <div class="relative min-w-5 min-h-5">
                       <TbOutlineSettings
                         title="Credentials Settings"
-                        class="absolute top-0 text-blue-500 hover:text-blue-400 cursor-pointer w-5 h-5 transition-all translate-x-2 opacity-0 group-hover:opacity-100 group-hover:translate-x-0"
+                        class="absolute top-0 text-emerald-500 hover:text-emerald-400 cursor-pointer w-5 h-5 transition-all translate-x-2 opacity-0 group-hover:opacity-100 group-hover:translate-x-0"
                         onClick={(event) => {
                           event.stopPropagation();
                           setError(undefined);
@@ -150,7 +150,7 @@ export const CredentialsPage = () => {
                       <Show when={isActive(entry)}>
                         <BsCheckLg
                           title="Active Credentials"
-                          class="text-blue-500 w-5 h-5 transition-transform group-hover:-translate-x-7"
+                          class="text-emerald-500 w-5 h-5 transition-transform group-hover:-translate-x-7"
                         />
                       </Show>
                     </div>

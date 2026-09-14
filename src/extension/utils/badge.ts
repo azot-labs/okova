@@ -1,5 +1,5 @@
 import { storage } from '#imports';
-import { isCapturedKey, type KeyInfo, type BadgeDrmSystem } from './storage';
+import { isCapturedKey, type KeyInfo, type BadgeDrmSystem } from './storage/history-record';
 
 const DRM_SYSTEMS = {
   W: 'Widevine',

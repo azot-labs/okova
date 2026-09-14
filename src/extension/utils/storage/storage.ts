@@ -1,6 +1,6 @@
+import { createCaptureHistory } from './capture-history';
 import { CLIENT_KEY_SYSTEMS, normalizeKeySystem } from '../../../lib/key-system';
 import type { DrmStage } from '../drm-error';
-import { getManifestMetadata, type Manifest } from '../manifest';
 import type { Credentials } from '../../../lib/credentials';
 import { browser, storage } from '#imports';
 import { z } from 'zod';
@@ -14,44 +14,7 @@ import { defaultSettings, settingsStorage, storedSettings, type Settings } from 
 
 export { defaultSettings, type Settings, type ThemeMode } from './settings';
 
-export type BadgeDrmSystem = 'W' | 'P' | 'C';
-
-export type KeyInfo = {
-  captureId?: string;
-  drmSystem?: BadgeDrmSystem;
-  id: string;
-  value: string;
-  url: string;
-  /** Preferred URL. The legacy field name also supports HLS and MSS. */
-  mpd?: string;
-  manifests?: Manifest[];
-  pssh: string;
-  createdAt: number;
-};
-
-// Include the capture time so a later capture of the same key survives confirmation.
-export const keyRecordToken = (key: KeyInfo) =>
-  JSON.stringify([
-    key.id,
-    key.value,
-    key.url,
-    key.pssh,
-    key.createdAt,
-    key.mpd,
-    key.drmSystem,
-    key.manifests,
-  ]);
-
-export type KeyDeletionScope =
-  | { kind: 'all' }
-  | { kind: 'site'; domain: string }
-  | { kind: 'selected'; records: KeyInfo[] };
-
-const sameKeyRecord = (left: KeyInfo, right: KeyInfo) =>
-  left.id === right.id &&
-  left.url === right.url &&
-  left.pssh === right.pssh &&
-  ((!isCapturedKey(left) && !isCapturedKey(right)) || left.value === right.value);
+export * from './history-record';
 
 export { drmStages, type DrmStage } from '../drm-error';
 export type DrmFailure = { stage: DrmStage; error: string; url: string; createdAt: number };
@@ -60,124 +23,10 @@ export type DrmFailure = { stage: DrmStage; error: string; url: string; createdA
 export const getDrmFailureStorage = (tabId: number) =>
   storage.defineItem<DrmFailure>(`session:drm-failure:${tabId}`);
 
-export type RecentKeysByDomain = Record<string, KeyInfo[]>;
-
 export const MAX_HISTORY_RECORDS = 1_000;
 
-// History is duplicated in three stores. Keep their combined budget at 6 MiB.
+// Compatibility limit for bounded bridge requests. Stored captures share a 6 MiB budget.
 export const MAX_HISTORY_BYTES = 2 * 1024 * 1024;
-const encoder = new TextEncoder();
-// asJson stores a JSON string, so count its escaped representation too.
-const storedBytes = (value: unknown) =>
-  encoder.encode(JSON.stringify(JSON.stringify(value))).byteLength;
-
-// Keep UI order. Evict whole captures by timestamp, leaving the newest intact.
-const retainNewest = <T>(
-  records: T[],
-  getKey: (record: T) => KeyInfo | null,
-  sizeBytes: (record: T) => number,
-): T[] => {
-  const entries = records.map((record, index) => ({
-    index,
-    key: getKey(record),
-    sizeBytes: sizeBytes(record),
-  }));
-  // Reserve space for the storage key, outer string, and collection delimiters.
-  let bytes = 256 + entries.reduce((total, entry) => total + entry.sizeBytes, 0);
-  if (records.length <= MAX_HISTORY_RECORDS && bytes <= MAX_HISTORY_BYTES) return records;
-  const oldest = entries.toSorted(
-    (left, right) =>
-      (left.key?.createdAt ?? 0) - (right.key?.createdAt ?? 0) || left.index - right.index,
-  );
-  const newest = oldest.at(-1);
-  const removed = new Set<number>();
-  for (const entry of oldest) {
-    if (records.length - removed.size <= MAX_HISTORY_RECORDS && bytes <= MAX_HISTORY_BYTES) break;
-    if (removed.has(entry.index)) continue;
-    if (
-      entry === newest ||
-      (entry.key?.captureId && entry.key.captureId === newest?.key?.captureId)
-    )
-      continue;
-    for (const candidate of entries) {
-      if (
-        !removed.has(candidate.index) &&
-        (candidate.index === entry.index ||
-          (entry.key?.captureId && candidate.key?.captureId === entry.key.captureId))
-      ) {
-        removed.add(candidate.index);
-        bytes -= candidate.sizeBytes;
-      }
-    }
-  }
-  if (bytes > MAX_HISTORY_BYTES || records.length - removed.size > MAX_HISTORY_RECORDS)
-    throw new Error(
-      'The newest capture exceeds the history budget; it was not saved. PSSH was kept intact.',
-    );
-  return records.filter((_, index) => !removed.has(index));
-};
-
-const sanitizeManifestMetadata = (key: KeyInfo): KeyInfo => {
-  const metadata = getManifestMetadata(key);
-  return { ...key, ...metadata, manifests: metadata.manifests };
-};
-const retainKeys = (keys: KeyInfo[]) =>
-  retainNewest(
-    keys.map(sanitizeManifestMetadata),
-    (key) => key,
-    (key) => storedBytes(key) + 1,
-  );
-
-// Charge domain names and delimiters per entry, conservatively including empty domains.
-const retainDomains = (domains: RecentKeysByDomain): RecentKeysByDomain => {
-  const entries = Object.entries(domains).flatMap(
-    ([domain, keys]): { domain: string; key: KeyInfo | null }[] =>
-      keys.length
-        ? keys.map((key) => ({ domain, key: sanitizeManifestMetadata(key) }))
-        : [{ domain, key: null }],
-  );
-  const retained = retainNewest(
-    entries,
-    (entry) => entry.key,
-    (entry) => storedBytes(entry.domain) + storedBytes(entry.key) + 8,
-  );
-  const result: RecentKeysByDomain = Object.create(null);
-  for (const { domain, key } of retained) {
-    const keys = (result[domain] ??= []);
-    if (key) keys.push(key);
-  }
-  return result;
-};
-
-// History also contains EME statuses, which cannot be reused as content keys.
-export const isCapturedKey = (key: KeyInfo) => /^[0-9a-f]{32}$/i.test(key.value);
-
-export const getWebsiteDomain = (url?: string | null) => {
-  if (!url) return null;
-
-  try {
-    const hostname = new URL(url).hostname.toLowerCase();
-    return hostname.startsWith('www.') ? hostname.slice(4) : hostname;
-  } catch {
-    return null;
-  }
-};
-
-export const getRecentKeysForUrl = (
-  url: string | undefined | null,
-  recentKeysByDomain: RecentKeysByDomain | null | undefined,
-  recentKeys: KeyInfo[] | null | undefined,
-) => {
-  const domain = getWebsiteDomain(url);
-  if (!domain) return [];
-
-  const scopedKeys = recentKeysByDomain?.[domain];
-  if (scopedKeys) return scopedKeys;
-
-  const legacyKeys = recentKeys ?? [];
-  const legacyDomain = getWebsiteDomain(legacyKeys[0]?.url);
-  return legacyDomain === domain ? legacyKeys : [];
-};
 
 export type { Credentials } from '../../../lib/credentials';
 export const credentialsInfoSchema = z.discriminatedUnion('type', [
@@ -512,6 +361,8 @@ type PrivateSession = { generation: string; windowIds: number[] };
 const privateSession = storage.defineItem<PrivateSession>('session:incognito:history-session');
 const PRIVATE_HISTORY_LOCK = 'okova:incognito-key-history';
 const PRIVATE_HISTORY_KEYS = [
+  'session:incognito:capture-history',
+  'session:incognito:capture-history-runtime-id',
   'session:incognito:all-keys',
   'session:incognito:recent-keys',
   'session:incognito:recent-keys-by-domain',
@@ -563,199 +414,7 @@ const createKeyHistory = (isIncognito: boolean, generation?: string) => {
       await mutation();
     });
   };
-  const recentKeys = asJson(storage.defineItem<KeyInfo[]>(`${prefix}recent-keys`));
-
-  // Read all three stores under the writer lock before showing the confirmation.
-  const prepareKeyDeletion = (scope: KeyDeletionScope) =>
-    navigator.locks.request(lockName, async () => {
-      const [history, recent, domains] = await Promise.all([
-        keyHistory.allKeys.getValue(),
-        keyHistory.recentKeys.getValue(),
-        keyHistory.recentKeysByDomain.getValue(),
-      ]);
-      const records = [
-        ...(history ?? []),
-        ...(recent ?? []),
-        ...Object.values(domains ?? {}).flat(),
-      ].filter((key) => {
-        switch (scope.kind) {
-          case 'all':
-            return true;
-          case 'site':
-            return getWebsiteDomain(key.url) === scope.domain;
-          case 'selected':
-            return scope.records.some((record) => sameKeyRecord(key, record));
-        }
-      });
-      const unique: KeyInfo[] = [];
-      for (const record of records) {
-        if (!unique.some((key) => sameKeyRecord(key, record))) unique.push(record);
-      }
-      return { count: unique.length, tokens: [...new Set(records.map(keyRecordToken))] };
-    });
-
-  const deleteKeySnapshot = (tokens: string[]) =>
-    mutateKeyHistory(async () => {
-      const targets = new Set(tokens);
-      const keep = (key: KeyInfo) => !targets.has(keyRecordToken(key));
-      const [history, recent, domains] = await Promise.all([
-        keyHistory.allKeys.getValue(),
-        keyHistory.recentKeys.getValue(),
-        keyHistory.recentKeysByDomain.getValue(),
-      ]);
-      await storage.setItems([
-        {
-          key: keyHistory.allKeys.raw.key,
-          value: JSON.stringify(retainKeys((history ?? []).filter(keep))),
-        },
-        {
-          key: keyHistory.recentKeys.key,
-          value: JSON.stringify(retainKeys((recent ?? []).filter(keep))),
-        },
-        {
-          key: keyHistory.recentKeysByDomain.raw.key,
-          value: JSON.stringify(
-            retainDomains(
-              Object.fromEntries(
-                Object.entries(domains ?? {}).map(([domain, records]) => [
-                  domain,
-                  records.filter(keep),
-                ]),
-              ),
-            ),
-          ),
-        },
-      ]);
-    });
-
-  const keyHistory = {
-    prepareKeyDeletion,
-    deleteKeySnapshot,
-
-    recentKeys: {
-      ...recentKeys,
-      setValue: (keys: KeyInfo[]) => mutateKeyHistory(() => recentKeys.setValue(retainKeys(keys))),
-      setForUrl: (url: string | undefined, keys: KeyInfo[]) =>
-        mutateKeyHistory(async () => {
-          const domain = getWebsiteDomain(url);
-          const items = [{ key: recentKeys.key, value: JSON.stringify(retainKeys(keys)) }];
-          if (domain) {
-            const domains = (await keyHistory.recentKeysByDomain.getValue()) ?? {};
-            items.push({
-              key: keyHistory.recentKeysByDomain.raw.key,
-              value: JSON.stringify(retainDomains({ ...domains, [domain]: keys })),
-            });
-          }
-          await storage.setItems(items);
-        }),
-    },
-    recentKeysByDomain: {
-      raw: asJson(storage.defineItem<RecentKeysByDomain>(`${prefix}recent-keys-by-domain`)),
-      setValue: (keys: RecentKeysByDomain) =>
-        mutateKeyHistory(() => keyHistory.recentKeysByDomain.raw.setValue(retainDomains(keys))),
-      getValue: async () => {
-        return keyHistory.recentKeysByDomain.raw.getValue();
-      },
-      watch: (
-        callback: (
-          newValue: RecentKeysByDomain | null,
-          oldValue: RecentKeysByDomain | null,
-        ) => void,
-      ) => {
-        return keyHistory.recentKeysByDomain.raw.watch(callback);
-      },
-      clear: () => mutateKeyHistory(() => keyHistory.recentKeysByDomain.raw.setValue({})),
-      setForUrl: async (url: string | undefined, keys: KeyInfo[]) => {
-        const domain = getWebsiteDomain(url);
-        if (!domain) return;
-
-        await mutateKeyHistory(async () => {
-          const keysByDomain = (await keyHistory.recentKeysByDomain.getValue()) || {};
-          await keyHistory.recentKeysByDomain.raw.setValue(
-            retainDomains({ ...keysByDomain, [domain]: keys }),
-          );
-        });
-      },
-    },
-    allKeys: {
-      raw: asJson(storage.defineItem<KeyInfo[]>(`${prefix}all-keys`)),
-      setValue: (keys: KeyInfo[]) =>
-        mutateKeyHistory(() => keyHistory.allKeys.raw.setValue(retainKeys(keys))),
-      getValue: async () => {
-        return keyHistory.allKeys.raw.getValue();
-      },
-      clear: () =>
-        mutateKeyHistory(async () => {
-          await keyHistory.allKeys.raw.setValue([]);
-          await recentKeys.setValue([]);
-          await keyHistory.recentKeysByDomain.raw.setValue({});
-        }),
-      add: (...newKeys: KeyInfo[]) =>
-        mutateKeyHistory(async () => {
-          const keys = (await keyHistory.allKeys.getValue()) || [];
-          for (const newKey of newKeys) {
-            const index = keys.findIndex(
-              (key) =>
-                key.id === newKey.id &&
-                (!isCapturedKey(key) ||
-                  !isCapturedKey(newKey) ||
-                  (key.value === newKey.value &&
-                    key.pssh === newKey.pssh &&
-                    key.url === newKey.url)),
-            );
-            if (index === -1) {
-              keys.push(newKey);
-            } else if (
-              isCapturedKey(newKey) &&
-              (!isCapturedKey(keys[index]!) || newKey.createdAt >= keys[index]!.createdAt)
-            ) {
-              keys[index] = newKey;
-            }
-          }
-          await keyHistory.allKeys.raw.setValue(retainKeys(keys));
-        }),
-      remove: (key: KeyInfo) =>
-        mutateKeyHistory(async () => {
-          // Status values can change in recent caches while history retains the original.
-          // Captured keys still require an exact value match; timestamps may differ.
-          const keepRecord = (storedKey: KeyInfo) =>
-            storedKey.id !== key.id ||
-            ((isCapturedKey(storedKey) || isCapturedKey(key)) && storedKey.value !== key.value) ||
-            storedKey.pssh !== key.pssh ||
-            storedKey.url !== key.url;
-          const [keys, recent, domains] = await Promise.all([
-            keyHistory.allKeys.getValue(),
-            recentKeys.getValue(),
-            keyHistory.recentKeysByDomain.getValue(),
-          ]);
-          await storage.setItems([
-            {
-              key: keyHistory.allKeys.raw.key,
-              value: JSON.stringify(retainKeys((keys ?? []).filter(keepRecord))),
-            },
-            {
-              key: recentKeys.key,
-              value: JSON.stringify(retainKeys((recent ?? []).filter(keepRecord))),
-            },
-            {
-              key: keyHistory.recentKeysByDomain.raw.key,
-              value: JSON.stringify(
-                retainDomains(
-                  Object.fromEntries(
-                    Object.entries(domains ?? {}).map(([domain, records]) => [
-                      domain,
-                      records.filter(keepRecord),
-                    ]),
-                  ),
-                ),
-              ),
-            },
-          ]);
-        }),
-    },
-  };
-
-  return keyHistory;
+  return createCaptureHistory(prefix, mutateKeyHistory);
 };
 
 export const regularHistory = createKeyHistory(false);

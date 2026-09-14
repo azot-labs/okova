@@ -1,10 +1,17 @@
-import { getManifestCapture } from '@/utils/manifest';
+import { getManifestCapture } from '@/utils/manifest-capture';
 import { z } from 'zod';
 import { CLIENT_KEY_SYSTEMS, type ClientKeySystem } from '@okova/lib/key-system';
 import { toBytes, bytesToBase64, fromHex, fromBase64 } from '@okova/lib/utils';
 import { playbackSessions } from './playback-sessions';
 import { sendDrmMessage } from './drm-bridge';
 import type { EmeMethodResolver } from './eme-runtime';
+
+// Chromium supports this Media Capabilities field before the DOM typings expose it.
+declare global {
+  interface KeySystemTrackConfiguration {
+    encryptionScheme?: MediaKeySystemMediaCapability['encryptionScheme'];
+  }
+}
 
 const playbackMethods = new WeakMap<object, object>();
 export const resolvePlaybackMethod: EmeMethodResolver = (receiver, method) => {
@@ -221,7 +228,7 @@ export const installDrmPlayback = () => {
       throw unsupported('Select matching DRM credentials in Okova');
     }
     const supportsCapability = (capability: MediaKeySystemMediaCapability) =>
-      (!capability.encryptionScheme || capability.encryptionScheme === 'cenc') &&
+      (!capability.encryptionScheme || ['cenc', 'cbcs'].includes(capability.encryptionScheme)) &&
       (!capability.robustness ||
         (isPlayReady
           ? ['150', '2000'].includes(capability.robustness)
@@ -236,9 +243,11 @@ export const installDrmPlayback = () => {
       )
         continue;
       const translate = (capabilities: MediaKeySystemMediaCapability[] | undefined) =>
-        capabilities
-          ?.filter(supportsCapability)
-          .map((capability) => ({ ...capability, robustness: '', encryptionScheme: 'cenc' }));
+        capabilities?.filter(supportsCapability).map((capability) => ({
+          ...capability,
+          robustness: '',
+          encryptionScheme: capability.encryptionScheme ?? 'cenc',
+        }));
       const audioCapabilities = translate(configuration.audioCapabilities);
       const videoCapabilities = translate(configuration.videoCapabilities);
       if (
@@ -303,5 +312,56 @@ export const installDrmPlayback = () => {
     }
     throw unsupported('No compatible ClearKey configuration for custom playback');
   };
+  const capabilities = navigator.mediaCapabilities;
+  const nativeDecodingInfo = capabilities?.decodingInfo;
+  if (capabilities && nativeDecodingInfo) {
+    capabilities.decodingInfo = async function (configuration) {
+      const drm = configuration?.keySystemConfiguration;
+      if (!drm) return nativeDecodingInfo.call(this, configuration);
+      const mediaCapability = (
+        media: AudioConfiguration | VideoConfiguration,
+        track?: NonNullable<MediaDecodingConfiguration['keySystemConfiguration']>['audio'],
+      ) => ({
+        contentType: media.contentType,
+        robustness: track?.robustness,
+        encryptionScheme: track?.encryptionScheme,
+      });
+      let access: MediaKeySystemAccess;
+      try {
+        access = await navigator.requestMediaKeySystemAccess(drm.keySystem, [
+          {
+            initDataTypes: drm.initDataType ? [drm.initDataType] : undefined,
+            distinctiveIdentifier: drm.distinctiveIdentifier,
+            persistentState: drm.persistentState,
+            sessionTypes: drm.sessionTypes,
+            audioCapabilities: configuration.audio
+              ? [mediaCapability(configuration.audio, drm.audio)]
+              : undefined,
+            videoCapabilities: configuration.video
+              ? [mediaCapability(configuration.video, drm.video)]
+              : undefined,
+          },
+        ]);
+      } catch (error) {
+        if (!(error instanceof DOMException) || error.name !== 'NotSupportedError') throw error;
+        return nativeDecodingInfo.call(this, configuration);
+      }
+      if (!playbackMethods.has(access)) return nativeDecodingInfo.call(this, configuration);
+      const result = await nativeDecodingInfo.call(this, {
+        ...configuration,
+        keySystemConfiguration: {
+          ...drm,
+          keySystem: CLEARKEY,
+          initDataType: 'keyids',
+          distinctiveIdentifier: 'not-allowed',
+          persistentState: 'not-allowed',
+          sessionTypes: ['temporary'],
+          audio: drm.audio ? { ...drm.audio, robustness: '' } : undefined,
+          video: drm.video ? { ...drm.video, robustness: '' } : undefined,
+        },
+      });
+      return { ...result, keySystemAccess: result.supported ? access : null };
+    };
+  }
   Object.defineProperty(navigator, INSTALLED, { value: true });
 };

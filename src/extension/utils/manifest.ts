@@ -5,6 +5,7 @@ export const MAX_CHILD_PLAYLISTS = 50;
 export const MAX_INIT_DATA_ENTRIES = 50;
 export const MAX_MANIFEST_REQUEST_URLS = 50;
 export const MAX_MANIFEST_METADATA_BYTES = 16 * 1024;
+export const MAX_DETECTED_MANIFEST_BYTES = 128 * 1024;
 export const manifestLabels = {
   dash: 'DASH',
   'hls-master': 'HLS master',
@@ -30,6 +31,9 @@ const detectedManifestSchema = z.object({
   initData: z
     .array(z.string().check(z.maxLength(1024 * 1024)))
     .check(z.maxLength(MAX_INIT_DATA_ENTRIES)),
+  keyIds: z.optional(
+    z.array(z.string().check(z.regex(/^[0-9a-f]{32}$/))).check(z.maxLength(MAX_INIT_DATA_ENTRIES)),
+  ),
   children: z.array(manifestUrlSchema).check(z.maxLength(MAX_CHILD_PLAYLISTS)),
   requestUrls: z.optional(z.array(manifestUrlSchema).check(z.maxLength(MAX_MANIFEST_REQUEST_URLS))),
 });
@@ -37,8 +41,41 @@ export type DetectedManifest = z.infer<typeof detectedManifestSchema>;
 
 export const parseDetectedManifest = (value: unknown) => {
   try {
-    const result = detectedManifestSchema.safeParse(value);
-    return result.success ? result.data : undefined;
+    if (!value || typeof value !== 'object') return undefined;
+    // Snapshot only bounded fields before Zod walks arrays or serialization copies strings.
+    // UTF-16 length is a cheap lower bound on their serialized UTF-8 byte size.
+    const snapshot: Record<string, string | string[] | undefined> = {};
+    let length = 0;
+    const maxEntries = Math.max(
+      MAX_INIT_DATA_ENTRIES,
+      MAX_CHILD_PLAYLISTS,
+      MAX_MANIFEST_REQUEST_URLS,
+    );
+    for (const field of ['url', 'kind', 'initData', 'keyIds', 'children', 'requestUrls']) {
+      const input: unknown = Reflect.get(value, field);
+      if (input === undefined) continue;
+      if (typeof input === 'string') {
+        length += input.length;
+        if (length > MAX_DETECTED_MANIFEST_BYTES) return undefined;
+        snapshot[field] = input;
+      } else if (Array.isArray(input)) {
+        const count = input.length;
+        if (count > maxEntries) return undefined;
+        const entries: string[] = [];
+        for (let index = 0; index < count; index++) {
+          const entry: unknown = input[index];
+          if (typeof entry !== 'string') return undefined;
+          length += entry.length;
+          if (length > MAX_DETECTED_MANIFEST_BYTES) return undefined;
+          entries.push(entry);
+        }
+        snapshot[field] = entries;
+      } else return undefined;
+    }
+    const result = detectedManifestSchema.safeParse(snapshot);
+    return result.success && serializedSize(result.data) <= MAX_DETECTED_MANIFEST_BYTES
+      ? result.data
+      : undefined;
   } catch {
     // Page-owned properties can throw from getters. Manifest discovery must not stop EME.
     return undefined;
@@ -124,55 +161,17 @@ export const isManifestUrl = (value: unknown): value is string => {
 };
 
 export const findManifest = (initData: string | undefined) => {
-  if (!initData || !(window.MPD_LIST instanceof Map)) return undefined;
-  const exact = window.MPD_LIST.get(initData);
-  if (isManifestUrl(exact)) return exact;
-  for (const pssh of splitPssh(initData)) {
-    const url = window.MPD_LIST.get(pssh);
-    if (isManifestUrl(url)) return url;
+  try {
+    const manifests = window.MPD_LIST;
+    if (!initData || !(manifests instanceof Map)) return undefined;
+    const exact = manifests.get(initData);
+    if (isManifestUrl(exact)) return exact;
+    for (const pssh of splitPssh(initData)) {
+      const url = manifests.get(pssh);
+      if (isManifestUrl(url)) return url;
+    }
+  } catch {
+    // Page-owned accessors and maps must not interrupt EME observation.
   }
   return undefined;
-};
-
-export const getManifestCapture = (initData: string | undefined) => {
-  const tokens = new Set(initData ? [initData, ...splitPssh(initData)] : []);
-  const detected: DetectedManifest[] = [];
-  if (window.MANIFEST_LIST instanceof Map) {
-    for (const value of window.MANIFEST_LIST.values()) {
-      if (detected.length === MAX_MANIFESTS) break;
-      const manifest = parseDetectedManifest(value);
-      if (manifest) detected.push(manifest);
-    }
-  }
-  const directUrls = new Set(
-    detected
-      .filter((item) => item.initData.some((data) => tokens.has(data)))
-      .map((item) => item.url),
-  );
-  const matchedUrls = new Set(directUrls);
-  // A master playlist can identify the capture through an observed child playlist.
-  for (let pass = 0; pass < detected.length; pass++) {
-    const previousSize = matchedUrls.size;
-    for (const item of detected) {
-      if (item.children.some((url) => matchedUrls.has(url))) matchedUrls.add(item.url);
-      if (matchedUrls.has(item.url)) {
-        for (const requestUrl of item.requestUrls ?? []) matchedUrls.add(requestUrl);
-      }
-    }
-    if (previousSize === matchedUrls.size) break;
-  }
-  const priority = (manifest: Manifest) => {
-    if (!manifest.matched) return 0;
-    if (directUrls.has(manifest.url) && manifest.kind !== 'hls-media') return 3;
-    // Prefer an HLS master to its media playlist, but keep direct DASH/MSS matches first.
-    return manifest.kind === 'hls-master' ? 2 : 1;
-  };
-  const manifests = detected
-    .map(({ url, kind }) => ({ url, kind, matched: matchedUrls.has(url) }))
-    .sort((left, right) => priority(right) - priority(left));
-  const preferred = manifests.find((item) => item.matched);
-  return getManifestMetadata({
-    mpd: preferred?.url ?? findManifest(initData),
-    manifests,
-  });
 };

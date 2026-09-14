@@ -1,29 +1,14 @@
-import { popupHistory } from '../utils/history';
 import { A } from '@solidjs/router';
 import { TbOutlineDevices, TbOutlineSettings, TbOutlineLayersDifference } from 'solid-icons/tb';
 import { CardButton } from './card-button';
 import { Section } from './section';
-import { isCapturedKey } from '@/utils/storage';
-import { useCredentials } from '../utils/state';
+import { useCredentials, useCaptures } from '../utils/state';
 import { CAPTURES_LABEL, CAPTURES_PATH } from '../utils/captures';
 
 export const Toolbar = () => {
   const [credentials] = useCredentials();
-  const [capturedKeyCount, setCapturedKeyCount] = createSignal(0);
-  let hasUpdate = false;
-  let isDisposed = false;
-  const unwatch = popupHistory.allKeys.raw.watch((keys) => {
-    hasUpdate = true;
-    setCapturedKeyCount(keys?.filter(isCapturedKey).length ?? 0);
-  });
-  onCleanup(() => {
-    isDisposed = true;
-    unwatch();
-  });
-  onMount(async () => {
-    const keys = await popupHistory.allKeys.getValue();
-    if (!isDisposed && !hasUpdate) setCapturedKeyCount(keys?.filter(isCapturedKey).length ?? 0);
-  });
+  const [captures] = useCaptures();
+  const captureCount = () => captures().length;
 
   return (
     <div class="grid grid-cols-3 gap-3">
@@ -37,7 +22,7 @@ export const Toolbar = () => {
       </A>
       <A href={CAPTURES_PATH} aria-label={CAPTURES_LABEL}>
         <Section>
-          <CardButton badge={capturedKeyCount()}>
+          <CardButton badge={captureCount()}>
             <TbOutlineLayersDifference />
             {CAPTURES_LABEL}
           </CardButton>

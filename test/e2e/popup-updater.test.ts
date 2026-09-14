@@ -45,7 +45,7 @@ test('popup displays update failure, retries, and renders a release without Temp
       const pageErrors: string[] = [];
       popup.on('pageerror', (error) => pageErrors.push(error.message));
       await popup.goto(`chrome-extension://${new URL(worker.url()).hostname}/popup.html`);
-      await popup.getByRole('link', { name: 'Settings', exact: true }).click();
+      await popup.getByRole('link', { name: 'Settings', exact: true }).last().click();
       await popup.getByRole('button', { name: 'Check for Updates', exact: true }).click();
       const retry = popup.getByRole('button', { name: /Retry Update Check/ });
       await expect.poll(() => retry.isVisible()).toBe(true);

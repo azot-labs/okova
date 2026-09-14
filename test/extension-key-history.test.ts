@@ -2,14 +2,7 @@ import { afterEach, beforeEach, expect, test, vi } from 'vitest';
 import { browser } from 'wxt/browser';
 import { fakeBrowser } from 'wxt/testing/fake-browser';
 import background from '../src/extension/entrypoints/background';
-import {
-  appStorage,
-  MAX_HISTORY_BYTES,
-  getDrmFailureStorage,
-  prepareKeyDeletion,
-  deleteKeySnapshot,
-  type KeyInfo,
-} from '../src/extension/utils/storage';
+import { appStorage, getDrmFailureStorage, type KeyInfo } from '../src/extension/utils/storage';
 import { getCaptureDiagnosticsStorage } from '../src/extension/utils/session-diagnostics';
 import { fromHex, Widevine } from '../src/lib';
 import { Session, setSupportedEngines } from '../src/lib/api';
@@ -37,6 +30,7 @@ const key: KeyInfo = {
 beforeEach(() => {
   fakeBrowser.reset();
   vi.spyOn(browser.webRequest.onSendHeaders, 'addListener').mockImplementation(() => {});
+  vi.spyOn(browser.webRequest.onHeadersReceived, 'addListener').mockImplementation(() => {});
   vi.spyOn(browser.webRequest.onBeforeRedirect, 'addListener').mockImplementation(() => {});
   vi.spyOn(browser.webRequest.onErrorOccurred, 'addListener').mockImplementation(() => {});
 });
@@ -44,167 +38,6 @@ beforeEach(() => {
 afterEach(() => {
   vi.restoreAllMocks();
   setSupportedEngines([]);
-});
-
-test.each(['usable', 'expired', 'output-restricted', 'status-pending'])(
-  'replaces a stored %s status with a captured key and its metadata',
-  async (value) => {
-    await appStorage.allKeys.setValue([{ ...key, value }]);
-    const capturedKey = { ...key, url: 'https://example.com/replay', createdAt: 2 };
-
-    await appStorage.allKeys.add(capturedKey);
-
-    expect(await appStorage.allKeys.getValue()).toEqual([capturedKey]);
-  },
-);
-
-test('refreshes capture correlation for newer duplicates without downgrading to statuses or older captures', async () => {
-  const older = { ...key, captureId: 'first' };
-  const newer = { ...key, createdAt: 2, captureId: 'second' };
-  await appStorage.allKeys.add(older);
-  await appStorage.allKeys.add(newer);
-  await appStorage.allKeys.add({ ...key, createdAt: 3, value: 'usable' }, older);
-  expect(await appStorage.allKeys.getValue()).toEqual([newer]);
-});
-
-test('upgrades a status within the same batch while retaining distinct key IDs', async () => {
-  const otherKey = { ...key, id: '112233445566778899aabbccddeeff00' };
-  await appStorage.allKeys.add({ ...key, value: 'usable' }, otherKey, key);
-
-  expect(await appStorage.allKeys.getValue()).toEqual([key, otherKey]);
-});
-
-test('retains every key from concurrent captures', async () => {
-  const captures = Array.from({ length: 10 }, (_, index) => ({
-    ...key,
-    id: index.toString(16).padStart(32, '0'),
-  }));
-
-  await Promise.all(captures.map((capture) => appStorage.allKeys.add(capture)));
-
-  expect(await appStorage.allKeys.getValue()).toEqual(captures);
-});
-
-test('retains recent keys for different domains during concurrent captures', async () => {
-  const otherKey = { ...key, url: 'https://other.example/video' };
-
-  await Promise.all([
-    appStorage.recentKeysByDomain.setForUrl(key.url, [key]),
-    appStorage.recentKeysByDomain.setForUrl(otherKey.url, [otherKey]),
-  ]);
-
-  expect(await appStorage.recentKeysByDomain.getValue()).toEqual({
-    'example.com': [key],
-    'other.example': [otherKey],
-  });
-});
-
-test('serializes status upgrades and duplicate captures', async () => {
-  await Promise.all([
-    appStorage.allKeys.add({ ...key, value: 'usable' }),
-    appStorage.allKeys.add(key),
-    appStorage.allKeys.add({ ...key, value: 'expired' }),
-  ]);
-
-  expect(await appStorage.allKeys.getValue()).toEqual([key]);
-});
-
-test('keeps recent stores consistent across captures and deletion snapshots', async () => {
-  const otherKey = { ...key, url: 'https://other.example/video' };
-  const [, snapshot, stores] = await Promise.all([
-    appStorage.recentKeys.setForUrl(key.url, [key]),
-    prepareKeyDeletion({ kind: 'all' }),
-    navigator.locks.request('okova:key-history', async () => ({
-      recent: await appStorage.recentKeys.getValue(),
-      domains: await appStorage.recentKeysByDomain.getValue(),
-    })),
-    appStorage.recentKeys.setForUrl(otherKey.url, [otherKey]),
-  ]);
-
-  expect(snapshot.count).toBe(1);
-  expect(stores).toEqual({ recent: [key], domains: { 'example.com': [key] } });
-  expect(await appStorage.recentKeys.getValue()).toEqual([otherKey]);
-  expect(await appStorage.recentKeysByDomain.getValue()).toEqual({
-    'example.com': [key],
-    'other.example': [otherKey],
-  });
-
-  await Promise.all([appStorage.recentKeys.setForUrl(key.url, [key]), appStorage.allKeys.clear()]);
-  expect(await appStorage.recentKeys.getValue()).toEqual([]);
-  expect(await appStorage.recentKeysByDomain.getValue()).toEqual({});
-});
-
-test('releases the recent-store lock after a failed batch write', async () => {
-  await appStorage.recentKeys.setForUrl(key.url, [key]);
-  const error = new Error('Storage write failed');
-  vi.spyOn(browser.storage.local, 'set').mockRejectedValueOnce(error);
-
-  await expect(appStorage.recentKeys.setForUrl(key.url, [])).rejects.toThrow(error);
-  expect(await appStorage.recentKeys.getValue()).toEqual([key]);
-  expect(await appStorage.recentKeysByDomain.getValue()).toEqual({ 'example.com': [key] });
-
-  await appStorage.recentKeys.setForUrl(key.url, []);
-  expect(await appStorage.recentKeys.getValue()).toEqual([]);
-  expect(await appStorage.recentKeysByDomain.getValue()).toEqual({ 'example.com': [] });
-});
-
-test('bounds combined recent writes and preserves empty and unscoped results', async () => {
-  const keys = Array.from({ length: 1_005 }, (_, index) => ({
-    ...key,
-    id: String(index),
-    createdAt: index,
-  }));
-  await appStorage.recentKeys.setForUrl(key.url, keys);
-  expect(await appStorage.recentKeys.getValue()).toEqual(keys.slice(5));
-  expect(await appStorage.recentKeysByDomain.getValue()).toEqual({
-    'example.com': keys.slice(5),
-  });
-  await appStorage.recentKeys.setForUrl(key.url, []);
-  await appStorage.recentKeys.setForUrl(undefined, [key]);
-  expect(await appStorage.recentKeys.getValue()).toEqual([key]);
-  expect(await appStorage.recentKeysByDomain.getValue()).toEqual({ 'example.com': [] });
-});
-
-test('serializes removals with captures and ignores repeated removals', async () => {
-  const otherKey = { ...key, id: '112233445566778899aabbccddeeff00' };
-  await appStorage.allKeys.add(key);
-
-  await Promise.all([
-    appStorage.allKeys.add(otherKey),
-    appStorage.allKeys.remove(key),
-    appStorage.allKeys.remove(key),
-  ]);
-
-  expect(await appStorage.allKeys.getValue()).toEqual([otherKey]);
-});
-
-test('clears history after pending writes without restoring stale entries', async () => {
-  await Promise.all([
-    appStorage.allKeys.add(key),
-    appStorage.recentKeys.setValue([key]),
-    appStorage.recentKeysByDomain.setForUrl(key.url, [key]),
-    appStorage.allKeys.clear(),
-  ]);
-
-  expect(await appStorage.allKeys.getValue()).toEqual([]);
-  expect(await appStorage.recentKeys.getValue()).toEqual([]);
-  expect(await appStorage.recentKeysByDomain.getValue()).toEqual({});
-});
-
-test('releases the lock after a failed write and reports the failure', async () => {
-  const error = new Error('Storage write failed');
-  vi.spyOn(appStorage.allKeys.raw, 'setValue').mockRejectedValueOnce(error);
-
-  const results = await Promise.allSettled([
-    appStorage.allKeys.add(key),
-    appStorage.allKeys.add(key),
-  ]);
-
-  expect(results).toEqual([
-    { status: 'rejected', reason: error },
-    { status: 'fulfilled', value: undefined },
-  ]);
-  expect(await appStorage.allKeys.getValue()).toEqual([key]);
 });
 
 const startBackground = (
@@ -260,7 +93,7 @@ test('captures keys after logging a status with spoofing disabled', async () => 
     keyStatuses: { [fromHex(key.id).toBase64()]: 'usable' },
   });
   expect(await appStorage.allKeys.getValue()).toEqual([
-    { ...key, value: 'usable', createdAt: expect.any(Number) },
+    expect.objectContaining({ ...key, value: 'usable', createdAt: expect.any(Number) }),
   ]);
   expect(loadCredentials).not.toHaveBeenCalled();
 
@@ -273,8 +106,8 @@ test('captures keys after logging a status with spoofing disabled', async () => 
   const response = await sendMessage({ action: 'update', message: { 0: 8, 1: 2 } });
   const capturedKeys = [{ ...key, createdAt: expect.any(Number) }];
   expect(response).toEqual({ keys: capturedKeys });
-  expect(await appStorage.allKeys.getValue()).toEqual(capturedKeys);
-  expect(await appStorage.recentKeys.getValue()).toEqual(capturedKeys);
+  expect(await appStorage.allKeys.getValue()).toMatchObject(capturedKeys);
+  expect((await appStorage.captures.getValue())[0]?.sessions).toHaveLength(1);
 
   await sendMessage({ action: 'generateRequest', initDataType: 'cenc' });
   expect(createSession).toHaveBeenCalledTimes(2);
@@ -293,401 +126,14 @@ test('stored captures are not relabeled as current-site results', async () => {
     mpd: 'https://other.example/manifest.mpd',
   });
 
-  expect(await appStorage.allKeys.getValue()).toEqual([key]);
-  expect((await appStorage.recentKeys.getValue()) ?? []).toEqual([]);
-  expect((await appStorage.recentKeysByDomain.getValue()) ?? {}).toEqual({});
+  expect(await appStorage.allKeys.getValue()).toMatchObject([key]);
+  expect((await appStorage.captures.getValue()).map((capture) => capture.source.url)).toEqual([
+    key.url,
+  ]);
   expect(loadCredentials).not.toHaveBeenCalled();
 });
 
-test('retains different values and content metadata for a reused KID', async () => {
-  const otherValue = { ...key, value: '000102030405060708090a0b0c0d0e0f' };
-  const otherContent = { ...key, pssh: 'other-pssh' };
-  await appStorage.allKeys.add(key, otherValue, otherContent, otherValue);
-  expect(await appStorage.allKeys.getValue()).toEqual([key, otherValue, otherContent]);
-  await appStorage.allKeys.remove(otherValue);
-  expect(await appStorage.allKeys.getValue()).toEqual([key, otherContent]);
-});
-
-test.each([
-  { url: key.url, pssh: key.pssh, preservesCapture: true },
-  { url: 'https://example.com/another-video', pssh: key.pssh, preservesCapture: false },
-  { url: key.url, pssh: 'another-pssh', preservesCapture: false },
-])('scopes captured recent keys to the status event context: $url, $pssh', async (context) => {
-  await appStorage.settings.setValue({
-    spoofing: false,
-    emeInterception: true,
-    requestInterception: false,
-    theme: 'auto',
-  });
-  await appStorage.recentKeys.setValue([key]);
-  await appStorage.recentKeysByDomain.setForUrl(key.url, [key]);
-  const sendMessage = startBackground();
-  const otherId = '112233445566778899aabbccddeeff00';
-  await sendMessage({
-    action: 'keystatuseschange',
-    url: context.url,
-    initData: context.pssh,
-    keyStatuses: {
-      [fromHex(key.id).toBase64()]: 'usable',
-      [fromHex(otherId).toBase64()]: 'expired',
-    },
-  });
-  const status = (id: string, value: string) => ({
-    ...key,
-    id,
-    value,
-    url: context.url,
-    pssh: context.pssh,
-    createdAt: expect.any(Number),
-  });
-  const expected = [
-    context.preservesCapture ? key : status(key.id, 'usable'),
-    status(otherId, 'expired'),
-  ];
-  expect(await appStorage.recentKeys.getValue()).toEqual(expected);
-  expect(await appStorage.recentKeysByDomain.getValue()).toEqual({ 'example.com': expected });
-});
-
-test('evicts the oldest timestamps at 1,001 records, preserving newer captures', async () => {
-  const keys = Array.from({ length: 1_000 }, (_, index) => ({
-    ...key,
-    id: String(index),
-    createdAt: 1_000 - index,
-  }));
-  await appStorage.allKeys.setValue(keys);
-  await appStorage.allKeys.add({ ...key, id: 'new', createdAt: 1_001 });
-  const stored = await appStorage.allKeys.getValue();
-  expect(stored).toHaveLength(1_000);
-  expect(stored?.some((key) => key.id === '999')).toBe(false);
-  expect(stored?.at(-1)?.id).toBe('new');
-});
-
-test('bounds legacy oversized history and concurrent additions', async () => {
-  const keys = Array.from({ length: 1_050 }, (_, index) => ({
-    ...key,
-    id: String(index),
-    createdAt: index,
-  }));
-  await appStorage.allKeys.raw.setValue(keys);
-  await Promise.all([
-    appStorage.allKeys.add({ ...key, id: 'a', createdAt: 1_050 }),
-    appStorage.allKeys.add({ ...key, id: 'b', createdAt: 1_051 }),
-  ]);
-  const stored = await appStorage.allKeys.getValue();
-  expect(stored).toHaveLength(1_000);
-  expect(stored?.[0]?.id).toBe('52');
-  expect(stored?.slice(-2).map((key) => key.id)).toEqual(['a', 'b']);
-});
-
-test('bounds direct and recent writes, including the shared domain cache budget', async () => {
-  const keys = Array.from({ length: 1_005 }, (_, index) => ({
-    ...key,
-    id: String(index),
-    createdAt: index,
-  }));
-  await appStorage.allKeys.setValue(keys);
-  await appStorage.recentKeys.setValue(keys);
-  expect(await appStorage.allKeys.getValue()).toEqual(keys.slice(5));
-  expect(await appStorage.recentKeys.getValue()).toEqual(keys.slice(5));
-  await appStorage.recentKeysByDomain.setValue(
-    Object.fromEntries(keys.map((key) => [`${key.id}.example`, [key]])),
-  );
-  await appStorage.recentKeysByDomain.setForUrl('https://latest.example', [
-    { ...key, id: 'latest', createdAt: 2_000 },
-  ]);
-  const domains = await appStorage.recentKeysByDomain.getValue();
-  expect(Object.values(domains ?? {}).flat()).toHaveLength(1_000);
-  expect(domains?.['5.example']).toBeUndefined();
-  expect(domains?.['latest.example']?.[0]?.id).toBe('latest');
-  await appStorage.recentKeysByDomain.setForUrl('https://latest.example', keys);
-  expect(Object.values((await appStorage.recentKeysByDomain.getValue()) ?? {}).flat()).toHaveLength(
-    1_000,
-  );
-});
-
-test('preserves explicit empty domain results without allowing empty domains to grow unbounded', async () => {
-  await appStorage.recentKeysByDomain.setForUrl(key.url, []);
-  expect(await appStorage.recentKeysByDomain.getValue()).toEqual({ 'example.com': [] });
-  await appStorage.recentKeysByDomain.setValue(
-    Object.fromEntries(Array.from({ length: 1_005 }, (_, index) => [`${index}.example`, []])),
-  );
-  expect(Object.keys((await appStorage.recentKeysByDomain.getValue()) ?? {})).toHaveLength(1_000);
-});
-
-test('merges a whole capture batch before eviction so a late status cannot replace an evicted key', async () => {
-  const keys = Array.from({ length: 1_000 }, (_, index) => ({
-    ...key,
-    id: String(index),
-    createdAt: index,
-  }));
-  await appStorage.allKeys.setValue(keys);
-  await appStorage.allKeys.add(
-    { ...key, id: 'new', createdAt: 1_001 },
-    { ...key, id: '0', value: 'expired', createdAt: 1_002 },
-  );
-  const stored = await appStorage.allKeys.getValue();
-  expect(stored).toHaveLength(1_000);
-  expect(stored?.some((record) => record.id === '0')).toBe(false);
-  expect(stored?.[0]?.id).toBe('1');
-});
-
-test('deletes only the chosen record from history and both recent caches', async () => {
-  const otherPage = { ...key, url: 'https://example.com/another-video' };
-  const otherDomain = { ...key, url: 'https://other.example/video' };
-  const otherValue = { ...key, value: '000102030405060708090a0b0c0d0e0f' };
-  const otherPssh = { ...key, pssh: 'other-pssh' };
-  const remaining = [otherPage, otherDomain, otherValue, otherPssh];
-  await appStorage.allKeys.setValue([key, ...remaining]);
-  await appStorage.recentKeys.setValue([{ ...key, createdAt: 2 }, ...remaining]);
-  await appStorage.recentKeysByDomain.setValue({
-    'example.com': [{ ...key, createdAt: 2 }, otherPage, otherValue, otherPssh],
-    'other.example': [otherDomain],
-  });
-
-  await appStorage.allKeys.remove(key);
-
-  expect(await appStorage.allKeys.getValue()).toEqual(remaining);
-  expect(await appStorage.recentKeys.getValue()).toEqual(remaining);
-  expect(await appStorage.recentKeysByDomain.getValue()).toEqual({
-    'example.com': [otherPage, otherValue, otherPssh],
-    'other.example': [otherDomain],
-  });
-});
-
-test('deletes a recent-only status and preserves the explicit empty domain cache', async () => {
-  const status = { ...key, value: 'usable' };
-  await appStorage.recentKeys.setValue([status]);
-  await appStorage.recentKeysByDomain.setForUrl(key.url, [status]);
-
-  await appStorage.allKeys.remove(status);
-  await appStorage.allKeys.remove(status);
-
-  expect(await appStorage.allKeys.getValue()).toEqual([]);
-  expect(await appStorage.recentKeys.getValue()).toEqual([]);
-  expect(await appStorage.recentKeysByDomain.getValue()).toEqual({ 'example.com': [] });
-});
-
-test('deletes newer recent status variants after EME status changes', async () => {
-  await appStorage.settings.setValue({
-    spoofing: false,
-    emeInterception: true,
-    requestInterception: false,
-    theme: 'auto',
-  });
-  const sendMessage = startBackground();
-  for (const value of ['usable', 'expired']) {
-    await sendMessage({
-      action: 'keystatuseschange',
-      keyStatuses: { [fromHex(key.id).toBase64()]: value },
-    });
-  }
-  const original = { ...key, value: 'usable', createdAt: expect.any(Number) };
-  expect(await appStorage.allKeys.getValue()).toEqual([original]);
-  expect(await appStorage.recentKeys.getValue()).toEqual([{ ...original, value: 'expired' }]);
-  expect(await appStorage.recentKeysByDomain.getValue()).toEqual({
-    'example.com': [{ ...original, value: 'expired' }],
-  });
-
-  await appStorage.allKeys.remove({ ...key, value: 'usable' });
-
-  expect(await appStorage.allKeys.getValue()).toEqual([]);
-  expect(await appStorage.recentKeys.getValue()).toEqual([]);
-  expect(await appStorage.recentKeysByDomain.getValue()).toEqual({ 'example.com': [] });
-});
-
-test.each(['usable', key.value])(
-  'scopes deletion of %s to its context and record kind',
-  async (value) => {
-    const record = { ...key, value };
-    const remaining = [
-      { ...record, url: 'https://example.com/another-video' },
-      { ...record, pssh: 'another-pssh' },
-      { ...record, id: '112233445566778899aabbccddeeff00' },
-      { ...key, value: value === 'usable' ? key.value : 'expired' },
-      { ...key, value: '000102030405060708090a0b0c0d0e0f' },
-    ];
-    const records = [record, ...remaining];
-    await appStorage.allKeys.setValue(records);
-    await appStorage.recentKeys.setValue(records);
-    await appStorage.recentKeysByDomain.setForUrl(key.url, records);
-
-    await appStorage.allKeys.remove(record);
-
-    expect(await appStorage.allKeys.getValue()).toEqual(remaining);
-    expect(await appStorage.recentKeys.getValue()).toEqual(remaining);
-    expect(await appStorage.recentKeysByDomain.getValue()).toEqual({ 'example.com': remaining });
-  },
-);
-
-test('freezes site deletion across caches and preserves later captures and other subdomains', async () => {
-  const www = { ...key, url: 'https://www.example.com/second' };
-  const subdomain = { ...key, url: 'https://video.example.com/watch' };
-  const recentOnly = { ...key, id: 'recent-only', value: 'usable' };
-  await appStorage.allKeys.setValue([key, www, subdomain]);
-  await appStorage.recentKeys.setValue([key, recentOnly]);
-  await appStorage.recentKeysByDomain.setValue({
-    'example.com': [key, www, recentOnly],
-    'video.example.com': [subdomain],
-  });
-  const snapshot = await prepareKeyDeletion({ kind: 'site', domain: 'example.com' });
-  expect(snapshot.count).toBe(3);
-  const recapture = { ...key, createdAt: key.createdAt + 1 };
-  const newCapture = { ...key, id: 'new' };
-  await appStorage.allKeys.setValue([key, www, subdomain, newCapture]);
-  await appStorage.recentKeys.setValue([recapture, recentOnly, newCapture]);
-  await appStorage.recentKeysByDomain.setForUrl(key.url, [recapture, recentOnly, newCapture]);
-  await deleteKeySnapshot(snapshot.tokens);
-  expect(await appStorage.allKeys.getValue()).toEqual([subdomain, newCapture]);
-  expect(await appStorage.recentKeys.getValue()).toEqual([recapture, newCapture]);
-  expect(await appStorage.recentKeysByDomain.getValue()).toEqual({
-    'example.com': [recapture, newCapture],
-    'video.example.com': [subdomain],
-  });
-});
-
-test('selected deletion freezes status variants and all deletion includes recent-only records', async () => {
-  const status = { ...key, value: 'usable' };
-  const expired = { ...status, value: 'expired', createdAt: key.createdAt + 1 };
-  await appStorage.allKeys.setValue([status, key]);
-  await appStorage.recentKeys.setValue([expired, key]);
-  const selected = await prepareKeyDeletion({ kind: 'selected', records: [status] });
-  expect(selected.count).toBe(1);
-  await deleteKeySnapshot(selected.tokens);
-  expect(await appStorage.allKeys.getValue()).toEqual([key]);
-  expect(await appStorage.recentKeys.getValue()).toEqual([key]);
-  const recentOnly = { ...key, id: 'recent-only' };
-  await appStorage.recentKeysByDomain.setForUrl(key.url, [recentOnly]);
-  const all = await prepareKeyDeletion({ kind: 'all' });
-  expect(all.count).toBe(2);
-  await deleteKeySnapshot(all.tokens);
-  expect(await appStorage.allKeys.getValue()).toEqual([]);
-  expect(await appStorage.recentKeys.getValue()).toEqual([]);
-  expect(await appStorage.recentKeysByDomain.getValue()).toEqual({ 'example.com': [] });
-});
-
-test('persists validated manifest choices across history and recent caches', async () => {
-  const manifest = {
-    url: 'https://example.com/video.m3u8',
-    kind: 'hls-media',
-    matched: true,
-  } as const;
-  const capture = { ...key, mpd: manifest.url, manifests: [manifest] };
-  await appStorage.allKeys.add(capture);
-  await appStorage.recentKeys.setForUrl(key.url, [capture]);
-  expect(await appStorage.allKeys.getValue()).toEqual([capture]);
-  expect(await appStorage.recentKeys.getValue()).toEqual([capture]);
-  expect(await appStorage.recentKeysByDomain.getValue()).toEqual({ 'example.com': [capture] });
-
-  const unsafe = {
-    ...capture,
-    mpd: 'javascript:alert(1)',
-    manifests: [{ ...manifest, url: 'data:text/plain,test' }],
-  };
-  await appStorage.allKeys.setValue([unsafe]);
-  await appStorage.recentKeys.setForUrl(key.url, [unsafe]);
-  const sanitized = { ...key, mpd: undefined };
-  expect(await appStorage.allKeys.getValue()).toEqual([sanitized]);
-  expect(await appStorage.recentKeys.getValue()).toEqual([sanitized]);
-  expect(await appStorage.recentKeysByDomain.getValue()).toEqual({ 'example.com': [sanitized] });
-});
-
-test('bounds manifest metadata when persisting a multi-key capture to all history stores', async () => {
-  const manifests = Array.from({ length: 50 }, (_, index) => ({
-    url: `https://example.com/${index}?signature=${'x'.repeat(8000)}`,
-    kind: 'dash' as const,
-    matched: true,
-  }));
-  const captured = Array.from({ length: 32 }, (_, index) => ({
-    ...key,
-    id: index.toString(16).padStart(32, '0'),
-    mpd: manifests[0]!.url,
-    manifests,
-  }));
-  await appStorage.allKeys.add(...captured);
-  await appStorage.recentKeys.setForUrl(key.url, captured);
-  const stores = [
-    await appStorage.allKeys.getValue(),
-    await appStorage.recentKeys.getValue(),
-    (await appStorage.recentKeysByDomain.getValue())?.['example.com'],
-  ];
-  for (const records of stores) {
-    expect(records).toHaveLength(32);
-    for (const record of records ?? []) {
-      expect(record.mpd).toBe(captured[0]!.mpd);
-      expect(
-        Buffer.byteLength(JSON.stringify({ mpd: record.mpd, manifests: record.manifests })),
-      ).toBeLessThanOrEqual(16 * 1024);
-    }
-  }
-});
-
-test('keeps 1,000 large records within the byte budget in all three stores', async () => {
-  const keys = Array.from({ length: 1_000 }, (_, index) => ({
-    ...key,
-    id: String(index),
-    createdAt: index,
-    pssh: 'A'.repeat(16 * 1024),
-    url: `https://example.com/${'界"\\'.repeat(200)}/${index}`,
-    manifests: [
-      { url: `https://example.com/${'x'.repeat(8000)}.mpd`, kind: 'dash' as const, matched: true },
-    ],
-  }));
-  await appStorage.allKeys.raw.setValue(keys);
-  await appStorage.allKeys.add({ ...key, id: 'latest', createdAt: 1_001 });
-  await appStorage.recentKeys.setValue(keys);
-  await appStorage.recentKeysByDomain.setValue(
-    Object.fromEntries(keys.map((record) => [`${record.id}.example`, [record]])),
-  );
-  const stored = await browser.storage.local.get([
-    'all-keys',
-    'recent-keys',
-    'recent-keys-by-domain',
-  ]);
-  for (const [name, value] of Object.entries(stored)) {
-    expect(Buffer.byteLength(name) + Buffer.byteLength(JSON.stringify(value))).toBeLessThanOrEqual(
-      MAX_HISTORY_BYTES,
-    );
-  }
-  const history = (await appStorage.allKeys.getValue()) ?? [];
-  expect(history.length).toBeLessThan(1_000);
-  expect(history[0]?.createdAt).toBeGreaterThan(0);
-  expect(history.at(-1)?.id).toBe('latest');
-  expect(history.slice(0, -1).every((record) => record.pssh === keys[0]?.pssh)).toBe(true);
-  expect((await appStorage.recentKeys.getValue())?.at(-1)?.id).toBe('999');
-  expect((await appStorage.recentKeysByDomain.getValue())?.['999.example']?.[0]?.pssh).toBe(
-    keys[999]?.pssh,
-  );
-});
-
-test('evicts complete older captures while preserving all keys and PSSH in the newest capture', async () => {
-  const pssh = 'A'.repeat(600_000);
-  const old = [0, 1].map((index) => ({ ...key, id: String(index), captureId: 'old', pssh }));
-  const latest = [2, 3].map((index) => ({
-    ...key,
-    id: String(index),
-    captureId: 'latest',
-    createdAt: 2,
-    pssh,
-  }));
-  await appStorage.allKeys.add(...old);
-  await appStorage.allKeys.add(...latest);
-  expect(await appStorage.allKeys.getValue()).toEqual(latest);
-});
-
-test('rejects an oversized newest capture without truncating PSSH or destroying saved history', async () => {
-  await appStorage.allKeys.add(key);
-  await expect(
-    appStorage.allKeys.add({
-      ...key,
-      id: 'huge',
-      createdAt: 2,
-      pssh: 'A'.repeat(MAX_HISTORY_BYTES),
-    }),
-  ).rejects.toThrow('newest capture exceeds the history budget');
-  expect(await appStorage.allKeys.getValue()).toEqual([key]);
-});
-
-test.each(['all-keys', 'recent-keys', 'all-storage'])(
+test.each(['capture-history', 'all-storage'])(
   'reports %s persistence failures and still returns extracted keys',
   async (failedStore) => {
     await appStorage.settings.setValue({
@@ -734,7 +180,11 @@ test.each(['all-keys', 'recent-keys', 'all-storage'])(
       });
     expect(setTitle).toHaveBeenCalledWith({
       tabId: tab.id,
-      title: expect.stringContaining('Unable to save key history: QUOTA_BYTES exceeded'),
+      title: expect.stringContaining(
+        failedStore === 'all-storage'
+          ? 'Unable to save key history: Session quota exceeded'
+          : 'Unable to save key history: QUOTA_BYTES exceeded',
+      ),
     });
     if (failedStore !== 'all-storage') {
       await vi.waitFor(async () => {
@@ -746,49 +196,6 @@ test.each(['all-keys', 'recent-keys', 'all-storage'])(
           ]),
         });
       });
-    }
-  },
-);
-
-test.each(['snapshot', 'record'])(
-  'bounds oversized legacy stores when deleting a %s',
-  async (mode) => {
-    const records = Array.from({ length: 20 }, (_, index) => ({
-      ...key,
-      id: String(index),
-      createdAt: index,
-      pssh: 'A'.repeat(200_000),
-    }));
-    const target = records[0]!;
-    await browser.storage.local.set({
-      'all-keys': JSON.stringify(records),
-      'recent-keys': JSON.stringify(records),
-      'recent-keys-by-domain': JSON.stringify({ 'example.com': records }),
-    });
-    if (mode === 'snapshot') {
-      const snapshot = await prepareKeyDeletion({ kind: 'selected', records: [target] });
-      await deleteKeySnapshot(snapshot.tokens);
-    } else {
-      await appStorage.allKeys.remove(target);
-    }
-    const stored = await browser.storage.local.get([
-      'all-keys',
-      'recent-keys',
-      'recent-keys-by-domain',
-    ]);
-    for (const [name, value] of Object.entries(stored)) {
-      expect(
-        Buffer.byteLength(name) + Buffer.byteLength(JSON.stringify(value)),
-      ).toBeLessThanOrEqual(MAX_HISTORY_BYTES);
-    }
-    for (const retained of [
-      await appStorage.allKeys.getValue(),
-      await appStorage.recentKeys.getValue(),
-      (await appStorage.recentKeysByDomain.getValue())?.['example.com'],
-    ]) {
-      expect(retained?.some((record) => record.id === target.id)).toBe(false);
-      expect(retained?.at(-1)).toEqual(records.at(-1));
-      expect(retained?.every((record) => record.pssh === records[0]?.pssh)).toBe(true);
     }
   },
 );

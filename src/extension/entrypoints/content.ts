@@ -1,3 +1,4 @@
+import { parseDetectedManifest } from '@/utils/manifest';
 import { pageRequestHeadersSchema } from '@/utils/request-headers';
 import { drmErrorResponse } from '@/utils/drm-error';
 
@@ -13,6 +14,14 @@ export default defineContentScript({
       'message',
       async (event) => {
         if (event.source !== window) return;
+        if (event.data?.namespace === 'okova:manifest-observed') {
+          const manifest = parseDetectedManifest(event.data.manifest);
+          if (manifest)
+            void browser.runtime
+              .sendMessage({ action: 'observed-manifest', manifest })
+              .catch(() => {});
+          return;
+        }
         if (event.data?.namespace === 'okova:request-headers') {
           const parsed = pageRequestHeadersSchema.safeParse(event.data);
           if (parsed.success) {

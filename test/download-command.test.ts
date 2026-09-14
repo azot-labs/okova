@@ -1,6 +1,9 @@
 import { execFileSync } from 'node:child_process';
 import { expect, test } from 'vitest';
-import { buildDownloadCommand } from '../src/extension/entrypoints/popup/utils/command';
+import {
+  buildDownloadCommand,
+  buildCaptureDownloadCommand,
+} from '../src/extension/entrypoints/popup/utils/command';
 
 test.each([
   { id: '0123456789abcdef', value: 'abcdef0123456789' },
@@ -81,3 +84,40 @@ test.skipIf(process.platform === 'win32')(
     expect(buildDownloadCommand(key)).not.toContain('-H');
   },
 );
+
+test('builds one capture command with distinct keys and excludes status records', () => {
+  const first = { id: 'a'.repeat(32), value: 'b'.repeat(32) };
+  const second = { id: 'c'.repeat(32), value: 'd'.repeat(32) };
+  const records = [
+    first,
+    second,
+    { id: first.id.toUpperCase(), value: first.value.toUpperCase() },
+    { id: 'e'.repeat(32), value: 'usable' },
+  ];
+  const command = buildCaptureDownloadCommand(records, 'https://example.test/movie.mpd');
+  expect(command).toBe(
+    `N_m3u8DL-RE 'https://example.test/movie.mpd' --key '${first.id}:${first.value}' --key '${second.id}:${second.value}'`,
+  );
+});
+
+test('supports manifest-only captures and refuses captures without a manifest', () => {
+  expect(buildCaptureDownloadCommand([], 'https://example.test/master.m3u8')).toBe(
+    "N_m3u8DL-RE 'https://example.test/master.m3u8'",
+  );
+  expect(buildCaptureDownloadCommand([], undefined)).toBeUndefined();
+  expect(buildCaptureDownloadCommand([], 'javascript:alert(1)')).toBeUndefined();
+});
+
+test('HTTP commands omit sensitive headers while preserving ordinary headers', () => {
+  const headers = [
+    { name: 'Cookie', value: 'session=secret' },
+    { name: 'Authorization', value: 'Bearer secret' },
+    { name: 'Referer', value: 'https://example.test/' },
+  ];
+  const command = buildCaptureDownloadCommand([], 'http://example.test/stream.mpd', headers);
+  expect(command).not.toContain('secret');
+  expect(command).toContain('Referer: https://example.test/');
+  expect(buildCaptureDownloadCommand([], 'https://example.test/stream.mpd', headers)).toContain(
+    'Bearer secret',
+  );
+});

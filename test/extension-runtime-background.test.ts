@@ -15,6 +15,7 @@ import { createPsshBox, psshBoxToBase64, PSSH_SYSTEM_IDS } from '../src/lib/pssh
 beforeEach(() => {
   fakeBrowser.reset();
   vi.spyOn(browser.webRequest.onSendHeaders, 'addListener').mockImplementation(() => {});
+  vi.spyOn(browser.webRequest.onHeadersReceived, 'addListener').mockImplementation(() => {});
   vi.spyOn(browser.webRequest.onBeforeRedirect, 'addListener').mockImplementation(() => {});
   vi.spyOn(browser.webRequest.onErrorOccurred, 'addListener').mockImplementation(() => {});
   vi.spyOn(browser.tabs, 'query').mockImplementation(async () => []);
@@ -216,7 +217,7 @@ test.each(['keystatuseschange', 'update'])(
       await privateHistory.allKeys.getValue(),
     );
     expect(await browser.storage.local.get(null)).toEqual(localBefore);
-    expect(await appStorage.allKeys.getValue()).toBeNull();
+    expect(await appStorage.allKeys.getValue()).toEqual([]);
   },
 );
 
@@ -237,7 +238,7 @@ test('clears private history on the last window removal', async () => {
   });
   windows.mockImplementation(async () => []);
   onRemoved.mock.calls[0]![0](1);
-  await expect.poll(() => privateHistory.allKeys.getValue()).toBeNull();
+  await expect.poll(() => privateHistory.allKeys.getValue()).toEqual([]);
 });
 
 test('clears the closed private session when a replacement window opens during a history write', async () => {
@@ -258,8 +259,8 @@ test('clears the closed private session when a replacement window opens during a
   await privateHistory.recentKeys.setForUrl(key.url, [key]);
   const writeStarted = Promise.withResolvers<void>();
   const releaseWrite = Promise.withResolvers<void>();
-  const setValue = privateHistory.allKeys.raw.setValue;
-  vi.spyOn(privateHistory.allKeys.raw, 'setValue').mockImplementationOnce(async (records) => {
+  const setValue = browser.storage.session.set.bind(browser.storage.session);
+  vi.spyOn(browser.storage.session, 'set').mockImplementationOnce(async (records) => {
     writeStarted.resolve();
     await releaseWrite.promise;
     await setValue(records);
@@ -274,13 +275,13 @@ test('clears the closed private session when a replacement window opens during a
     releaseWrite.resolve();
   }
   await writing;
-  await expect.poll(() => privateHistory.allKeys.getValue()).toBeNull();
-  expect(await privateHistory.recentKeys.getValue()).toBeNull();
-  expect(await privateHistory.recentKeysByDomain.getValue()).toBeNull();
-  expect(await appStorage.allKeys.getValue()).toEqual([key]);
+  await expect.poll(() => privateHistory.allKeys.getValue()).toEqual([]);
+  expect(await privateHistory.recentKeys.getValue()).toEqual([]);
+  expect(await privateHistory.recentKeysByDomain.getValue()).toEqual({});
+  expect(await appStorage.allKeys.getValue()).toMatchObject([key]);
 
   await privateHistory.allKeys.add({ ...key, createdAt: 2 });
-  expect(await privateHistory.allKeys.getValue()).toEqual([{ ...key, createdAt: 2 }]);
+  expect(await privateHistory.allKeys.getValue()).toMatchObject([{ ...key, createdAt: 2 }]);
 });
 
 test('does not show ordinary same-site keys on a private tab badge', async () => {
@@ -339,7 +340,7 @@ test('header lookups accept routed popup URLs and large stored capture tokens on
   const key = (await appStorage.allKeys.getValue())?.[0];
   if (!key) throw new Error('Missing captured key');
   const token = keyRecordToken(key);
-  expect(token.length).toBeGreaterThan(64 * 1024);
+  expect(token.length).toBeLessThan(1024);
   const window = await browser.windows.create({ incognito: false });
   if (!window) throw new Error('Missing test window');
   const request = { action: 'download-headers', token, url: mpd, windowId: window.id };

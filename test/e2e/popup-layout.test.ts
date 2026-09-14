@@ -20,7 +20,7 @@ test.for([300, 450, 600])(
         const worker = context.serviceWorkers()[0] ?? (await context.waitForEvent('serviceworker'));
         const popup = await context.newPage();
         await popup.goto(`chrome-extension://${new URL(worker.url()).hostname}/popup.html`);
-        await popup.getByRole('link', { name: 'Settings', exact: true }).click();
+        await popup.getByRole('link', { name: 'Settings', exact: true }).last().click();
         const root = popup.locator('#root');
         expect(
           await root.evaluate((element) => element.getBoundingClientRect().bottom),

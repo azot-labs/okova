@@ -113,14 +113,32 @@ const inspectManifest = (url: string, text: string): DetectedManifest | undefine
   if (document.getElementsByTagNameNS('*', 'parsererror').length) return;
   const root = document.documentElement;
   if (root?.localName === 'MPD' && root.namespaceURI === DASH_NAMESPACE) {
+    const keyIds = new Set<string>();
     for (const protection of Array.from(
       document.getElementsByTagNameNS(DASH_NAMESPACE, 'ContentProtection'),
     )) {
+      for (const value of (protection.getAttributeNS(CENC_NAMESPACE, 'default_KID') ?? '').split(
+        /\s+/,
+      )) {
+        if (
+          !/^(?:[0-9a-f]{32}|[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})$/i.test(
+            value,
+          )
+        )
+          continue;
+        if (keyIds.size < MAX_INIT_DATA_ENTRIES) keyIds.add(value.replace(/-/g, '').toLowerCase());
+      }
       for (const child of Array.from(protection.getElementsByTagNameNS(CENC_NAMESPACE, 'pssh'))) {
         if (child.parentNode === protection) initData.push(...splitPssh(child.textContent ?? ''));
       }
     }
-    return { url, kind: 'dash', initData, children: [] };
+    return {
+      url,
+      kind: 'dash',
+      initData,
+      children: [],
+      ...(keyIds.size ? { keyIds: [...keyIds] } : {}),
+    };
   }
   if (root?.localName === 'SmoothStreamingMedia' && !root.namespaceURI) {
     for (const header of Array.from(document.getElementsByTagName('ProtectionHeader'))) {
@@ -166,6 +184,7 @@ export const installManifestInspection = () => {
       ].slice(0, MAX_MANIFEST_REQUEST_URLS);
       window.MANIFEST_LIST.delete(url);
       window.MANIFEST_LIST.set(url, manifest);
+      window.postMessage({ namespace: 'okova:manifest-observed', manifest }, '*');
       while (window.MANIFEST_LIST.size > MAX_MANIFESTS) {
         const oldest = window.MANIFEST_LIST.keys().next();
         if (!oldest.done) window.MANIFEST_LIST.delete(oldest.value);

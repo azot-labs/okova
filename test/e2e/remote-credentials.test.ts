@@ -51,7 +51,9 @@ test('imports, selects, exports, and deletes remote credentials in the popup', a
       ),
     });
     await popup.getByText('Widevine: Fallback device @ cdm.test', { exact: true }).waitFor();
-    expect(await popup.getByRole('status').textContent()).toContain('Imported as Widevine');
+    expect(
+      await popup.getByRole('status').filter({ hasText: 'Imported as Widevine' }).textContent(),
+    ).toContain('Imported as Widevine');
     await mkdir(resolve('output/playwright/remote-credentials'), { recursive: true });
     await popup.screenshot({
       path: resolve('output/playwright/remote-credentials/fallback-warning.png'),
@@ -59,7 +61,9 @@ test('imports, selects, exports, and deletes remote credentials in the popup', a
     await popup.getByRole('link', { name: 'Credentials', exact: true }).click();
     await popup.getByText('Widevine · Remote · pywidevine', { exact: true }).waitFor();
     await popup.getByRole('button', { name: 'Dismiss import warning' }).click();
-    expect(await popup.getByRole('status').count()).toBe(0);
+    expect(
+      await popup.getByRole('status').filter({ hasText: 'Imported as Widevine' }).count(),
+    ).toBe(0);
     const config = {
       protocol: 'okova',
       label: 'Local API',
