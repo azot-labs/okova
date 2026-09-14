@@ -306,3 +306,67 @@ test('session replacement retains different DRM systems and different results', 
     'other-result',
   ]);
 });
+
+test('legacy keys sharing a source and nonempty PSSH migrate into one anonymous session', async () => {
+  const { captureId, ...anonymous } = key;
+  await storage.setItem(
+    'local:all-keys',
+    JSON.stringify([anonymous, { ...anonymous, id: '1'.repeat(32) }]),
+  );
+  const captures = await appStorage.captures.getValue();
+  expect(captures).toHaveLength(1);
+  expect(captures[0]?.sessions).toHaveLength(1);
+  expect(captures[0]?.sessions[0]?.records).toHaveLength(2);
+});
+
+test('near-quota migration frees only redundant legacy copies before writing canonical history', async () => {
+  const keys = [{ ...key, pssh: 'A'.repeat(350_000) }];
+  await storage.setItem('local:all-keys', JSON.stringify(keys));
+  await storage.setItem('local:recent-keys', JSON.stringify(keys));
+  await storage.setItem('local:recent-keys-by-domain', JSON.stringify({ 'example.test': keys }));
+  const original = browser.storage.local.set.bind(browser.storage.local);
+  const write = vi.spyOn(browser.storage.local, 'set').mockImplementation(async (items) => {
+    const current = await browser.storage.local.get(null);
+    if (Buffer.byteLength(JSON.stringify({ ...current, ...items })) > 1_200_000)
+      throw new Error('QUOTA_BYTES exceeded');
+    await original(items);
+  });
+  try {
+    expect((await appStorage.captures.getValue())[0]?.sessions[0]?.pssh).toEqual([keys[0]!.pssh]);
+    expect(await storage.getItem('local:all-keys')).toBeNull();
+  } finally {
+    write.mockRestore();
+  }
+});
+
+test('automatic manifest observations cannot evict previously saved captures', async () => {
+  await appStorage.upsertKeys(
+    Array.from({ length: 1000 }, (_, index) => ({ ...key, captureId: `saved-${index}` })),
+  );
+  const before = await appStorage.captures.getValue();
+  await expect(
+    appStorage.observeManifest(source, { ...manifest, initData: [], keyIds: [] }),
+  ).rejects.toThrow('Manifest observation exceeds history budget');
+  expect(await appStorage.captures.getValue()).toEqual(before);
+});
+
+test('migration bounds its snapshot against unique legacy records still using the quota', async () => {
+  await storage.setItem(
+    'local:all-keys',
+    JSON.stringify([
+      { ...key, pssh: 'A'.repeat(70_000) },
+      { ...key, captureId: 'newer', pssh: 'B'.repeat(70_000), createdAt: 2 },
+    ]),
+  );
+  const accounting = vi
+    .spyOn(browser.storage.local, 'getBytesInUse')
+    .mockImplementation(() => Promise.resolve(browser.storage.local.QUOTA_BYTES - 100_000));
+  try {
+    const captures = await appStorage.captures.getValue();
+    expect(captures).toHaveLength(1);
+    expect(captures[0]?.sessions[0]?.id).toBe('newer');
+    expect(await storage.getItem('local:all-keys')).toBeNull();
+  } finally {
+    accounting.mockRestore();
+  }
+});

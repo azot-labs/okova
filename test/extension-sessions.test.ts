@@ -65,6 +65,7 @@ const navigation = (
 beforeEach(async () => {
   fakeBrowser.reset();
   vi.spyOn(browser.webRequest.onSendHeaders, 'addListener').mockImplementation(() => {});
+  vi.spyOn(browser.webRequest.onHeadersReceived, 'addListener').mockImplementation(() => {});
   vi.spyOn(browser.webRequest.onBeforeRedirect, 'addListener').mockImplementation(() => {});
   vi.spyOn(browser.webRequest.onErrorOccurred, 'addListener').mockImplementation(() => {});
   vi.useFakeTimers();
@@ -844,7 +845,11 @@ test.each(['https://example.com/video', 'https://other.example/video'])(
       },
     );
     expect(await appStorage.allKeys.getValue()).toMatchObject([oldKey, captured]);
-    expect(await appStorage.allKeys.getValue()).toMatchObject([oldKey, captured]);
+    expect(await appStorage.recentKeysByDomain.getValue()).toMatchObject(
+      url.startsWith('https://example.com/')
+        ? { 'example.com': [oldKey, captured] }
+        : { 'example.com': [oldKey], 'other.example': [captured] },
+    );
     expect(Session.prototype.close).toHaveBeenCalledOnce();
     expect(vi.getTimerCount()).toBe(0);
   },
@@ -1324,4 +1329,15 @@ test('preserves the original failure when cleanup exceeds the request deadline',
   cleanup.resolve();
   await vi.advanceTimersByTimeAsync(0);
   expect(vi.getTimerCount()).toBe(0);
+});
+
+test('expiry closes persisted sessions from before the owner index existed', async () => {
+  const send = startBackground();
+  await send('generateRequest', 'legacy-owner', { tab: tab(82), frameId: 0 });
+  await browser.storage.session.remove('capture-owners:82');
+  await vi.advanceTimersByTimeAsync(5 * 60 * 1000);
+  const capture = (await appStorage.captures.getValue()).find(
+    (capture) => capture.source.tabId === 82,
+  );
+  expect(capture?.sessions[0]?.diagnostic?.outcome).toBe('closed');
 });

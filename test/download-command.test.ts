@@ -107,3 +107,17 @@ test('supports manifest-only captures and refuses captures without a manifest', 
   expect(buildCaptureDownloadCommand([], undefined)).toBeUndefined();
   expect(buildCaptureDownloadCommand([], 'javascript:alert(1)')).toBeUndefined();
 });
+
+test('HTTP commands omit sensitive headers while preserving ordinary headers', () => {
+  const headers = [
+    { name: 'Cookie', value: 'session=secret' },
+    { name: 'Authorization', value: 'Bearer secret' },
+    { name: 'Referer', value: 'https://example.test/' },
+  ];
+  const command = buildCaptureDownloadCommand([], 'http://example.test/stream.mpd', headers);
+  expect(command).not.toContain('secret');
+  expect(command).toContain('Referer: https://example.test/');
+  expect(buildCaptureDownloadCommand([], 'https://example.test/stream.mpd', headers)).toContain(
+    'Bearer secret',
+  );
+});

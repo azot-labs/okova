@@ -3,7 +3,7 @@ import { SessionDiagnostics, captureStatus } from './session-diagnostics';
 import { type Accessor, type Component, type JSX, untrack } from 'solid-js';
 import { createStore, reconcile } from 'solid-js/store';
 import { isCapturedKey, type KeyInfo } from '@/utils/storage';
-import { manifestLabels } from '@/utils/manifest';
+import { manifestLabels, isManifestUrl } from '@/utils/manifest';
 import type { CaptureGroup } from '@/utils/capture-groups';
 import { groupCaptureSessions } from '../utils/capture-sessions';
 import { getPsshBadgeLabels, getSessionSystemLabels } from '../utils/drm-system-labels';
@@ -125,8 +125,9 @@ export const CaptureList: Component<{
             const [isOpen, setIsOpen] = createSignal(false);
             const title = createMemo(() =>
               capture.manifestUrl
-                ? (new URL(capture.manifestUrl).pathname.split('/').filter(Boolean).at(-1) ??
-                  'Manifest')
+                ? ((isManifestUrl(capture.manifestUrl)
+                    ? new URL(capture.manifestUrl).pathname.split('/').filter(Boolean).at(-1)
+                    : undefined) ?? 'Manifest')
                 : capture.sessionIds.length
                   ? 'Manifest not detected'
                   : 'Legacy capture',
@@ -212,7 +213,11 @@ export const CaptureList: Component<{
                       <a
                         title={capture.manifestUrl ?? capture.url}
                         target="_blank"
-                        href={capture.manifestUrl ?? capture.url}
+                        href={
+                          isManifestUrl(capture.manifestUrl ?? capture.url)
+                            ? (capture.manifestUrl ?? capture.url)
+                            : undefined
+                        }
                         class="w-fit truncate hover:underline hover:text-emerald-600 dark:hover:text-emerald-400"
                       >
                         {(capture.manifestUrl ?? capture.url).replace('https://', '')}
@@ -272,7 +277,7 @@ export const CaptureList: Component<{
                           <a
                             title={capture.url}
                             target="_blank"
-                            href={capture.url}
+                            href={isManifestUrl(capture.url) ? capture.url : undefined}
                             class="w-fit truncate hover:underline hover:text-emerald-600 dark:hover:text-emerald-400"
                           >
                             {capture.url.replace('https://', '')}
@@ -312,7 +317,7 @@ export const CaptureList: Component<{
                               <a
                                 title={playlist.url}
                                 target="_blank"
-                                href={playlist.url}
+                                href={isManifestUrl(playlist.url) ? playlist.url : undefined}
                                 class="w-fit truncate hover:underline hover:text-emerald-600 dark:hover:text-emerald-400"
                               >
                                 {playlist.url.replace('https://', '')}
@@ -331,8 +336,9 @@ export const CaptureList: Component<{
                             onClick={() => void copy(playlist.url)}
                           >
                             <span class="flex items-center gap-1.5">
-                              {new URL(playlist.url).pathname.split('/').filter(Boolean).at(-1) ??
-                                `${manifestLabels[playlist.kind]} ${index() + 1}`}
+                              {(isManifestUrl(playlist.url)
+                                ? new URL(playlist.url).pathname.split('/').filter(Boolean).at(-1)
+                                : undefined) ?? `${manifestLabels[playlist.kind]} ${index() + 1}`}
                               <TbOutlinePlaylist
                                 title={manifestLabels[playlist.kind]}
                                 class="size-3 opacity-50"
@@ -484,7 +490,7 @@ export const CaptureList: Component<{
                     </For>
                   </div>
                 </Show>
-                <Show when={capture.manifestUrl}>
+                <Show when={capture.manifestUrl || keyCount()}>
                   <CaptureCommandBuilder
                     records={recordEntries().map((entry) => entry.key)}
                     manifestUrl={capture.manifestUrl}

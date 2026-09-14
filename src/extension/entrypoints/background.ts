@@ -1,3 +1,4 @@
+import { installManifestObservation } from '@/utils/manifest-observation';
 import { captureRecords } from '@/utils/storage/capture-history';
 import { installRequestHeaderObservation } from '@/utils/request-header-observation';
 import { drmErrorResponse, type DrmErrorResponse } from '@/utils/drm-error';
@@ -159,7 +160,13 @@ export default defineBackground({
     };
 
     const closeCaptureDiagnostics = async (tabId: number, owner?: string) => {
-      const sessionId = owner ? await getCaptureIdForOwner(tabId, owner) : undefined;
+      const sessionId = owner
+        ? ((await getCaptureIdForOwner(tabId, owner)) ??
+          state.sessions.get(owner)?.captureId ??
+          (await getCaptureDiagnosticsStorage(tabId).getValue())?.find(
+            (record) => record.owner === owner,
+          )?.captureId)
+        : undefined;
       await closeRuntimeDiagnostics(tabId, owner);
       if (owner && !sessionId) return;
       await Promise.all([
@@ -449,33 +456,38 @@ export default defineBackground({
     const parseBinary = (data: Record<string, number>) => new Uint8Array(Object.values(data));
 
     const requestHeaders = installRequestHeaderObservation();
+    const hasManifestResponse = installManifestObservation();
     browser.runtime.onMessage.addListener((incoming, sender, sendResponse) => {
-      if (incoming?.action === 'observed-manifest') {
+      if (incoming?.action === 'observed-manifest' || incoming?.action === 'refresh-manifest') {
         const manifest = parseDetectedManifest(incoming.manifest);
+        const isRefresh = incoming.action === 'refresh-manifest';
+        const popupUrl = browser.runtime.getURL('/popup.html');
+        const isPopup = sender.url === popupUrl || sender.url?.startsWith(`${popupUrl}/`);
         if (
           !manifest ||
-          sender.tab?.id === undefined ||
-          JSON.stringify(manifest).length > 128 * 1024
+          new TextEncoder().encode(JSON.stringify(manifest)).byteLength > 128 * 1024 ||
+          (isRefresh ? !isPopup || !Number.isInteger(incoming.tabId) : sender.tab?.id === undefined)
         ) {
           sendResponse();
           return;
         }
-        void getKeyHistory(sender.tab.incognito === true, sender.tab.windowId)
-          .then((history) =>
-            history.observeManifest(
-              {
+        void (async () => {
+          const tab = isRefresh ? await browser.tabs.get(incoming.tabId) : sender.tab!;
+          const source = isRefresh
+            ? incoming.source
+            : {
                 url: getCaptureUrl(sender) ?? sender.url ?? '',
-                tabId: sender.tab?.id,
+                tabId: tab.id,
                 frameId: sender.frameId,
                 documentId: sender.documentId,
-              },
-              manifest,
-            ),
-          )
-          .then(
-            () => sendResponse(),
-            () => sendResponse(),
-          );
+              };
+          if (source?.tabId !== tab.id || !hasManifestResponse(source, manifest.url)) return;
+          const history = await getKeyHistory(tab.incognito === true, tab.windowId);
+          await history.observeManifest(source, manifest);
+        })().then(
+          () => sendResponse(),
+          () => sendResponse(),
+        );
         return true;
       }
       if (incoming?.action === 'observed-request-headers') {

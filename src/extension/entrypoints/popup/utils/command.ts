@@ -1,4 +1,4 @@
-import { getDownloadHeaders, type RequestHeader } from '@/utils/request-headers';
+import { getDownloadHeaders, isSensitiveHeader, type RequestHeader } from '@/utils/request-headers';
 import { isManifestUrl } from '@/utils/manifest';
 import type { KeyInfo } from '@/utils/storage';
 
@@ -13,6 +13,9 @@ const buildCommand = (
   if (!isManifestUrl(manifestUrl)) return undefined;
   const keyArguments = pairs.map((pair) => ` --key ${quoteShellArgument(pair)}`).join('');
   const headerArguments = getDownloadHeaders(headers)
+    .filter(
+      (header) => new URL(manifestUrl).protocol === 'https:' || !isSensitiveHeader(header.name),
+    )
     .map(({ name, value }) => ` -H ${quoteShellArgument(`${name}: ${value}`)}`)
     .join('');
   return `N_m3u8DL-RE ${quoteShellArgument(manifestUrl)}${keyArguments}${headerArguments}`;

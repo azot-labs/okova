@@ -176,6 +176,7 @@ export const captureRecords = (captures: readonly StoredCapture[]): KeyInfo[] =>
     ),
   );
 const addKeys = (data: CaptureHistory, keys: KeyInfo[], source?: CaptureSource) => {
+  const anonymous = new Map<string, StoredCapture>();
   for (const input of keys) {
     const key = { ...input, mpd: isManifestUrl(input.mpd) ? input.mpd : undefined };
     if (key.captureId && data.retiredSessionIds.includes(key.captureId)) continue;
@@ -213,10 +214,16 @@ const addKeys = (data: CaptureHistory, keys: KeyInfo[], source?: CaptureSource) 
       );
       if (matches.length === 1) capture = matches[0];
     }
+    const anonymousId =
+      !key.captureId && !key.mpd && key.pssh.trim()
+        ? JSON.stringify([context, key.pssh.trim(), key.drmSystem])
+        : undefined;
+    if (!capture && anonymousId) capture = anonymous.get(anonymousId);
     if (!capture) {
       capture = newCapture(context, key.createdAt);
       data.captures.push(capture);
     }
+    if (anonymousId) anonymous.set(anonymousId, capture);
     if (key.mpd && !capture.manifest) {
       const matches = data.captures.filter(
         (item) =>
@@ -401,6 +408,11 @@ export const createCaptureHistory = (
     const data = emptyHistory();
     data.runtimeId = runtimeId;
     const migratedKeys = new Map<string, KeyInfo>();
+    const legacyStores: {
+      name: (typeof legacyNames)[number];
+      tokens: Set<string>;
+      valid: boolean;
+    }[] = [];
     for (const name of legacyNames) {
       const value = await asJson(storage.defineItem<unknown>(name)).getValue();
       const entries = Array.isArray(value)
@@ -412,11 +424,20 @@ export const createCaptureHistory = (
         const parsed = legacyKey.safeParse(entry);
         return parsed.success ? [parsed.data] : [];
       });
-      for (const key of keys)
-        migratedKeys.set(
-          JSON.stringify([key.captureId, key.url, key.id, key.value, key.pssh, key.createdAt]),
-          key,
-        );
+      const tokens = new Set(keys.map((key) => JSON.stringify(key)));
+      legacyStores.push({ name, tokens, valid: keys.length === entries.length });
+      for (const key of keys) migratedKeys.set(JSON.stringify(key), key);
+    }
+    // Reclaim only redundant copies. Every removed record still has a durable
+    // legacy copy, including if the canonical write fails or the worker stops.
+    for (const store of [...legacyStores].reverse()) {
+      const remaining = new Set(
+        legacyStores.filter((other) => other !== store).flatMap((other) => [...other.tokens]),
+      );
+      if (store.valid && [...store.tokens].every((token) => remaining.has(token))) {
+        await storage.removeItem(store.name);
+        legacyStores.splice(legacyStores.indexOf(store), 1);
+      }
     }
     addKeys(data, [...migratedKeys.values()]);
     const tabs = await browser.tabs.query({});
@@ -441,37 +462,62 @@ export const createCaptureHistory = (
         );
       }
     }
-    await save(data);
-    // Remove legacy copies only after the canonical record is safely written.
+    // Leave space for the retained legacy records until the new snapshot is durable.
+    // Normal whole-capture retention applies when both formats cannot fit together.
+    let migrationBudget = MAX_CAPTURE_BYTES;
+    if (prefix === 'local:') {
+      try {
+        const used = await browser.storage.local.getBytesInUse(null);
+        const available = browser.storage.local.QUOTA_BYTES - used - 1024;
+        if (Number.isFinite(available)) migrationBudget = Math.min(migrationBudget, available);
+      } catch {
+        // Browsers without quota accounting retain the normal history budget.
+      }
+    }
+    await save(data, true, migrationBudget);
+    // Remove remaining legacy copies only after the canonical record is safely written.
     await storage.removeItems(legacyNames);
     return data;
   };
-  const save = async (data: CaptureHistory) => {
+  const save = async (
+    data: CaptureHistory,
+    allowEviction = true,
+    byteBudget = MAX_CAPTURE_BYTES,
+  ) => {
+    if (
+      !allowEviction &&
+      (data.captures.length > MAX_CAPTURES ||
+        encoder.encode(JSON.stringify(JSON.stringify(data))).byteLength > byteBudget)
+    )
+      throw new Error('Manifest observation exceeds history budget');
     data.captures.sort((left, right) => left.updatedAt - right.updatedAt);
     const newest = data.captures.at(-1);
     if (
       newest &&
       encoder.encode(JSON.stringify(JSON.stringify({ ...data, captures: [newest] }))).byteLength >
-        MAX_CAPTURE_BYTES
+        byteBudget
     )
       throw new Error('Capture exceeds history storage budget');
     if (data.captures.length > MAX_CAPTURES)
       data.captures.splice(0, data.captures.length - MAX_CAPTURES);
     while (
       data.captures.length > MAX_CAPTURES ||
-      encoder.encode(JSON.stringify(JSON.stringify(data))).byteLength > MAX_CAPTURE_BYTES
+      encoder.encode(JSON.stringify(JSON.stringify(data))).byteLength > byteBudget
     ) {
       if (data.captures.length <= 1) throw new Error('Capture exceeds history storage budget');
       data.captures.shift();
     }
     await item.setValue(data);
   };
-  const update = (operation: (data: CaptureHistory) => void | Promise<void>) =>
+  const update = (
+    operation: (data: CaptureHistory) => void | Promise<void>,
+    allowEviction = true,
+  ) =>
     mutate(async () => {
       const data = await read();
       const before = new Set(data.retiredSessionIds);
       await operation(data);
-      await save(data);
+      await save(data, allowEviction);
       const retired = data.retiredSessionIds.filter((id) => !before.has(id));
       if (retired.length) await retireCaptureDiagnostics(retired).catch(() => {});
     });
@@ -566,7 +612,7 @@ export const createCaptureHistory = (
         }
       }
       associateSessions(data);
-    });
+    }, false);
   const upsertDiagnostic = (source: CaptureSource, diagnostic: CaptureDiagnostic, pssh?: string) =>
     update((data) => applyDiagnostic(data, source, diagnostic, pssh));
   const replaceDuplicateSessions = (sessionId: string) =>

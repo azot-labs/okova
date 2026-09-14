@@ -34,11 +34,14 @@ export const Dashboard = () => {
   const [activeTabUrl] = useActiveTabUrl();
   const [activeCredentials] = useActiveCredentials();
   const activeFailure = createMemo(() => failure()?.url === activeTabUrl() && failure());
-  const activeDomain = createMemo(() => getWebsiteDomain(activeTabUrl()));
+  const activeDomain = createMemo(() =>
+    /^https?:\/\//i.test(activeTabUrl() ?? '') ? getWebsiteDomain(activeTabUrl()) : null,
+  );
   const [allCaptures] = useCaptures();
   const storedCaptures = createMemo(() =>
     allCaptures().filter(
-      (capture) => !activeDomain() || getWebsiteDomain(capture.source.url) === activeDomain(),
+      (capture) =>
+        Boolean(activeDomain()) && getWebsiteDomain(capture.source.url) === activeDomain(),
     ),
   );
   const pageStreams = createPageStreams();

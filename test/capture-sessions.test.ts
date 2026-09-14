@@ -50,3 +50,13 @@ test('keeps records with unknown session identity separate from known sessions',
   ]);
   expect(groupCaptureSessions([])).toEqual([]);
 });
+
+test('does not mutate persisted initialization data while projecting session rows', () => {
+  const session = { id: 'a', pssh: ['first'], records: [], createdAt: 1, updatedAt: 1 };
+  Object.freeze(session.pssh);
+  expect(groupCaptureSessions([row(0, 'a', 'second')], [], [session])[0]?.psshValues).toEqual([
+    'first',
+    'second',
+  ]);
+  expect(session.pssh).toEqual(['first']);
+});

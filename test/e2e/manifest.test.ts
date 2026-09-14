@@ -29,12 +29,15 @@ test('built content bridge associates DASH and reads playback configuration thro
     });
     try {
       const worker = context.serviceWorkers()[0] ?? (await context.waitForEvent('serviceworker'));
-      // Let first-install initialization finish before replacing the default settings.
+      // Initial settings are created by the popup, not guaranteed by worker startup.
+      const settingsPopup = await context.newPage();
+      await settingsPopup.goto(`chrome-extension://${new URL(worker.url()).hostname}/popup.html`);
       await expect
         .poll(() =>
           worker.evaluate(async () => (await browser.storage.local.get('settings')).settings),
         )
         .toBeTruthy();
+      await settingsPopup.close();
       await worker.evaluate(async () => {
         await browser.storage.local.set({
           settings: JSON.stringify({

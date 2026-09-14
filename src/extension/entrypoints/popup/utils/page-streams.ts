@@ -1,4 +1,3 @@
-import { popupHistory } from './history';
 import { browser } from 'wxt/browser';
 import { isManifestUrl } from '@/utils/manifest';
 import type { StreamRecord } from '@/utils/streams';
@@ -33,15 +32,17 @@ export const createPageStreams = () => {
       await Promise.all(
         result.records.flatMap((stream) =>
           [stream.manifest, ...stream.playlists].map((manifest) =>
-            popupHistory.observeManifest(
-              {
+            browser.runtime.sendMessage({
+              action: 'refresh-manifest',
+              tabId: tab.id,
+              source: {
                 url: stream.frameUrl,
                 tabId: tab.id,
                 frameId: stream.frameId,
                 documentId: stream.documentId,
               },
-              { ...manifest, initData: [] },
-            ),
+              manifest: { ...manifest, initData: [] },
+            }),
           ),
         ),
       );

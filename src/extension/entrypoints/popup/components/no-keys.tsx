@@ -3,8 +3,8 @@ import { Cell } from './cell';
 
 const reload = () => {
   browser.tabs.query({ active: true, currentWindow: true }, function (tabs) {
-    const tabId = tabs[0].id;
-    if (tabId) browser.tabs.reload(tabId);
+    const tabId = tabs[0]?.id;
+    if (tabId !== undefined) browser.tabs.reload(tabId);
   });
 };
 
@@ -16,6 +16,7 @@ export const NoKeys = () => {
         Start playback to get keys
       </h2>
       <Cell
+        component="button"
         class="w-fit mt-1"
         size="xs"
         variant="primary"

@@ -12,12 +12,16 @@ import {
 export const getManifestCapture = (initData: string | undefined) => {
   const tokens = new Set(initData ? [initData, ...splitPssh(initData)] : []);
   const detected: DetectedManifest[] = [];
-  if (window.MANIFEST_LIST instanceof Map) {
-    for (const value of window.MANIFEST_LIST.values()) {
-      if (detected.length === MAX_MANIFESTS) break;
-      const manifest = parseDetectedManifest(value);
-      if (manifest) detected.push(manifest);
-    }
+  try {
+    const manifests = window.MANIFEST_LIST;
+    if (manifests instanceof Map)
+      for (const value of manifests.values()) {
+        if (detected.length === MAX_MANIFESTS) break;
+        const manifest = parseDetectedManifest(value);
+        if (manifest) detected.push(manifest);
+      }
+  } catch {
+    /* Page-owned manifest metadata is optional. */
   }
   const directUrls = new Set(
     detected

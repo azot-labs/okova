@@ -1,4 +1,5 @@
 import { mkdir, mkdtemp, rm } from 'node:fs/promises';
+import { createServer } from 'node:http';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { chromium } from 'playwright';
@@ -21,27 +22,36 @@ test('manifest-only captures update live, survive tab closure, and delete by sta
         worker.evaluate(async () => (await browser.storage.local.get('settings')).settings),
       )
       .toBeTruthy();
-    await context.route('https://example.test/**', (route) => {
-      const url = route.request().url();
-      return route.fulfill({
-        contentType: url.endsWith('.m3u8')
+    const server = createServer((request, response) => {
+      const url = request.url ?? '';
+      response.setHeader(
+        'Content-Type',
+        url.endsWith('.m3u8')
           ? 'application/vnd.apple.mpegurl'
           : url.endsWith('.mpd')
             ? 'application/dash+xml'
             : 'text/html',
-        body: url.endsWith('master.m3u8')
+      );
+      response.end(
+        url.endsWith('master.m3u8')
           ? '#EXTM3U\n#EXT-X-STREAM-INF:BANDWIDTH=1000\naudio.m3u8\n'
           : url.endsWith('audio.m3u8')
             ? '#EXTM3U\n#EXTINF:4,\naudio.ts\n'
             : url.endsWith('.mpd')
               ? '<MPD xmlns="urn:mpeg:dash:schema:mpd:2011"/>'
               : '<title>Capture lifecycle</title>',
-      });
+      );
     });
+    await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve));
+    const address = server.address();
+    if (!address || typeof address === 'string') throw new Error('Server did not start');
+    const origin = `http://127.0.0.1:${address.port}`;
+    context.on('close', () => server.close());
     const source = await context.newPage();
-    await source.goto('https://example.test/watch');
+    await source.goto(`${origin}/watch`);
     const tabId = await worker.evaluate(
-      async () => (await browser.tabs.query({ url: 'https://example.test/watch' }))[0]!.id!,
+      async (url) => (await browser.tabs.query({ url }))[0]!.id!,
+      `${origin}/watch`,
     );
     const popup = await context.newPage();
     await worker.evaluate((id) => browser.tabs.update(id, { active: true }), tabId);
@@ -51,6 +61,18 @@ test('manifest-only captures update live, survive tab closure, and delete by sta
     const captures = popup.locator('[data-capture-row]');
     expect(await captures.count()).toBe(0);
     await source.evaluate(async () => {
+      window.postMessage(
+        {
+          namespace: 'okova:manifest-observed',
+          manifest: {
+            url: `${location.origin}/forged.mpd`,
+            kind: 'dash',
+            initData: [],
+            children: [],
+          },
+        },
+        '*',
+      );
       await fetch('/master.m3u8');
       await fetch('/audio.m3u8');
       await fetch('/movie.mpd');
@@ -62,7 +84,7 @@ test('manifest-only captures update live, survive tab closure, and delete by sta
     await popup.getByRole('button', { name: 'Delete (1)', exact: true }).click();
     const dialog = popup.getByRole('dialog');
     await dialog.getByRole('button', { name: 'Cancel', exact: true }).click();
-    expect(await captures.count()).toBe(2);
+    await expect.poll(() => captures.count()).toBe(2);
     await popup.getByRole('button', { name: 'Delete (1)', exact: true }).click();
     // A new capture after the confirmation snapshot must survive deletion.
     await source.evaluate(async () => {
@@ -72,14 +94,22 @@ test('manifest-only captures update live, survive tab closure, and delete by sta
     await dialog.getByRole('button', { name: 'Delete 1 capture', exact: true }).click();
     await expect.poll(() => captures.count()).toBe(2);
     expect(
-      await source.evaluate(() => window.MANIFEST_LIST.has('https://example.test/audio.m3u8')),
+      await source.evaluate(() => window.MANIFEST_LIST.has(`${location.origin}/audio.m3u8`)),
     ).toBe(false);
     await source.evaluate(async () => {
       await fetch('/master.m3u8');
       await fetch('/audio.m3u8');
     });
     await popup.getByRole('button', { name: 'Refresh', exact: true }).click();
-    expect(await captures.count()).toBe(2);
+    await expect
+      .poll(() => popup.getByRole('button', { name: 'Refresh', exact: true }).isEnabled())
+      .toBe(true);
+    await expect.poll(() => captures.count()).toBe(2);
+    expect(
+      (await readStoredCaptures(worker)).some((capture) =>
+        capture.manifest?.url.includes('master.m3u8'),
+      ),
+    ).toBe(false);
     await source.close();
     await popup.goto(popupUrl);
     await popup.getByRole('link', { name: 'Captures', exact: true }).click();

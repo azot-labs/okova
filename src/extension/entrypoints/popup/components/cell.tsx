@@ -19,6 +19,7 @@ interface CellProps {
   };
   component?: 'div' | 'button' | 'label';
   disabled?: boolean;
+  'aria-label'?: string;
   'aria-expanded'?: boolean;
   'aria-controls'?: string;
   'aria-pressed'?: boolean;
@@ -47,6 +48,7 @@ export const Cell: Component<CellProps> = (props) => {
       )}
       title={props.title}
       data-key-record={props['data-key-record']}
+      aria-label={props['aria-label']}
       aria-expanded={props['aria-expanded']}
       aria-controls={props['aria-controls']}
       aria-pressed={props['aria-pressed']}

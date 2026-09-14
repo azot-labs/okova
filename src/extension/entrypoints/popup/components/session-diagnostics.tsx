@@ -101,6 +101,7 @@ export const SessionDiagnostics: Component<{ record: CaptureDiagnostic }> = (pro
             size="xs"
             variant="primary"
             class="w-fit cursor-pointer"
+            component="button"
             aria-label="Copy diagnostic trace"
             onClick={() => void copyTrace()}
           >
@@ -110,6 +111,7 @@ export const SessionDiagnostics: Component<{ record: CaptureDiagnostic }> = (pro
             size="xs"
             variant="primary"
             class="w-fit cursor-pointer"
+            component="button"
             aria-label="Download diagnostic trace"
             onClick={() => void downloadTrace()}
           >

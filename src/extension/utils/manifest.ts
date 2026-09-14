@@ -127,12 +127,17 @@ export const isManifestUrl = (value: unknown): value is string => {
 };
 
 export const findManifest = (initData: string | undefined) => {
-  if (!initData || !(window.MPD_LIST instanceof Map)) return undefined;
-  const exact = window.MPD_LIST.get(initData);
-  if (isManifestUrl(exact)) return exact;
-  for (const pssh of splitPssh(initData)) {
-    const url = window.MPD_LIST.get(pssh);
-    if (isManifestUrl(url)) return url;
+  try {
+    const manifests = window.MPD_LIST;
+    if (!initData || !(manifests instanceof Map)) return undefined;
+    const exact = manifests.get(initData);
+    if (isManifestUrl(exact)) return exact;
+    for (const pssh of splitPssh(initData)) {
+      const url = manifests.get(pssh);
+      if (isManifestUrl(url)) return url;
+    }
+  } catch {
+    // Page-owned accessors and maps must not interrupt EME observation.
   }
   return undefined;
 };

@@ -481,3 +481,17 @@ test('requires every known session KID and ignores malformed manifest IDs', () =
   expect(getManifestCapture(kidPssh([kid, otherKid])).mpd).toBe(url);
   expect(getManifestCapture('not-base64').mpd).toBeUndefined();
 });
+
+test.each(['MANIFEST_LIST', 'MPD_LIST'])(
+  'throwing page-owned %s accessors do not block EME metadata collection',
+  (name) => {
+    Object.defineProperty(window, name, {
+      configurable: true,
+      get() {
+        throw new Error('page accessor');
+      },
+    });
+    expect(() => getManifestCapture(widevine)).not.toThrow();
+    expect(() => findManifest(widevine)).not.toThrow();
+  },
+);

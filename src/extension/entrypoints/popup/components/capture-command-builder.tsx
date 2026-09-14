@@ -13,14 +13,16 @@ export const CaptureCommandBuilder: Component<{
   copiedValue: string;
   onCopy: (value: string) => Promise<void>;
 }> = (props) => {
+  const [manualUrl, setManualUrl] = createSignal('');
+  const manifestUrl = createMemo(() => props.manifestUrl ?? manualUrl().trim());
   const [headers, setHeaders] = createSignal<RequestHeader[]>([]);
   const [selectedHeaders, setSelectedHeaders] = createSignal<RequestHeader[]>([]);
   const [headerError, setHeaderError] = createSignal<string>();
   const [loading, setLoading] = createSignal(false);
   let generation = 0;
   createEffect(() => {
-    if (!props.active || !isManifestUrl(props.manifestUrl)) return;
-    const url = props.manifestUrl;
+    if (!props.active || !isManifestUrl(manifestUrl())) return;
+    const url = manifestUrl();
     const tokens = props.records.map(keyRecordToken);
     const request = ++generation;
     setHeaders([]);
@@ -45,7 +47,7 @@ export const CaptureCommandBuilder: Component<{
           const available = getDownloadHeaders(result);
           if (available.length) {
             setHeaders(available);
-            setSelectedHeaders(available);
+            setSelectedHeaders(available.filter((header) => !isSensitiveHeader(header.name)));
             break;
           }
         }
@@ -61,14 +63,14 @@ export const CaptureCommandBuilder: Component<{
     });
   });
   const generatedCommand = createMemo(
-    () => buildCaptureDownloadCommand(props.records, props.manifestUrl, selectedHeaders()) ?? '',
+    () => buildCaptureDownloadCommand(props.records, manifestUrl(), selectedHeaders()) ?? '',
   );
   const [command, setCommand] = createSignal(generatedCommand());
   let previousCommand = generatedCommand();
-  let previousUrl = props.manifestUrl;
+  let previousUrl = manifestUrl();
   createEffect(() => {
     const nextCommand = generatedCommand();
-    const url = props.manifestUrl;
+    const url = manifestUrl();
     setCommand((current) =>
       url !== previousUrl || current === previousCommand ? nextCommand : current,
     );
@@ -83,22 +85,45 @@ export const CaptureCommandBuilder: Component<{
         setHeaders([]);
         setSelectedHeaders([]);
         setHeaderError(undefined);
-        setCommand(buildCaptureDownloadCommand(props.records, props.manifestUrl) ?? '');
+        setCommand(buildCaptureDownloadCommand(props.records, manifestUrl()) ?? '');
       }
     });
     onCleanup(unwatch);
   });
   return (
     <div class="px-3 pb-2 bg-emerald-200/10 dark:bg-neutral-900/50" data-command-builder>
+      <Show when={!props.manifestUrl}>
+        <label class="block pt-2 text-xs">
+          Manifest URL
+          <input
+            aria-label="Manifest URL"
+            type="url"
+            class="mt-1 w-full bg-transparent border border-neutral-300 dark:border-neutral-600 rounded px-2 py-1"
+            placeholder="https://example.com/manifest.mpd"
+            value={manualUrl()}
+            onInput={(event) => setManualUrl(event.currentTarget.value)}
+          />
+        </label>
+      </Show>
       <Cell
         class="group/command w-[stretch] pl-0 pr-2 -mx-2 py-1 bg-transparent dark:bg-transparent relative"
         subtitle={
-          <div class="flex items-center gap-1 ml-1">
+          <div class="flex flex-wrap items-center gap-1 ml-1">
+            <Show when={loading()}>
+              <span role="status">Loading request headers…</span>
+            </Show>
+            <Show when={headerError()}>
+              <span role="alert">{headerError()}</span>
+            </Show>
             <Cell
               class="w-fit"
               size="xs"
               variant="primary"
-              onClick={() => void props.onCopy(command())}
+              component="button"
+              disabled={loading() || Boolean(headerError()) || !command()}
+              onClick={() => {
+                if (!loading() && !headerError() && command()) void props.onCopy(command());
+              }}
             >
               {Boolean(command()) && command() === props.copiedValue ? 'Copied' : 'Copy'}
             </Cell>
@@ -118,13 +143,47 @@ export const CaptureCommandBuilder: Component<{
         <textarea
           class="px-2 font-mono text-xs outline-none bg-transparent border-none break-all w-full"
           aria-label="Download command"
-          disabled={!isManifestUrl(props.manifestUrl)}
+          disabled={!isManifestUrl(manifestUrl())}
           placeholder="No manifest detected for this capture"
           rows={4}
           value={command()}
           onInput={(event) => setCommand(event.currentTarget.value)}
         />
       </Cell>
+      <For each={headers()}>
+        {(header) => {
+          const sensitive = isSensitiveHeader(header.name);
+          const selected = () => selectedHeaders().some((item) => item.name === header.name);
+          const allowed = () =>
+            !sensitive ||
+            (isManifestUrl(manifestUrl()) && new URL(manifestUrl()!).protocol === 'https:');
+          return (
+            <label class="flex items-start gap-2 py-1 text-xs">
+              <input
+                type="checkbox"
+                aria-label={`Include ${header.name}`}
+                checked={selected()}
+                disabled={!allowed()}
+                onChange={(event) =>
+                  setSelectedHeaders((current) =>
+                    event.currentTarget.checked
+                      ? [...current, header]
+                      : current.filter((item) => item.name !== header.name),
+                  )
+                }
+              />
+              <span class="min-w-0 break-all">
+                {header.name}:{' '}
+                {sensitive && !selected()
+                  ? allowed()
+                    ? 'Sensitive value hidden'
+                    : 'Requires HTTPS'
+                  : header.value}
+              </span>
+            </label>
+          );
+        }}
+      </For>
     </div>
   );
 };
