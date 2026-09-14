@@ -87,6 +87,26 @@ oem_crypto_security_patch_level: 0
 oem_crypto_build_information: OEMCrypto Level3 Code 8162 May  9 2018 14:01:12
 ```
 
+### Credential export and repacking
+
+`okova credentials unpack <file.wvd|file.prd> <directory>` exports raw files.
+Repacking those files has different preservation limits:
+
+- Widevine exports `device_client_id_blob` and an RSA PEM `device_private_key`.
+  The client identity, key, and embedded VMP data survive, but the raw pair does
+  not contain WVD device type or security-level metadata. Raw import defaults to
+  Android/L3, so unpacking and repacking can change those fields.
+- PlayReady PRD v3 exports `zgpriv.dat` and `bgroupcert.dat` without the device
+  leaf certificate. Raw import verifies the issuer chain and provisions a new
+  device with new signing/encryption keys, certificate ID, and client ID. Even
+  library callers supplying the old leaf keys receive fresh certificate and client IDs.
+- PlayReady PRD v2 has no group private key, so it cannot export the original
+  group pair with `unpack`.
+
+Keep the original WVD/PRD to preserve the device. Loading and packing a packed
+device retains its device metadata and identity without raw reprovisioning;
+it does not promise byte-for-byte identical output.
+
 ## JavaScript library
 
 > Library installation requires a pre-installed JavaScript runtime, such as [Node.js](https://nodejs.org/en/download) 24.5.0 or later.
@@ -201,7 +221,8 @@ For anonymous access, replace `--secret ...` with `--public` and remove the
 `x-secret-key` header from the curl command.
 
 See the [remote client example](examples/remote-session) to request licenses and
-keys.
+keys, and [server configuration](docs/server.md) for authorization, credential
+selection, and limits.
 
 ### Inspect, edit, and convert PSSH boxes
 
