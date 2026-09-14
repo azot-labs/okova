@@ -3,7 +3,7 @@ import { importClientCredentials } from '../../utils';
 import { exportFiles } from './export-files';
 
 export const unpack = async (input = process.cwd(), output?: string) => {
-  const credentials = await importClientCredentials(input, output);
+  const credentials = await importClientCredentials(input);
   if (!('unpack' in credentials)) return;
   const unpacked = await credentials.unpack();
   const directory = output || process.cwd();

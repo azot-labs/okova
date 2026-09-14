@@ -218,8 +218,8 @@ test.each(['discovered', 'configured', 'explicit', 'explicit public', 'existing 
     const isExplicit = mode.startsWith('explicit');
     const directory = await mkdtemp(join(tmpdir(), 'okova-selection-'));
     const configPath = join(directory, 'config.json');
-    const first = join(directory, 'a.prd');
-    const last = join(directory, 'z.wvd');
+    const first = join(directory, 'a.PrD');
+    const last = join(directory, 'z.WVD');
     const originalConfig = structuredClone(config);
     const originalListeners = {
       SIGINT: process.listeners('SIGINT'),
@@ -302,7 +302,7 @@ test.each(['discovered', 'configured', 'explicit', 'explicit public', 'existing 
         }
       }
       if (mode === 'discovered') {
-        expect(config.credentials).toEqual(['a.prd']);
+        expect(config.credentials).toEqual(['a.PrD']);
         expect(output).toContain('Multiple credential files');
       }
     } finally {

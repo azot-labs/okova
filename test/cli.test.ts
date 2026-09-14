@@ -323,7 +323,7 @@ test('rejects packed/raw and duplicate raw credential candidates', async () => {
   await writeFile(join(cwd, 'copy.wvd'), wvd);
   expect(run(['credentials', 'info', cwd]).stderr).toContain('Ambiguous');
   const rawKey = (await readdir(cwd)).find((file) => file.includes('private_key'))!;
-  await writeFile(join(cwd, 'other_private_key'), await readFile(join(cwd, rawKey)));
+  await writeFile(join(cwd, 'private_key.pem'), await readFile(join(cwd, rawKey)));
   expect(run(['credentials', 'pack', cwd, '--format', 'wvd']).stderr).toContain('Ambiguous raw');
 });
 
@@ -344,4 +344,18 @@ test('imports symlinked packed and raw credentials while ignoring non-file links
   const result = run(['credentials', 'pack', raw, output]);
   expect(result.status, result.stderr).toBe(0);
   expect(parseWvd(new Uint8Array(await readFile(output)))).toEqual(parseWvd(wvd));
+});
+
+test.each(['archive.prd', 'archive.PRD'])('unpacks a raw directory into %s', async (name) => {
+  const cwd = await mkdtemp(join(directory, 'unpack-destination-'));
+  const raw = join(cwd, 'raw');
+  expect(run(['credentials', 'unpack', input, raw]).status).toBe(0);
+  const output = join(cwd, name);
+  const result = run(['credentials', 'unpack', raw, output]);
+  expect(result.status, result.stderr).toBe(0);
+  const filenames = await readdir(raw);
+  expect(await readdir(output)).toEqual(filenames);
+  for (const filename of filenames) {
+    expect(await readFile(join(output, filename))).toEqual(await readFile(join(raw, filename)));
+  }
 });
