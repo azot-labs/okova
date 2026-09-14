@@ -465,7 +465,6 @@ export default defineBackground({
         const isPopup = sender.url === popupUrl || sender.url?.startsWith(`${popupUrl}/`);
         if (
           !manifest ||
-          new TextEncoder().encode(JSON.stringify(manifest)).byteLength > 128 * 1024 ||
           (isRefresh ? !isPopup || !Number.isInteger(incoming.tabId) : sender.tab?.id === undefined)
         ) {
           sendResponse();

@@ -16,10 +16,7 @@ export default defineContentScript({
         if (event.source !== window) return;
         if (event.data?.namespace === 'okova:manifest-observed') {
           const manifest = parseDetectedManifest(event.data.manifest);
-          if (
-            manifest &&
-            new TextEncoder().encode(JSON.stringify(manifest)).byteLength <= 128 * 1024
-          )
+          if (manifest)
             void browser.runtime
               .sendMessage({ action: 'observed-manifest', manifest })
               .catch(() => {});

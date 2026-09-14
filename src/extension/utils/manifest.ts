@@ -5,6 +5,7 @@ export const MAX_CHILD_PLAYLISTS = 50;
 export const MAX_INIT_DATA_ENTRIES = 50;
 export const MAX_MANIFEST_REQUEST_URLS = 50;
 export const MAX_MANIFEST_METADATA_BYTES = 16 * 1024;
+export const MAX_DETECTED_MANIFEST_BYTES = 128 * 1024;
 export const manifestLabels = {
   dash: 'DASH',
   'hls-master': 'HLS master',
@@ -40,8 +41,41 @@ export type DetectedManifest = z.infer<typeof detectedManifestSchema>;
 
 export const parseDetectedManifest = (value: unknown) => {
   try {
-    const result = detectedManifestSchema.safeParse(value);
-    return result.success ? result.data : undefined;
+    if (!value || typeof value !== 'object') return undefined;
+    // Snapshot only bounded fields before Zod walks arrays or serialization copies strings.
+    // UTF-16 length is a cheap lower bound on their serialized UTF-8 byte size.
+    const snapshot: Record<string, string | string[] | undefined> = {};
+    let length = 0;
+    const maxEntries = Math.max(
+      MAX_INIT_DATA_ENTRIES,
+      MAX_CHILD_PLAYLISTS,
+      MAX_MANIFEST_REQUEST_URLS,
+    );
+    for (const field of ['url', 'kind', 'initData', 'keyIds', 'children', 'requestUrls']) {
+      const input: unknown = Reflect.get(value, field);
+      if (input === undefined) continue;
+      if (typeof input === 'string') {
+        length += input.length;
+        if (length > MAX_DETECTED_MANIFEST_BYTES) return undefined;
+        snapshot[field] = input;
+      } else if (Array.isArray(input)) {
+        const count = input.length;
+        if (count > maxEntries) return undefined;
+        const entries: string[] = [];
+        for (let index = 0; index < count; index++) {
+          const entry: unknown = input[index];
+          if (typeof entry !== 'string') return undefined;
+          length += entry.length;
+          if (length > MAX_DETECTED_MANIFEST_BYTES) return undefined;
+          entries.push(entry);
+        }
+        snapshot[field] = entries;
+      } else return undefined;
+    }
+    const result = detectedManifestSchema.safeParse(snapshot);
+    return result.success && serializedSize(result.data) <= MAX_DETECTED_MANIFEST_BYTES
+      ? result.data
+      : undefined;
   } catch {
     // Page-owned properties can throw from getters. Manifest discovery must not stop EME.
     return undefined;
