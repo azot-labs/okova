@@ -158,7 +158,7 @@ export const CaptureList: Component<{
                 class="group overflow-hidden"
                 onToggle={(event) => setIsOpen(event.currentTarget.open)}
               >
-                <summary class="cursor-pointer list-none px-3 py-3 flex items-center gap-3 hover:bg-emerald-50 dark:hover:bg-neutral-700/30 focus-visible:outline-2 focus-visible:outline-emerald-500">
+                <summary class="cursor-pointer list-none px-3 py-3 flex items-center gap-3 hover:bg-neutral-50 dark:hover:bg-neutral-700/30">
                   <Show when={props.selection}>
                     <input
                       type="checkbox"
@@ -240,7 +240,7 @@ export const CaptureList: Component<{
                   </span>
                 </summary>
                 <Show when={isOpen()}>
-                  <div class="px-3 pb-2 pt-1 flex flex-col gap-0.5 border-t border-t-emerald-200/50 dark:border-t-emerald-700/50 bg-emerald-200/10 dark:bg-neutral-900/50">
+                  <div class="px-3 pb-2 pt-1 flex flex-col gap-0.5 shadow-inner border-t border-t-neutral-200/50 dark:border-t-neutral-700/50 bg-neutral-200/10 dark:bg-neutral-900/50">
                     <Show when={!capture.manifestUrl}>
                       <p class="py-1 text-xs text-neutral-500 dark:text-neutral-400">
                         {capture.sessionIds.length

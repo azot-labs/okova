@@ -33,7 +33,7 @@ export const Cell: Component<CellProps> = (props) => {
       component={cellProps.component}
       class={cn(
         'group/cell bg-white w-full min-h-9 py-2 rounded-lg text-[13px] flex items-center px-3 cursor-pointer text-left text-neutral-950',
-        'transition-colors hover:duration-0 hover:bg-emerald-200/20 active:bg-emerald-100/60',
+        'transition-colors hover:duration-0 hover:bg-neutral-200/20 active:bg-neutral-100/60',
         'dark:bg-neutral-800/50 dark:text-neutral-50 dark:hover:bg-neutral-700/30 dark:active:bg-neutral-700/60',
         props.variant === 'primary' && 'text-emerald-600 dark:text-emerald-400',
         props.variant === 'danger' && 'text-[#E53935] dark:text-red-400',
@@ -42,7 +42,7 @@ export const Cell: Component<CellProps> = (props) => {
         props.size === 'sm' &&
           'text-[13px] font-medium hover:bg-transparent dark:hover:bg-transparent hover:opacity-80 min-h-4 py-1 px-1.5',
         props.size === 'xs' &&
-          'text-[10px] rounded-md font-medium bg-transparent dark:bg-transparent hover:bg-emerald-200/80 hover:dark:bg-emerald-800/40 active:bg-emerald-300/80 min-h-4 py-0 px-1',
+          'text-[10px] rounded-md font-medium bg-transparent dark:bg-transparent hover:bg-neutral-200/80 hover:dark:bg-neutral-700/40 active:bg-neutral-300/80 min-h-4 py-0 px-1',
         props.class,
       )}
       title={props.title}

@@ -88,9 +88,7 @@ export const Captures = () => {
               size="sm"
               class="w-auto shrink-0"
               label={
-                selectedCaptures().length
-                  ? `Delete Selected (${selectedCaptures().length})`
-                  : 'Delete All'
+                selectedCaptures().length ? `Delete (${selectedCaptures().length})` : 'Delete All'
               }
               scope={
                 selectedCaptures().length
