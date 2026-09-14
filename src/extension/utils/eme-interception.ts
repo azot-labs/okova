@@ -1,4 +1,4 @@
-import { getManifestCapture } from '@/utils/manifest';
+import { getManifestCapture } from '@/utils/manifest-capture';
 import { toBytes, bytesToBase64, fromBase64 } from '@okova/lib/utils';
 import { sendDrmMessage } from '@/utils/drm-bridge';
 import { playbackSessions } from '@/utils/playback-sessions';

@@ -1,4 +1,4 @@
-import { getManifestCapture } from '@/utils/manifest';
+import { getManifestCapture } from '@/utils/manifest-capture';
 import { z } from 'zod';
 import { CLIENT_KEY_SYSTEMS, type ClientKeySystem } from '@okova/lib/key-system';
 import { toBytes, bytesToBase64, fromHex, fromBase64 } from '@okova/lib/utils';

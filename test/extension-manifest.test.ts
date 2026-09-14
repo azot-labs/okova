@@ -1,9 +1,9 @@
+import { getManifestCapture } from '../src/extension/utils/manifest-capture';
 import { DOMParser } from '@xmldom/xmldom';
 import { afterEach, beforeEach, expect, test, vi } from 'vitest';
 import { installManifestInspection } from '../src/extension/utils/manifest-inspection';
 import {
   findManifest,
-  getManifestCapture,
   getManifestMetadata,
   MAX_MANIFESTS,
   splitPssh,
@@ -435,4 +435,48 @@ test('omits a single URL that exceeds the serialized budget instead of truncatin
       manifests: [{ url: oversized, kind: 'dash', matched: true }],
     }),
   ).toEqual({ mpd: undefined });
+});
+
+const kid = 'f1320954b50d4495bdebb30c6ac8fd5c';
+const kidMpd = (ids = 'F1320954-B50D-4495-BDEB-B30C6AC8FD5C') => `
+  <MPD xmlns="urn:mpeg:dash:schema:mpd:2011" xmlns:c="urn:mpeg:cenc:2013">
+    <Period><AdaptationSet><ContentProtection c:default_KID="${ids}"/></AdaptationSet></Period>
+  </MPD>`;
+const kidPssh = (ids = [kid]) =>
+  psshBoxToBase64(
+    createPsshBox({
+      systemId: PSSH_SYSTEM_IDS.widevine,
+      version: 1,
+      keyIds: ids,
+    }),
+  );
+
+test('links a DASH manifest without embedded PSSH through normalized default KIDs', () => {
+  post(kidMpd());
+  expect(getManifestCapture(kidPssh()).mpd).toBe(url);
+  expect(getManifestCapture(kidPssh()).manifests).toEqual([{ url, kind: 'dash', matched: true }]);
+  // Widevine v0 stores KIDs inside its protobuf payload rather than the box header.
+  const payload = new Uint8Array([0x12, 0x10, ...Buffer.from(kid, 'hex')]);
+  const v0 = psshBoxToBase64(createPsshBox({ systemId: PSSH_SYSTEM_IDS.widevine, data: payload }));
+  expect(getManifestCapture(v0).mpd).toBe(url);
+});
+
+test('leaves competing KID matches separate and gives an exact PSSH match priority', () => {
+  post(kidMpd());
+  post(kidMpd(), 'https://example.test/other.mpd');
+  expect(getManifestCapture(kidPssh()).mpd).toBeUndefined();
+  expect(getManifestCapture(kidPssh()).manifests?.every((manifest) => !manifest.matched)).toBe(
+    true,
+  );
+  post(mpd(kidPssh()), 'https://example.test/exact.mpd');
+  expect(getManifestCapture(kidPssh()).mpd).toBe('https://example.test/exact.mpd');
+});
+
+test('requires every known session KID and ignores malformed manifest IDs', () => {
+  const otherKid = '00112233445566778899aabbccddeeff';
+  post(kidMpd(`${kid} not-a-kid`));
+  expect(getManifestCapture(kidPssh([kid, otherKid])).mpd).toBeUndefined();
+  post(kidMpd(`${kid} ${otherKid}`));
+  expect(getManifestCapture(kidPssh([kid, otherKid])).mpd).toBe(url);
+  expect(getManifestCapture('not-base64').mpd).toBeUndefined();
 });
