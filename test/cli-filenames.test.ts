@@ -2,6 +2,7 @@ import { mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, expect, test, vi } from 'vitest';
+import { unpack } from '../src/cli/commands/credentials/unpack';
 import { importClientCredentials } from '../src/cli/utils';
 import { WidevineClientCredentials } from '../src/lib/widevine/client-credentials';
 import { PlayReadyClientCredentials } from '../src/lib/playready/client-credentials';
@@ -54,14 +55,19 @@ test.each([
   });
 });
 
-test.each(['device.WVD', 'device.PrD'])('imports and discovers packed %s', async (name) => {
-  const directory = await createDirectory([name]);
-  const type = name.endsWith('WVD') ? WidevineClientCredentials : PlayReadyClientCredentials;
-  const load = vi.spyOn(type, 'from').mockRejectedValue(selected);
-  await expect(importClientCredentials(join(directory, name))).rejects.toBe(selected);
-  await expect(importClientCredentials(directory)).rejects.toBe(selected);
-  expect(load).toHaveBeenCalledTimes(2);
-});
+test.each(['device.WVD', 'device.PrD', '.wvd', '.WVD', '.prd', '.PrD'])(
+  'imports and discovers packed %s',
+  async (name) => {
+    const directory = await createDirectory([name]);
+    const type = name.toLowerCase().endsWith('.wvd')
+      ? WidevineClientCredentials
+      : PlayReadyClientCredentials;
+    const load = vi.spyOn(type, 'from').mockRejectedValue(selected);
+    await expect(importClientCredentials(join(directory, name))).rejects.toBe(selected);
+    await expect(importClientCredentials(directory)).rejects.toBe(selected);
+    expect(load).toHaveBeenCalledTimes(2);
+  },
+);
 
 test.each(['export.WVD', 'export.PrD'])('uses case-insensitive output hint %s', async (output) => {
   const directory = await createDirectory(['device.WVD', 'device.PRD']);
@@ -94,3 +100,16 @@ test.each([
     'Ambiguous raw credential files',
   );
 });
+
+test.each(['archive.wvd', 'archive.WVD'])(
+  'unpacks raw PlayReady independently of destination %s',
+  async (output) => {
+    const directory = await createDirectory(['bgroupcert.dat', 'zgpriv.dat']);
+    const load = vi.spyOn(PlayReadyClientCredentials, 'from').mockRejectedValue(selected);
+    await expect(unpack(directory, join(directory, output))).rejects.toBe(selected);
+    expect(load).toHaveBeenCalledExactlyOnceWith({
+      groupCertificate: Buffer.from('bgroupcert.dat'),
+      groupKey: Buffer.from('zgpriv.dat'),
+    });
+  },
+);

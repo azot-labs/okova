@@ -345,3 +345,17 @@ test('imports symlinked packed and raw credentials while ignoring non-file links
   expect(result.status, result.stderr).toBe(0);
   expect(parseWvd(new Uint8Array(await readFile(output)))).toEqual(parseWvd(wvd));
 });
+
+test.each(['archive.prd', 'archive.PRD'])('unpacks a raw directory into %s', async (name) => {
+  const cwd = await mkdtemp(join(directory, 'unpack-destination-'));
+  const raw = join(cwd, 'raw');
+  expect(run(['credentials', 'unpack', input, raw]).status).toBe(0);
+  const output = join(cwd, name);
+  const result = run(['credentials', 'unpack', raw, output]);
+  expect(result.status, result.stderr).toBe(0);
+  const filenames = await readdir(raw);
+  expect(await readdir(output)).toEqual(filenames);
+  for (const filename of filenames) {
+    expect(await readFile(join(output, filename))).toEqual(await readFile(join(raw, filename)));
+  }
+});

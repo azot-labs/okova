@@ -27,7 +27,7 @@ export const listFiles = async (directory: string) => {
 };
 
 export const importClientCredentials = async (input: string, output?: string) => {
-  const inputExtension = extname(input).toLowerCase();
+  const inputName = input.toLowerCase();
   const outputExtension = output ? extname(output).toLowerCase() : undefined;
   const inputStat = await stat(input);
   const isDir = inputStat.isDirectory();
@@ -55,7 +55,7 @@ export const importClientCredentials = async (input: string, output?: string) =>
       );
     };
     if (outputExtension !== '.prd') {
-      for (const file of entries.filter((entry) => extname(entry).toLowerCase() === '.wvd')) {
+      for (const file of entries.filter((entry) => entry.toLowerCase().endsWith('.wvd'))) {
         candidates.push(async () =>
           WidevineClientCredentials.from({ wvd: await readFile(join(input, file)) }),
         );
@@ -67,7 +67,7 @@ export const importClientCredentials = async (input: string, output?: string) =>
       );
     }
     if (outputExtension !== '.wvd') {
-      for (const file of entries.filter((entry) => extname(entry).toLowerCase() === '.prd')) {
+      for (const file of entries.filter((entry) => entry.toLowerCase().endsWith('.prd'))) {
         candidates.push(async () =>
           PlayReadyClientCredentials.from({ prd: await readFile(join(input, file)) }),
         );
@@ -87,10 +87,10 @@ export const importClientCredentials = async (input: string, output?: string) =>
     const load = candidates[0];
     if (!load) throw new Error(`Unable to find credential files in ${input}`);
     return load();
-  } else if (inputExtension === '.wvd') {
+  } else if (inputName.endsWith('.wvd')) {
     const wvd = await readFile(input);
     return await WidevineClientCredentials.from({ wvd });
-  } else if (inputExtension === '.prd') {
+  } else if (inputName.endsWith('.prd')) {
     const prd = await readFile(input);
     return await PlayReadyClientCredentials.from({ prd });
   } else {
